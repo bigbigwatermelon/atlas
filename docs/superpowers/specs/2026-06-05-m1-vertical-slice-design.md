@@ -22,6 +22,19 @@
 
 整个产品的物化层押在一个假设上:**`claude --resume` 能在 worktree 的 cwd 里,用我们抓到的 native session id,接回历史并继续**。M1 先把这条最高风险链路验证掉,再立 UI。
 
+## ✅ Step 1 实测结论(2026-06-05,已跑通)
+
+用真实 `claude 2.1.158` + `portable-pty 0.8.1` 跑通的 spike(`crates/spike-pty`),三条断言全 PASS:
+
+- ① demo 仓 worktree 里 `hello.txt` 被交互式会话创建。
+- ② session id 捕获成功且交叉校验通过(jsonl 文件名 stem == 文件内 `sessionId` 字段)。
+- ③ `--resume <id>` 在同一 cwd 复用**同一** jsonl(文件数 1→1,行数 12→37,被续写而非新建),且 resume 后 TUI 正确答出此前创建的文件名 → 历史确实加载。
+
+**实测修正/新增发现(覆盖原假设):**
+
+1. **encoded-cwd 必须先 canonicalize**:Claude 用解析符号链接后的真实路径编码。macOS `/tmp` → `/private/tmp`,故 `/tmp/.../wt` 的会话目录是 `-private-tmp-...`。编码规则 = canonical 路径里 `/` 和 `.` 均替换为 `-`。
+2. **首次 `--dangerously-skip-permissions` 有 Bypass 确认屏**:`1. No, exit` / `2. Yes, I accept`,Enter 确认。程序化 spawn 必须跨过它(spike 发 `2`+Enter)。**产品级影响**:spawn claude 会撞 onboarding/trust/bypass 首屏,产品要么驱动这些按键,要么在 **worktree-local、gitignore 的** 配置里预置 accepted 标志(绝不写 canonical 仓)。这条进 M4/M5 的会话启动逻辑。
+
 ## 范围
 
 **In**
