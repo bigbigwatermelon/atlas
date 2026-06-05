@@ -9,6 +9,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { api } from "../lib/api";
 import type {
+  BusMsg,
   Direction,
   DirectionRepo,
   RepoRef,
@@ -40,6 +41,9 @@ interface Store {
   activeThreadId: number | null;
   sessions: Record<number, OpenSession>;
   activeSessionId: number | null;
+  messages: BusMsg[];
+  postHuman: (to: string | null, text: string) => Promise<void>;
+  nudgeDirection: (directionId: number) => Promise<void>;
 
   selectWorkspace: (id: number) => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
@@ -84,6 +88,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
   const [sessions, setSessions] = useState<Record<number, OpenSession>>({});
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [messages, setMessages] = useState<BusMsg[]>([]);
 
   const refreshWorkspaces = useCallback(async () => {
     const ws = await api.listWorkspaces();
@@ -237,6 +242,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setActiveSessionId((cur) => (cur === sessionId ? null : cur));
   }, []);
 
+  const postHuman = useCallback(
+    async (to: string | null, text: string) => {
+      if (activeThreadId == null || !text.trim()) return;
+      await api.busPostHuman(activeThreadId, to, text.trim());
+    },
+    [activeThreadId],
+  );
+
+  const nudgeDirection = useCallback(
+    async (directionId: number) => {
+      const sess = Object.values(sessions).find(
+        (s) => s.directionId === directionId && s.status === "running",
+      );
+      if (!sess) return;
+      await api.writePty(
+        sess.info.session_id,
+        "You have new messages on the thread bus. Call the bus_inbox tool to read them.\r",
+      );
+    },
+    [sessions],
+  );
+
   // bridge events: session id capture + exit drive UI status
   useEffect(() => {
     const unId = listen<{ sessionId: number; nativeId: string }>(
@@ -267,6 +294,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId]);
 
+  useEffect(() => {
+    if (activeThreadId == null) {
+      setMessages([]);
+      return;
+    }
+    let alive = true;
+    const tick = async () => {
+      try {
+        const m = await api.threadMessages(activeThreadId);
+        if (alive) setMessages(m);
+      } catch {
+        /* bus may not be ready */
+      }
+    };
+    void tick();
+    const h = setInterval(tick, 1500);
+    return () => {
+      alive = false;
+      clearInterval(h);
+    };
+  }, [activeThreadId]);
+
   const value: Store = {
     workspaces,
     activeWorkspaceId,
@@ -278,6 +327,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     activeThreadId,
     sessions,
     activeSessionId,
+    messages,
+    postHuman,
+    nudgeDirection,
     selectWorkspace,
     refreshWorkspaces,
     selectThread,
