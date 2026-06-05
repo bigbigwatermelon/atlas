@@ -1,6 +1,7 @@
 mod batch;
 mod claude;
 mod git;
+mod paths;
 mod pty;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
