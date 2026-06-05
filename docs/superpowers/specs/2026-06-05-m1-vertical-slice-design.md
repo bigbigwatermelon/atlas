@@ -53,6 +53,19 @@
 
 **会话启动顺序事实(供 M4 实现参考,非产品自动行为):门屏出现时,用户须先答门屏,才能喂 prompt。** 探针证实:prompt 早于信任门发送会被信任门吞掉。当产品确实需要程序化注入(如 coordinator 唤醒)时,注入逻辑应**靠旁路通道/输出检测屏状态**来判断是否处于门屏/可注入态,而非固定 sleep(spike/probe 里的固定 sleep 已显脆弱)。
 
+## ✅ Step 2 实测结论(2026-06-05,Tauri 应用端到端跑通)
+
+最小 Tauri 应用(`src-tauri` + `src`)已实现并端到端验收通过,**全程经 `@hypothesi/tauri-mcp-server` 的 webview bridge 驱动,未接管屏幕**:
+
+- ✅ `open_session` → 物化 worktree(`ws/demo/t1/main`)+ spawn 原生 `claude`(普通权限模式,无任何覆盖)。
+- ✅ 嵌入式原生 TUI 渲染干净(合帧管线无闪);双向 PTY:`write_pty` 驱动信任屏、prompt、审批。
+- ✅ §4.3 权限流:文件夹信任屏 + `Do you want to create hello.txt?` 原生弹出 → 答 Yes → **文件创建(内容 "hi")**。
+- ✅ session id 捕获 + **Resume 接回**:`🆔` 显示真实 id、Resume 解禁;Resume 复用**同一** jsonl(1 文件,23→30 行),`resumed` 标签,且 resumed 会话答出此前创建的 `hello.txt` → 历史确加载。
+
+**实测发现并修复的真实 bug(GUI 流程才暴露):** session id 捕获原有 30 秒死线,但 jsonl 只在用户答完信任/onboarding 门屏后才写,人答门屏常超 30s → 捕获失败、Resume 无法武装。修复:捕获线程改为"会话存活期间持续轮询"(10 分钟兜底)。spike 因用 `--skip-permissions`+立即 prompt 跳过门屏,未暴露此问题。详见 commit `eb0dba4`。
+
+**开发期驱动/验证设施:** debug 构建注入 `tauri-plugin-mcp-bridge`(端口 9223,`#[cfg(debug_assertions)]`,绝不进 release);配 `.mcp.json` 的 `@hypothesi/tauri-mcp-server`,可经 `webview_execute_js` / `window.__TAURI_INTERNALS__.invoke` 程序化驱动 UI 与后端命令做无人值守验证。
+
 ## 范围
 
 **In**
