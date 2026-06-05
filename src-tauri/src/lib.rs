@@ -14,6 +14,7 @@ pub mod materialize;
 mod batch;
 pub mod bus;
 mod claude;
+mod coordinator;
 mod drivers;
 mod pty;
 mod commands;
@@ -43,6 +44,10 @@ pub fn run() {
     };
     eprintln!("[weft] thread bus on {bus_base}");
 
+    // Wire the coordinator: bus wakes -> nudge the target direction's session.
+    let (wake_tx, wake_rx) = std::sync::mpsc::channel::<bus::Wake>();
+    bus.set_wake_sender(wake_tx);
+
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
 
     #[cfg(debug_assertions)]
@@ -55,6 +60,10 @@ pub fn run() {
         .manage(pty::PtyState::default())
         .manage(bus)
         .manage(BusBase(bus_base))
+        .setup(move |app| {
+            coordinator::run(app.handle().clone(), wake_rx);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::create_workspace,
             commands::list_workspaces,
