@@ -142,8 +142,15 @@ fn spawn(app: &AppHandle, cwd: &PathBuf, resume_id: Option<&str>) -> Result<Acti
         let alive_c = alive.clone();
         let t0 = now_secs();
         std::thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(30);
-            while alive_c.load(Ordering::SeqCst) && Instant::now() < deadline {
+            // Poll for the session id for as long as the session is alive. The
+            // jsonl isn't written until Claude actually starts a session, which
+            // is AFTER the user clears the trust / onboarding gate screens — and
+            // a human can take well over a minute to do that. A fixed short
+            // deadline would expire mid-gate and the id would never be captured
+            // (then Resume can never arm). The 10-min cap is just a zombie-thread
+            // backstop in case `alive` somehow never flips.
+            let backstop = Instant::now() + Duration::from_secs(600);
+            while alive_c.load(Ordering::SeqCst) && Instant::now() < backstop {
                 if let Ok(dir) = claude::projects_dir_for(&cwd) {
                     if let Some(id) = claude::capture_session_id(&dir, t0) {
                         let _ = app.emit(SESSION_ID_EVENT, id.clone());
