@@ -1,6 +1,8 @@
 //! MCP-over-HTTP for the thread bus. Stateless: each POST yields one SSE
-//! `event: message` carrying the JSON-RPC response. Identity is the URL path,
-//! never agent input.
+//! `event: message` carrying the JSON-RPC response. Identity is derived from
+//! the URL path, never agent input — so an agent can't spoof `from` via tool
+//! arguments. This does NOT stop a local process that forges the URL path
+//! itself (no auth; an accepted local-first tradeoff).
 
 use crate::bus::BusRegistry;
 use axum::{
@@ -34,6 +36,9 @@ fn sse(value: Value) -> Response {
         .into_response()
 }
 
+// `thread`/`dir` come from the URL path, so an agent can't spoof its identity
+// via tool arguments; it does NOT defend against a local process forging the
+// path (no auth — local-first tradeoff).
 async fn handle(
     Path((thread, dir)): Path<(i32, String)>,
     State(reg): State<BusRegistry>,

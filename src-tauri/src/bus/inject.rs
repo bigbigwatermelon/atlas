@@ -21,13 +21,15 @@ pub fn inject(base: &str, thread: i32, dir: &str, tool: &str, cwd: &Path) -> Inj
     let url = mcp_url(base, thread, dir);
     match tool {
         "claude" => {
-            // ephemeral --mcp-config file inside the worktree (.weft is gitignored
-            // via the worktree's own .git/info/exclude in Task 5 wiring).
+            // ephemeral --mcp-config file inside the worktree. It's an injected,
+            // untracked file, so we add it to the worktree's git exclude (see
+            // git_exclude) to keep it out of `git status` / diffs / commits.
             let cfg = cwd.join(".weft-bus.mcp.json");
             let json = serde_json::json!({
                 "mcpServers": { "weft_bus": { "type": "http", "url": url } }
             });
             let _ = std::fs::write(&cfg, serde_json::to_vec_pretty(&json).unwrap_or_default());
+            git_exclude(cwd, ".weft-bus.mcp.json");
             Injection {
                 args: vec!["--mcp-config".into(), cfg.to_string_lossy().to_string()],
             }
@@ -67,6 +69,45 @@ fn merge_opencode_config(cwd: &Path, url: &str) {
         );
     }
     let _ = std::fs::write(&path, serde_json::to_vec_pretty(&root).unwrap_or_default());
+    // Best-effort: only hides opencode.json from git when the sub-repo does NOT
+    // track it. If the repo ships a tracked opencode.json, the merge still shows
+    // as a modification — an accepted limitation of the worktree-local merge.
+    git_exclude(cwd, "opencode.json");
+}
+
+/// Append `name` to the worktree's git exclude file (so weft's injected,
+/// untracked config files never show in `git status` / diffs / accidental
+/// commits). Resolves the real exclude path via git (worktrees use a separate
+/// gitdir). Best-effort: silently does nothing if git isn't available.
+fn git_exclude(cwd: &Path, name: &str) {
+    let out = std::process::Command::new("git")
+        .args(["-C", &cwd.to_string_lossy(), "rev-parse", "--git-path", "info/exclude"])
+        .output();
+    let Ok(out) = out else { return };
+    if !out.status.success() {
+        return;
+    }
+    let rel = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if rel.is_empty() {
+        return;
+    }
+    // rev-parse returns a path relative to cwd (or absolute); resolve against cwd.
+    let p = std::path::Path::new(&rel);
+    let exclude_path = if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) };
+    if let Some(parent) = exclude_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let existing = std::fs::read_to_string(&exclude_path).unwrap_or_default();
+    if existing.lines().any(|l| l.trim() == name) {
+        return;
+    }
+    let mut content = existing;
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push_str(name);
+    content.push('\n');
+    let _ = std::fs::write(&exclude_path, content);
 }
 
 #[cfg(test)]
@@ -110,5 +151,32 @@ mod tests {
         assert!(merged["mcp"]["repo_own"].is_object(), "repo's own server preserved");
         assert_eq!(merged["mcp"]["weft_bus"]["type"], "remote");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn injected_file_is_git_excluded() {
+        use std::process::Command;
+        let root = std::env::temp_dir().join(format!("weft-inj-git-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let repo = root.join("repo");
+        let wt = root.join("wt");
+        std::fs::create_dir_all(&repo).unwrap();
+        let sh = |dir: &Path, args: &[&str]| {
+            assert!(Command::new(args[0]).args(&args[1..]).current_dir(dir).status().unwrap().success());
+        };
+        sh(&repo, &["git", "init", "-q"]);
+        sh(&repo, &["git", "config", "user.email", "t@t.t"]);
+        sh(&repo, &["git", "config", "user.name", "t"]);
+        std::fs::write(repo.join("README.md"), "x\n").unwrap();
+        sh(&repo, &["git", "add", "-A"]);
+        sh(&repo, &["git", "commit", "-q", "-m", "init"]);
+        sh(&repo, &["git", "worktree", "add", "-q", wt.to_str().unwrap()]);
+
+        let _ = inject("http://127.0.0.1:9", 1, "1", "claude", &wt);
+        assert!(wt.join(".weft-bus.mcp.json").exists(), "file written");
+        let status = Command::new("git").args(["status", "--porcelain"]).current_dir(&wt).output().unwrap();
+        let s = String::from_utf8_lossy(&status.stdout);
+        assert!(!s.contains(".weft-bus.mcp.json"), "injected file must be git-excluded, got: {s}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
