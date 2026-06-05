@@ -1,11 +1,10 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { api } from "../lib/api";
 import "@xterm/xterm/css/xterm.css";
 
-/** Decode base64 (from the Rust side) into raw bytes for xterm. */
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -14,64 +13,65 @@ function b64ToBytes(b64: string): Uint8Array {
 }
 
 /**
- * Embeds the native Claude TUI. Bidirectional: PTY output is rendered, and
- * keystrokes (incl. Ctrl-C, slashes, arrows) are forwarded to the child's
- * stdin. We intentionally pass keys straight through — the full key-ownership
- * table (intercepting only ⌘-prefixed keys) is M4.
+ * Embeds the native Claude TUI for ONE session. Bidirectional: PTY output
+ * (filtered by sessionId) renders here; keystrokes forward to that session's
+ * stdin. Keys pass straight through — the full key-ownership table is M4.
  */
-export function TerminalPanel({ onExit }: { onExit: () => void }) {
+export function TerminalPanel({ sessionId }: { sessionId: number }) {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const term = new Terminal({
       fontFamily:
-        'ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", monospace',
-      fontSize: 13,
-      theme: { background: "#0b0e14" },
+        'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace',
+      fontSize: 12.5,
+      lineHeight: 1.2,
+      theme: {
+        background: "#13161d",
+        foreground: "#e9eef5",
+        cursor: "#9bd17a",
+        selectionBackground: "#2b3a26",
+      },
       cursorBlink: true,
-      scrollback: 5000,
+      scrollback: 8000,
       allowProposedApi: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(hostRef.current!);
     fit.fit();
+    term.focus();
 
-    // keystrokes -> child stdin
     const dataSub = term.onData((data) => {
-      void invoke("write_pty", { data });
+      void api.writePty(sessionId, data);
     });
 
-    // keep PTY size synced to the viewport
     const pushResize = () => {
       try {
         fit.fit();
-        void invoke("resize_pty", { rows: term.rows, cols: term.cols });
+        void api.resizePty(sessionId, term.rows, term.cols);
       } catch {
-        /* no active session yet */
+        /* not ready */
       }
     };
     const ro = new ResizeObserver(pushResize);
     ro.observe(hostRef.current!);
 
-    // PTY output (frame-batched on the Rust side)
-    const unlistenOut = listen<{ data: string }>("pty://output", (e) => {
-      term.write(b64ToBytes(e.payload.data));
-    });
-    const unlistenExit = listen("pty://exit", () => {
-      term.writeln("\r\n\x1b[2m[session exited]\x1b[0m");
-      onExit();
-    });
+    const unOut = listen<{ session_id: number; data: string }>(
+      "pty://output",
+      (e) => {
+        if (e.payload.session_id === sessionId)
+          term.write(b64ToBytes(e.payload.data));
+      },
+    );
 
     return () => {
       dataSub.dispose();
       ro.disconnect();
-      void unlistenOut.then((f) => f());
-      void unlistenExit.then((f) => f());
+      void unOut.then((f) => f());
       term.dispose();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionId]);
 
   return <div ref={hostRef} className="term-host" />;
 }

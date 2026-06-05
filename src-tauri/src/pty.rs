@@ -53,6 +53,7 @@ pub struct SessionInfo {
 
 #[derive(Serialize, Clone)]
 struct OutputPayload {
+    session_id: i32,
     /// base64 of raw PTY bytes (terminal output is binary).
     data: String,
 }
@@ -119,9 +120,9 @@ fn spawn(
             alive_r.store(false, Ordering::SeqCst);
             // flush any tail, then signal exit
             if let Some(frame) = pending.lock().unwrap().take_frame() {
-                emit_output(&app, &frame);
+                emit_output(&app, session_id, &frame);
             }
-            let _ = app.emit(EXIT_EVENT, ());
+            let _ = app.emit(EXIT_EVENT, serde_json::json!({ "sessionId": session_id }));
         });
     }
 
@@ -135,7 +136,7 @@ fn spawn(
                 std::thread::sleep(FRAME_INTERVAL);
                 let frame = pending.lock().unwrap().take_frame();
                 if let Some(frame) = frame {
-                    emit_output(&app, &frame);
+                    emit_output(&app, session_id, &frame);
                 }
             }
         });
@@ -184,9 +185,9 @@ fn spawn(
     })
 }
 
-fn emit_output(app: &AppHandle, bytes: &[u8]) {
+fn emit_output(app: &AppHandle, session_id: i32, bytes: &[u8]) {
     let data = base64::engine::general_purpose::STANDARD.encode(bytes);
-    let _ = app.emit(OUTPUT_EVENT, OutputPayload { data });
+    let _ = app.emit(OUTPUT_EVENT, OutputPayload { session_id, data });
 }
 
 // ===================== Tauri commands =====================

@@ -43,6 +43,16 @@ pub async fn list_threads(db: State<'_, Db>, workspace_id: i32) -> R<Vec<entitie
     repo::list_threads(&db, workspace_id).await.map_err(e)
 }
 
+#[tauri::command]
+pub async fn list_repos(db: State<'_, Db>, workspace_id: i32) -> R<Vec<entities::repo_ref::Model>> {
+    repo::list_repos(&db, workspace_id).await.map_err(e)
+}
+
+#[tauri::command]
+pub async fn list_directions(db: State<'_, Db>, thread_id: i32) -> R<Vec<entities::direction::Model>> {
+    repo::list_directions(&db, thread_id).await.map_err(e)
+}
+
 /// scope: list of { repoId, role } from the frontend.
 #[derive(serde::Deserialize)]
 pub struct ScopeItem { pub repo_id: i32, pub role: String }

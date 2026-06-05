@@ -31,6 +31,8 @@ pub fn run() {
             commands::add_repo_ref,
             commands::create_thread,
             commands::list_threads,
+            commands::list_repos,
+            commands::list_directions,
             commands::create_direction,
             commands::list_worktrees,
             commands::repo_diff,

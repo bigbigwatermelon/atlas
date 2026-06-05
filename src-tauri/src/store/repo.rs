@@ -94,6 +94,20 @@ pub async fn list_threads(db: &Db, workspace_id: i32) -> Result<Vec<thread::Mode
         .await?)
 }
 
+pub async fn list_repos(db: &Db, workspace_id: i32) -> Result<Vec<repo_ref::Model>> {
+    Ok(repo_ref::Entity::find()
+        .filter(repo_ref::Column::WorkspaceId.eq(workspace_id))
+        .all(&db.0)
+        .await?)
+}
+
+pub async fn list_directions(db: &Db, thread_id: i32) -> Result<Vec<direction::Model>> {
+    Ok(direction::Entity::find()
+        .filter(direction::Column::ThreadId.eq(thread_id))
+        .all(&db.0)
+        .await?)
+}
+
 /// Create a direction with its per-repo scope. `scope` is (repo_id, role).
 pub async fn create_direction(
     db: &Db,
