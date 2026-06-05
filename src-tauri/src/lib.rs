@@ -4,6 +4,7 @@ mod git;
 mod paths;
 mod pty;
 mod slug;
+mod store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
