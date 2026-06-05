@@ -4,7 +4,7 @@ pub mod store;
 pub mod git;
 pub mod materialize;
 mod batch;
-mod bus;
+pub mod bus;
 mod claude;
 mod drivers;
 mod pty;
