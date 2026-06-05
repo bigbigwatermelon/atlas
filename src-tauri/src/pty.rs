@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const OUTPUT_EVENT: &str = "pty://output";
 const EXIT_EVENT: &str = "pty://exit";
@@ -70,6 +70,7 @@ fn now_secs() -> u64 {
 fn spawn(
     app: &AppHandle,
     tool: &str,
+    inject_args: &[String],
     cwd: &PathBuf,
     resume_id: Option<&str>,
     session_id: i32,
@@ -87,9 +88,9 @@ fn spawn(
         cwd: cwd.clone(),
         resume_id: resume_id.map(|s| s.to_string()),
     };
-    let (program, args) = driver.command(&spec);
+    let (program, dargs) = driver.command(&spec);
     let mut cmd = CommandBuilder::new(&program);
-    for a in &args {
+    for a in inject_args.iter().chain(dargs.iter()) {
         cmd.arg(a);
     }
     cmd.cwd(cwd);
@@ -233,8 +234,17 @@ async fn open_session_impl(
     let cwd = PathBuf::from(&wt.path);
     let sess = repo::create_session(db, direction_id, repo_id, &dir.tool, &wt.path).await?;
 
-    let active =
-        spawn(&app, &dir.tool, &cwd, None, sess.id, db.clone()).context("spawn agent")?;
+    let base = app.state::<crate::BusBase>().0.clone();
+    let inj = crate::bus::inject::inject(
+        &base,
+        dir.thread_id,
+        &direction_id.to_string(),
+        &dir.tool,
+        &cwd,
+    );
+
+    let active = spawn(&app, &dir.tool, &inj.args, &cwd, None, sess.id, db.clone())
+        .context("spawn agent")?;
     state.sessions.lock().unwrap().insert(sess.id, active);
 
     Ok(SessionInfo {
@@ -283,7 +293,17 @@ async fn resume_impl(
         let _ = a.child.wait();
     }
     let cwd = PathBuf::from(&wt.path);
-    let active = spawn(&app, &s.tool, &cwd, Some(&native), session_id, db.clone())
+    let tid = {
+        use sea_orm::EntityTrait;
+        crate::store::entities::direction::Entity::find_by_id(s.direction_id)
+            .one(&db.0)
+            .await?
+            .map(|d| d.thread_id)
+            .unwrap_or(0)
+    };
+    let base = app.state::<crate::BusBase>().0.clone();
+    let inj = crate::bus::inject::inject(&base, tid, &s.direction_id.to_string(), &s.tool, &cwd);
+    let active = spawn(&app, &s.tool, &inj.args, &cwd, Some(&native), session_id, db.clone())
         .context("spawn agent --resume")?;
     state.sessions.lock().unwrap().insert(session_id, active);
     Ok(SessionInfo {
