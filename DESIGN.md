@@ -1,0 +1,174 @@
+# Design
+
+Visual system for weft. Dark-primary, high-density, calm. Built on a cool
+near-black architecture with a single living moss-green brand accent. All
+color in OKLCH. Component base: **shadcn/ui (Radix + Tailwind)**, retuned to
+these tokens — never the default shadcn look.
+
+> Status today: the M1 shell uses plain CSS as a functional placeholder. This
+> document is the target system; M2+ product UI is built to it, and the M1
+> shell is migrated to it in a polish pass.
+
+## Theme
+
+Dark-primary, single theme to start (light is a later adapt pass). The mood:
+a well-instrumented control room at night — the surface is quiet and cool, the
+brand green glows like lichen under low light, status colors are the only
+saturated points and they always mean something.
+
+Color strategy: **restrained**. Tinted-neutral cool-dark surfaces + one brand
+accent + a disciplined status palette. The brand carries identity; the surface
+never competes.
+
+## Color (OKLCH)
+
+### Surface architecture (cool near-black, chroma stays tiny)
+
+| Token | OKLCH | Use |
+|---|---|---|
+| `--bg` | `oklch(0.16 0.006 250)` | app background, the deepest layer |
+| `--surface` | `oklch(0.20 0.007 250)` | panels, bars, cards |
+| `--surface-raised` | `oklch(0.235 0.008 250)` | popovers, menus, elevated rows |
+| `--border` | `oklch(0.28 0.008 250)` | hairline separators, control borders |
+| `--border-strong` | `oklch(0.34 0.010 250)` | focused/active borders |
+
+Surfaces are differentiated by **lightness steps, not shadows**. Shadows are
+reserved for genuinely floating layers (popover/modal/toast) at ≤ 8px blur.
+
+### Ink (text) — all verified ≥ AA on `--surface`
+
+| Token | OKLCH | Use |
+|---|---|---|
+| `--ink` | `oklch(0.96 0.004 250)` | primary text |
+| `--ink-muted` | `oklch(0.76 0.008 250)` | secondary text, still ≥ 4.5:1 |
+| `--ink-faint` | `oklch(0.62 0.010 250)` | labels, meta, placeholders (≥ 4.5:1) |
+
+No text dimmer than `--ink-faint` for anything readable. Disabled-only may go
+lower.
+
+### Brand
+
+| Token | OKLCH | Use |
+|---|---|---|
+| `--brand` | `oklch(0.74 0.15 132)` | primary actions, active selection, logo, focus accent |
+| `--brand-press` | `oklch(0.68 0.15 132)` | pressed/active brand |
+| `--brand-ghost` | `oklch(0.74 0.15 132 / 0.12)` | brand-tinted hover/selected backgrounds |
+
+Moss/sage green — luminous but not neon. It is the brand *and* the natural
+signal for "alive / running", which is the product's hero state. Used
+sparingly: a primary button, the active thread, a focus ring — not large fills.
+
+### Status semantics (the only other saturated colors; always paired with icon + label)
+
+| State | Token | OKLCH | Glyph |
+|---|---|---|---|
+| running / active | `--status-running` | `oklch(0.74 0.15 132)` (brand) | ● pulse |
+| waiting-input | `--status-waiting` | `oklch(0.80 0.13 80)` amber | ◐ |
+| waiting-approval | `--status-approval` | `oklch(0.78 0.15 55)` orange | ⚠ |
+| injecting (program) | `--status-inject` | `oklch(0.72 0.12 230)` cyan | ↳ |
+| paused / idle | `--status-idle` | `oklch(0.64 0.015 250)` slate | ○ |
+| error / exited | `--status-error` | `oklch(0.64 0.20 25)` red | ✕ |
+
+Color never stands alone — the glyph and a text label always accompany it
+(see Accessibility in PRODUCT.md).
+
+## Typography
+
+Three families, contrast-paired (UI sans + mono; no second sans):
+
+- **UI / display**: `Geist` (or `Inter` fallback). All headings, labels,
+  body. Display = same family at larger size + tighter tracking.
+- **Mono**: `Geist Mono` (or `JetBrains Mono`). Code, file paths, branch
+  names, session ids, diffs, the embedded-terminal-adjacent metadata.
+
+Scale (dense; base 13px). Ratio ≥ 1.25 between steps via size + weight.
+
+| Role | Size / line-height | Weight | Tracking |
+|---|---|---|---|
+| display | 22px / 1.2 | 600 | -0.02em |
+| h2 | 17px / 1.3 | 600 | -0.01em |
+| h3 | 14px / 1.4 | 600 | 0 |
+| body | 13px / 1.5 | 400 | 0 |
+| label / meta | 12px / 1.4 | 500 | 0 |
+| mono | 12–13px / 1.5 | 400 | 0 |
+
+`text-wrap: balance` on headings. No all-caps body; uppercase only for ≤ 2-word
+chips. Display ceiling well under the 6rem cap — this is a dense tool, not a
+landing page.
+
+## Layout & density
+
+- 4px spacing base. Compact rhythm: 8 / 12 / 16 / 24 for most gaps.
+- App shell: left nav (workspace ▸ thread ▸ direction), main session region,
+  optional right rail (diff / thread bus). Flexbox for the shell, Grid only for
+  true 2D (session grids, diff columns).
+- Multi-session layouts: `repeat(auto-fit, minmax(360px, 1fr))` so panels reflow
+  without breakpoint thrash.
+- **Radius**: 8px cards/panels, 6px inputs/buttons, full pill for chips/tags.
+  Never the over-rounded 24px+ look.
+- Borders are 1px hairlines at `--border`; pair a border *or* a one-step surface
+  lift, not both plus a shadow.
+- Semantic z-index scale: `--z-nav: 10`, `--z-sticky: 20`, `--z-backdrop: 30`,
+  `--z-modal: 40`, `--z-toast: 50`, `--z-tooltip: 60`. No magic 9999.
+
+## Components
+
+Base on **shadcn/ui** (Radix primitives + Tailwind), retokenized to the OKLCH
+variables above via CSS custom properties. Tailwind config maps `bg`, `surface`,
+`ink`, `brand`, `border`, status roles to these tokens. Key components and their
+weft treatment:
+
+- **Status chip**: pill, glyph + color + label, used in nav, session headers,
+  lists. The single most-repeated atom — must be perfect.
+- **Session panel**: framed xterm viewport with a header (tool, cwd, branch,
+  status chip) and the §4.3 interaction layer (focus ring, approval bar,
+  injection-queue banner, composer).
+- **Nav tree**: workspace → thread → direction, with active = `--brand-ghost`
+  fill + `--brand` left-edge indicator (a 2px indicator, NOT a decorative
+  side-stripe border).
+- **Command palette** (⌘K): Radix dialog, keyboard-first, the primary
+  navigation/action surface.
+- **Diff view**: mono, per-repo, restrained add/remove tinting from the status
+  ramp (green add, red remove) at low chroma so it stays calm.
+- **Approval bar**: appears in a session panel on `waiting-approval`; mirrors the
+  native TUI options as buttons (Approve / Deny / Always) — a convenience layer
+  over the native prompt, never a replacement.
+
+## Motion
+
+Motion is part of the build, not a coat of paint. It exists to **explain a
+change of state** and to make switching feel instant, never to perform.
+
+- **Curves**: ease-out-expo / quint for entrances and movement. No bounce, no
+  elastic, ever.
+- **Durations**: 120–180ms for UI transitions (focus, hover, chip changes,
+  panel switch); up to 240ms for larger layout reveals. Fast, because the tool
+  is fast.
+- **Library**: use `motion` (Framer Motion) for orchestrated panel/list
+  transitions and shared-layout session switching; CSS transitions for simple
+  hover/focus.
+- **Signature moments (interaction & transition craft):**
+  - *Status change*: the chip crossfades color + glyph; running pulses subtly
+    (opacity 0.6↔1, 1.6s, reduced-motion = static).
+  - *Session switch*: shared-layout transition so the active panel border and
+    header animate to the new selection — continuity, not a hard cut.
+  - *Injection queue*: a queued program message slides a banner down; on flush
+    it briefly highlights the injected turn (cyan `--status-inject` wash that
+    fades) so the human sees what the coordinator sent.
+  - *Approval arrival*: the panel border eases to `--status-approval` and the
+    approval bar slides up — a calm alert, not a flash.
+  - *List reveals*: thread/session lists stagger entrance (24ms step) on first
+    mount only; never re-stagger on every render.
+- **Reduced motion**: every animation has a `prefers-reduced-motion: reduce`
+  path — pulses stop, slides become instant, crossfades shorten to ~80ms.
+- Don't animate layout props (width/height/top) where transform/opacity can do
+  it; blur/clip-path only when they materially improve a moment and stay smooth.
+
+## Slop guardrails (weft-specific)
+
+Never ship: pastel/purple gradients, gradient text, glassmorphism as default,
+decorative side-stripe borders (the nav indicator is a 2px functional marker,
+not a 4px accent stripe), over-rounded cards, emoji as UI iconography in
+production, neon-terminal styling, identical icon-card grids, per-section
+uppercase eyebrows. If a screen could be guessed as "AI dashboard" from a
+thumbnail, it has failed principle 1.
