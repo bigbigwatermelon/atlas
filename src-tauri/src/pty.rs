@@ -7,7 +7,6 @@
 //! (cwd, native id, tool) lives in the DB `session` row, not in this state.
 
 use crate::batch::FrameBatcher;
-use crate::claude;
 use crate::store::{repo, Db};
 use anyhow::{Context, Result};
 use base64::Engine;
@@ -65,10 +64,12 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// Spawn `claude` into a fresh PTY at `cwd` and wire up output/exit/capture.
-/// NOTE: PLAIN claude — no permission overrides (see claude.rs).
+/// Spawn the direction's tool into a fresh PTY at `cwd` and wire up
+/// output/exit/capture. PLAIN binaries — no permission overrides; each tool's
+/// own config applies. Tool-specific spawn/resume/capture lives in `drivers`.
 fn spawn(
     app: &AppHandle,
+    tool: &str,
     cwd: &PathBuf,
     resume_id: Option<&str>,
     session_id: i32,
@@ -81,10 +82,15 @@ fn spawn(
         pixel_height: 0,
     })?;
 
-    let mut cmd = CommandBuilder::new("claude");
-    if let Some(id) = resume_id {
-        cmd.arg("--resume");
-        cmd.arg(id);
+    let driver = crate::drivers::driver_for(tool);
+    let spec = crate::drivers::SpawnSpec {
+        cwd: cwd.clone(),
+        resume_id: resume_id.map(|s| s.to_string()),
+    };
+    let (program, args) = driver.command(&spec);
+    let mut cmd = CommandBuilder::new(&program);
+    for a in &args {
+        cmd.arg(a);
     }
     cmd.cwd(cwd);
     for (k, v) in std::env::vars() {
@@ -142,35 +148,34 @@ fn spawn(
         });
     }
 
-    // capture thread: poll the sidecar dir for the native session id
+    // capture thread: poll the tool's session store for the native id
     if resume_id.is_none() {
         let app = app.clone();
         let cwd = cwd.clone();
         let alive_c = alive.clone();
         let t0 = now_secs();
+        let tool = tool.to_string();
         std::thread::spawn(move || {
-            // Poll for the session id for as long as the session is alive. The
-            // jsonl isn't written until Claude actually starts a session, which
-            // is AFTER the user clears the trust / onboarding gate screens — and
-            // a human can take well over a minute to do that. A fixed short
-            // deadline would expire mid-gate and the id would never be captured
-            // (then Resume can never arm). The 10-min cap is just a zombie-thread
-            // backstop in case `alive` somehow never flips.
+            // Poll for the id for as long as the session is alive. The tool
+            // doesn't persist a session until it actually starts — AFTER the
+            // user clears trust / onboarding gates, which can take well over a
+            // minute. A fixed short deadline would expire mid-gate and the id
+            // would never be captured (Resume could never arm). The 10-min cap
+            // is just a zombie-thread backstop in case `alive` never flips.
+            let driver = crate::drivers::driver_for(&tool);
             let backstop = Instant::now() + Duration::from_secs(600);
             while alive_c.load(Ordering::SeqCst) && Instant::now() < backstop {
-                if let Ok(dir) = claude::projects_dir_for(&cwd) {
-                    if let Some(id) = claude::capture_session_id(&dir, t0) {
-                        let _ = app.emit(
-                            SESSION_ID_EVENT,
-                            serde_json::json!({ "sessionId": session_id, "nativeId": id }),
-                        );
-                        let db = db.clone();
-                        let id2 = id.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = repo::set_session_native_id(&db, session_id, &id2).await;
-                        });
-                        break;
-                    }
+                if let Some(id) = driver.capture_session_id(&cwd, t0) {
+                    let _ = app.emit(
+                        SESSION_ID_EVENT,
+                        serde_json::json!({ "sessionId": session_id, "nativeId": id }),
+                    );
+                    let db = db.clone();
+                    let id2 = id.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = repo::set_session_native_id(&db, session_id, &id2).await;
+                    });
+                    break;
                 }
                 std::thread::sleep(Duration::from_millis(400));
             }
@@ -228,7 +233,8 @@ async fn open_session_impl(
     let cwd = PathBuf::from(&wt.path);
     let sess = repo::create_session(db, direction_id, repo_id, &dir.tool, &wt.path).await?;
 
-    let active = spawn(&app, &cwd, None, sess.id, db.clone()).context("spawn claude")?;
+    let active =
+        spawn(&app, &dir.tool, &cwd, None, sess.id, db.clone()).context("spawn agent")?;
     state.sessions.lock().unwrap().insert(sess.id, active);
 
     Ok(SessionInfo {
@@ -277,8 +283,8 @@ async fn resume_impl(
         let _ = a.child.wait();
     }
     let cwd = PathBuf::from(&wt.path);
-    let active =
-        spawn(&app, &cwd, Some(&native), session_id, db.clone()).context("spawn claude --resume")?;
+    let active = spawn(&app, &s.tool, &cwd, Some(&native), session_id, db.clone())
+        .context("spawn agent --resume")?;
     state.sessions.lock().unwrap().insert(session_id, active);
     Ok(SessionInfo {
         session_id,

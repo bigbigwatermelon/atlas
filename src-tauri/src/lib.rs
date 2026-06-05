@@ -5,6 +5,7 @@ pub mod git;
 pub mod materialize;
 mod batch;
 mod claude;
+mod drivers;
 mod pty;
 mod commands;
 
