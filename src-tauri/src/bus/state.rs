@@ -45,7 +45,7 @@ impl BusRegistry {
 
     /// Register `dir` as a member of `thread` (idempotent). Called on connect.
     pub fn join(&self, thread: i32, dir: &str) {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let bus = g.entry(thread).or_default();
         bus.members.insert(dir.to_string());
         if !bus.state.is_object() {
@@ -62,7 +62,7 @@ impl BusRegistry {
             ts: now(),
             kind: kind.to_string(),
         };
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let bus = g.entry(thread).or_default();
         bus.log.push(m.clone());
         bus.inboxes.entry(to.to_string()).or_default().push(m);
@@ -70,7 +70,7 @@ impl BusRegistry {
 
     /// Broadcast from `from` to every other member of the thread.
     pub fn broadcast(&self, thread: i32, from: &str, text: &str, kind: &str) {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let bus = g.entry(thread).or_default();
         let targets: Vec<String> = bus
             .members
@@ -93,13 +93,13 @@ impl BusRegistry {
 
     /// Read and clear `me`'s unread messages.
     pub fn inbox(&self, thread: i32, me: &str) -> Vec<Msg> {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let bus = g.entry(thread).or_default();
         bus.inboxes.remove(me).unwrap_or_default()
     }
 
     pub fn state_get(&self, thread: i32) -> serde_json::Value {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let bus = g.entry(thread).or_default();
         if bus.state.is_object() {
             bus.state.clone()
@@ -110,7 +110,7 @@ impl BusRegistry {
 
     /// Shallow-merge `patch` (object) into the shared state.
     pub fn state_set(&self, thread: i32, patch: serde_json::Value) {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let bus = g.entry(thread).or_default();
         if !bus.state.is_object() {
             bus.state = serde_json::json!({});
@@ -124,7 +124,7 @@ impl BusRegistry {
 
     /// The full timeline for a thread (for the UI in v1b).
     pub fn log(&self, thread: i32) -> Vec<Msg> {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         g.entry(thread).or_default().log.clone()
     }
 }

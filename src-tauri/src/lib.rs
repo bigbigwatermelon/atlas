@@ -1,3 +1,11 @@
+// Panic-prone code is banned in production paths. clippy enforces it; the
+// `not(test)` guard lets test modules use unwrap/expect freely (a failing test
+// SHOULD panic). Run `cargo clippy` to check.
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 pub mod paths;
 pub mod slug;
 pub mod store;
@@ -13,22 +21,25 @@ mod commands;
 /// The bus server's base URL, e.g. "http://127.0.0.1:54321".
 pub struct BusBase(pub String);
 
+/// Log a fatal startup error and exit cleanly (no panic/unwind).
+fn fatal(context: &str, err: impl std::fmt::Display) -> ! {
+    eprintln!("[weft] fatal: {context}: {err}");
+    std::process::exit(1);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Open the DB synchronously before building the app.
-    let db = tauri::async_runtime::block_on(async {
-        store::Db::open_default().await.expect("open weft.db")
-    });
+    let db = tauri::async_runtime::block_on(async { store::Db::open_default().await })
+        .unwrap_or_else(|e| fatal("open weft.db", e));
 
     // Start the thread-bus HTTP MCP server on an ephemeral port.
     let bus = bus::BusRegistry::new();
     let bus_base: String = {
         let bus = bus.clone();
-        tauri::async_runtime::block_on(async move {
-            let (base, _handle) = bus::server::serve(bus).await.expect("start bus server");
-            // leak the JoinHandle: the server lives for the app's lifetime
-            base
-        })
+        tauri::async_runtime::block_on(async move { bus::server::serve(bus).await })
+            .map(|(base, _handle)| base) // leak the JoinHandle: server lives for app lifetime
+            .unwrap_or_else(|e| fatal("start bus server", e))
     };
     eprintln!("[weft] thread bus on {bus_base}");
 
@@ -64,5 +75,5 @@ pub fn run() {
             pty::kill_session,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| fatal("running tauri application", e));
 }

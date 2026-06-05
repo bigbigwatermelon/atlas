@@ -120,13 +120,13 @@ fn spawn(
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
-                        pending.lock().unwrap().push(&buf[..n]);
+                        pending.lock().unwrap_or_else(|e| e.into_inner()).push(&buf[..n]);
                     }
                 }
             }
             alive_r.store(false, Ordering::SeqCst);
             // flush any tail, then signal exit
-            if let Some(frame) = pending.lock().unwrap().take_frame() {
+            if let Some(frame) = pending.lock().unwrap_or_else(|e| e.into_inner()).take_frame() {
                 emit_output(&app, session_id, &frame);
             }
             let _ = app.emit(EXIT_EVENT, serde_json::json!({ "sessionId": session_id }));
@@ -141,7 +141,7 @@ fn spawn(
         std::thread::spawn(move || {
             while alive_f.load(Ordering::SeqCst) {
                 std::thread::sleep(FRAME_INTERVAL);
-                let frame = pending.lock().unwrap().take_frame();
+                let frame = pending.lock().unwrap_or_else(|e| e.into_inner()).take_frame();
                 if let Some(frame) = frame {
                     emit_output(&app, session_id, &frame);
                 }
@@ -245,7 +245,7 @@ async fn open_session_impl(
 
     let active = spawn(&app, &dir.tool, &inj.args, &cwd, None, sess.id, db.clone())
         .context("spawn agent")?;
-    state.sessions.lock().unwrap().insert(sess.id, active);
+    state.sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(sess.id, active);
 
     Ok(SessionInfo {
         session_id: sess.id,
@@ -287,7 +287,7 @@ async fn resume_impl(
         .await?
         .ok_or_else(|| anyhow::anyhow!("worktree gone"))?;
     // kill the old live process if present
-    if let Some(mut a) = state.sessions.lock().unwrap().remove(&session_id) {
+    if let Some(mut a) = state.sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&session_id) {
         a.alive.store(false, Ordering::SeqCst);
         let _ = a.child.kill();
         let _ = a.child.wait();
@@ -305,7 +305,7 @@ async fn resume_impl(
     let inj = crate::bus::inject::inject(&base, tid, &s.direction_id.to_string(), &s.tool, &cwd);
     let active = spawn(&app, &s.tool, &inj.args, &cwd, Some(&native), session_id, db.clone())
         .context("spawn agent --resume")?;
-    state.sessions.lock().unwrap().insert(session_id, active);
+    state.sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id, active);
     Ok(SessionInfo {
         session_id,
         repo: wt.path.clone(),
@@ -319,7 +319,7 @@ async fn resume_impl(
 /// Forward keystrokes from xterm to the child's stdin (Ctrl-C, chars, etc.).
 #[tauri::command]
 pub fn write_pty(state: State<PtyState>, session_id: i32, data: String) -> Result<(), String> {
-    let mut g = state.sessions.lock().unwrap();
+    let mut g = state.sessions.lock().unwrap_or_else(|e| e.into_inner());
     let a = g.get_mut(&session_id).ok_or("no such session")?;
     a.writer
         .write_all(data.as_bytes())
@@ -335,7 +335,7 @@ pub fn resize_pty(
     rows: u16,
     cols: u16,
 ) -> Result<(), String> {
-    let g = state.sessions.lock().unwrap();
+    let g = state.sessions.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(a) = g.get(&session_id) {
         a.master
             .resize(PtySize {
@@ -352,7 +352,7 @@ pub fn resize_pty(
 /// Terminate one session.
 #[tauri::command]
 pub fn kill_session(state: State<PtyState>, session_id: i32) -> Result<(), String> {
-    if let Some(mut a) = state.sessions.lock().unwrap().remove(&session_id) {
+    if let Some(mut a) = state.sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&session_id) {
         a.alive.store(false, Ordering::SeqCst);
         let _ = a.child.kill();
         let _ = a.child.wait();

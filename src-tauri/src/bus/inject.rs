@@ -56,7 +56,11 @@ fn merge_opencode_config(cwd: &Path, url: &str) {
     if !root.is_object() {
         root = serde_json::json!({});
     }
-    let obj = root.as_object_mut().unwrap();
+    // root is guaranteed an object here; guard instead of unwrap so a panic is
+    // impossible even if the invariant ever changes.
+    let Some(obj) = root.as_object_mut() else {
+        return;
+    };
     obj.entry("$schema".to_string())
         .or_insert_with(|| serde_json::json!("https://opencode.ai/config.json"));
     let mcp = obj
