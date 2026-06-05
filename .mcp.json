@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "tauri-mcp": {
+      "command": "tauri-mcp",
+      "args": ["serve"],
+      "env": {
+        "TAURI_MCP_LOG_LEVEL": "info"
+      }
+    }
+  }
+}
