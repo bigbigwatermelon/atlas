@@ -123,3 +123,19 @@ M2 的验收是**正确性**(数据模型 + worktree 生命周期 + 并行安全
 - 启动包 M2 三条验收(两 direction 互不干扰 / 删 thread 清理 / 同仓两 thread 不冲突)逐条通过。
 - 经 dev MCP bridge 的端到端串联跑通并断言。
 - 改动说明随交付。后续 `$impeccable craft workspace-nav` 作为独立 UI pass 排期。
+
+## ✅ M2 实测结论(2026-06-05,全部通过)
+
+后端按 10 个 TDD 任务实现,SeaORM ORM(`Schema::create_table_from_entity` 从实体派生迁移、零 SQL)。
+
+**自动化测试(可重复运行):**
+- 12 个 lib 单测(slug、paths、migration、仓储 CRUD+级联删除)全过。
+- `m2_git` 集成测试(worktree 列举 + 按仓 diff)过。
+- `m2_worktree` 集成测试(三条验收场景 ①②③)**连跑两次都过**——经 `WEFT_HOME` 隔离修复后不再依赖干净的 `~/.weft`。
+
+**经 dev MCP bridge 的真实 IPC 端到端(隔离 `WEFT_HOME`):**
+- `create_workspace`(slug 去重 e2e/e2e-2)→ `add_repo_ref`(校验 git 仓、派生 base_ref)→ `create_thread` → `create_direction`(**materialize 副作用**)→ `list_worktrees`:worktree 物化在 `<home>/<ws>/<thread>/<dir>/<repo>`,分支 `ws/<ws>/<thread>/<dir>`,`git worktree list` 确认注册。
+- `delete_thread`:目标 thread 的 worktree 从盘上 + git + DB 级联移除,另一 thread 存活。
+- `open_session(direction,repo)`:在已物化 worktree 上创建 session 行(cwd 正确)并 spawn 原生 claude(live resume 机制与 M1 已证一致)。
+
+**开发期设施:** `WEFT_HOME` 环境变量可覆盖 weft 数据根(测试隔离 + 用户可迁移数据);debug-only `tauri-plugin-mcp-bridge` 支撑无人值守 IPC 验证。
