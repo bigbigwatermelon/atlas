@@ -1,6 +1,7 @@
 mod batch;
 mod claude;
 pub mod git;
+pub mod materialize;
 pub mod paths;
 mod pty;
 pub mod slug;

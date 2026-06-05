@@ -52,7 +52,6 @@ pub fn add_worktree(repo: &Path, branch: &str, worktree_path: &Path) -> Result<P
 }
 
 /// Remove a worktree and prune. (Used by M2 worktree lifecycle management.)
-#[allow(dead_code)]
 pub fn remove_worktree(repo: &Path, worktree_path: &Path) -> Result<()> {
     let path_str = worktree_path.to_string_lossy().to_string();
     git(repo, &["worktree", "remove", "--force", &path_str]).ok();
