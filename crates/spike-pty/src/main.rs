@@ -102,6 +102,10 @@ fn spawn_claude(cwd: &Path, resume_id: Option<&str>) -> Result<PtySession> {
         cmd.arg("--resume");
         cmd.arg(id);
     }
+    // TEST-ONLY: the spike needs unattended, deterministic tool execution.
+    // The PRODUCT must NOT inject this — it spawns plain `claude` and lets the
+    // user's own config / permission mode apply, answering trust + permission
+    // popups inside the embedded TUI (see spec "顺从用户自己的 Claude 配置").
     cmd.arg("--dangerously-skip-permissions");
     cmd.cwd(cwd);
     // Inherit the full environment so claude finds HOME/PATH/auth.

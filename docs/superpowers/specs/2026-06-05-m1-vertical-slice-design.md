@@ -42,9 +42,16 @@
 - **① 文件夹信任屏**(每个新 worktree 路径一次):`❯ 1. Yes, I trust this folder / 2. No, exit`。先于一切;与工具权限无关。
 - **② 工具权限请求屏**(每个动作):`Do you want to create hi.txt? ❯ 1. Yes / 2. Yes, allow all edits during this session / 3. No`。**这正是架构 §4.3 审批流要消费的 `ApprovalRequested` 事件**;`Always` ≈ TUI 的 "2. allow all this session"。
 
-`--dangerously-skip-permissions` 只是 spike 为无人值守拿确定性结果才用;产品保留权限请求并用自身审批 UI 呈现,才符合 §4.3。
+### 产品级原则:顺从用户自己的 Claude 配置与权限习惯(高于本 milestone)
 
-**会话启动纪律(M4 会话启动逻辑必须遵守):门屏先答,再喂 prompt。** 探针证实:prompt 早于信任门发送会被信任门吞掉。健壮实现应**靠旁路通道/输出检测屏状态来驱动过门**,而非固定 sleep(spike/probe 里的固定 sleep 已显脆弱)。
+- **不注入任何权限覆盖**。产品 spawn 的是用户标准 `HOME` 下的原生 `claude`,用户的 `~/.claude/settings.json`、permission-mode、allowlist 等**自动生效**——即"原生驱动,保全能力"。`--dangerously-skip-permissions` **仅用于自动化集成测试**(无人值守需确定性),**绝非产品行为**;产品代码路径永不注入它。
+- **弹窗就该弹,用户在我们面板内自己答**。trust 屏 / 权限屏原样渲染在嵌入式 TUI,用户像在普通终端一样回答——与"不重绘 agent UI"一致。
+- **不替用户自动过门**。产品默认**不**自动敲 trust/bypass。§4.3 审批快捷条只是**可选便利层**(把 TUI 已有选项做成按钮,等价于用户敲键),**不替代、不绕过**用户配置;用户随时可直接在 TUI 里答。
+- **`Always` 优先映射原生语义**:对应 Claude 原生 "2. Yes, allow all edits during this session",而非另起一套产品侧放行规则。能用原生就用原生。
+
+> 这条修订覆盖原架构 §4.3 里"`Always` = 产品侧记录放行规则"的措辞:优先用工具原生机制。
+
+**会话启动顺序事实(供 M4 实现参考,非产品自动行为):门屏出现时,用户须先答门屏,才能喂 prompt。** 探针证实:prompt 早于信任门发送会被信任门吞掉。当产品确实需要程序化注入(如 coordinator 唤醒)时,注入逻辑应**靠旁路通道/输出检测屏状态**来判断是否处于门屏/可注入态,而非固定 sleep(spike/probe 里的固定 sleep 已显脆弱)。
 
 ## 范围
 
