@@ -82,3 +82,11 @@ export interface FileDiff {
 export interface DiffSummary {
   files: FileDiff[];
 }
+
+export interface BusMsg {
+  from: string;
+  to: string;
+  text: string;
+  ts: number;
+  kind: string;
+}

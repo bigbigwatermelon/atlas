@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  BusMsg,
   Direction,
   DirectionRepo,
   RepoRef,
@@ -54,4 +55,9 @@ export const api = {
     invoke<void>("resize_pty", { sessionId, rows, cols }),
   killSession: (sessionId: number) =>
     invoke<void>("kill_session", { sessionId }),
+
+  threadMessages: (threadId: number) =>
+    invoke<BusMsg[]>("thread_messages", { threadId }),
+  busPostHuman: (threadId: number, to: string | null, text: string) =>
+    invoke<void>("bus_post_human", { threadId, to, text }),
 };
