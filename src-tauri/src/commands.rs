@@ -97,3 +97,29 @@ pub async fn delete_thread(db: State<'_, Db>, thread_id: i32) -> R<()> {
     let removed = repo::delete_thread_cascade(&db, thread_id).await.map_err(e)?;
     materialize::cleanup_worktrees(&db, &removed).await.map_err(e)
 }
+
+#[tauri::command]
+pub fn thread_messages(
+    bus: tauri::State<'_, crate::bus::BusRegistry>,
+    thread_id: i32,
+) -> R<Vec<crate::bus::Msg>> {
+    Ok(bus.log(thread_id))
+}
+
+#[tauri::command]
+pub fn bus_post_human(
+    bus: tauri::State<'_, crate::bus::BusRegistry>,
+    thread_id: i32,
+    to: Option<String>,
+    text: String,
+) -> R<()> {
+    match to {
+        Some(target) if !target.is_empty() && target != "*" => {
+            bus.post(thread_id, "you", &target, &text, "message");
+        }
+        _ => {
+            bus.broadcast(thread_id, "you", &text, "message");
+        }
+    }
+    Ok(())
+}

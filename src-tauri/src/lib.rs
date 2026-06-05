@@ -68,6 +68,8 @@ pub fn run() {
             commands::list_worktrees,
             commands::repo_diff,
             commands::delete_thread,
+            commands::thread_messages,
+            commands::bus_post_human,
             pty::open_session,
             pty::resume_session,
             pty::write_pty,
