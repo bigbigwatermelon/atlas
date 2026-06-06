@@ -19,24 +19,25 @@ fn planner_url(base: &str, thread: i32) -> String {
     format!("{base}/planner/{thread}/mcp")
 }
 
-fn ask_url(base: &str, thread: i32, dir: &str) -> String {
-    format!("{base}/ask/{thread}/{dir}")
+fn ask_url(base: &str, thread: i32, dir: &str, tool: &str) -> String {
+    format!("{base}/ask/{thread}/{dir}?tool={tool}")
 }
 
-/// Install the Ask Bridge for a claude session: a per-session settings file with
-/// a PreToolUse hook that POSTs each tool action to weft's /ask endpoint and
-/// blocks on the returned allow/deny. Returns the extra `--settings <file>`
-/// args. Additive — claude merges this with the user's own settings/hooks. Only
-/// claude here (codex/opencode bridge in via their own channels). Best-effort:
-/// returns empty args if the files can't be written.
+/// Install the Ask Bridge for a session: a PreToolUse hook that POSTs each tool
+/// action to weft's /ask endpoint and blocks on the returned allow/deny. Both
+/// claude and codex use the IDENTICAL hookSpecificOutput contract, so the hook
+/// script is shared; only the per-tool wiring differs (claude `--settings`,
+/// codex `-c hooks.PreToolUse`). Additive — stacks with the user's own hooks.
+/// Best-effort: empty args if files can't be written. (OpenCode bridges via its
+/// server `/event` channel, not a hook — handled elsewhere.)
 pub fn inject_ask_hook(base: &str, thread: i32, dir: &str, tool: &str, cwd: &Path) -> Injection {
-    if tool != "claude" {
+    if tool != "claude" && tool != "codex" {
         return Injection { args: vec![] };
     }
-    let url = ask_url(base, thread, dir);
+    let url = ask_url(base, thread, dir, tool);
     let script = cwd.join(".weft-ask-hook.sh");
     // Reads the PreToolUse JSON on stdin, asks weft, echoes weft's decision JSON
-    // (empty on failure/timeout → claude falls back to its own prompt).
+    // (empty on failure/timeout → the tool falls back to its own prompt).
     let body = format!(
         "#!/usr/bin/env bash\n\
          resp=$(curl -s -m 55 -X POST '{url}' -H 'Content-Type: application/json' --data-binary @- 2>/dev/null)\n\
@@ -47,26 +48,42 @@ pub fn inject_ask_hook(base: &str, thread: i32, dir: &str, tool: &str, cwd: &Pat
         return Injection { args: vec![] };
     }
     let _ = std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755));
-
-    let settings = cwd.join(".weft-ask.settings.json");
-    let json = serde_json::json!({
-        "hooks": {
-            "PreToolUse": [
-                { "matcher": "*", "hooks": [
-                    { "type": "command",
-                      "command": format!("bash {}", script.to_string_lossy()),
-                      "timeout": 58 }
-                ] }
-            ]
-        }
-    });
-    if std::fs::write(&settings, serde_json::to_vec_pretty(&json).unwrap_or_default()).is_err() {
-        return Injection { args: vec![] };
-    }
     git_exclude(cwd, ".weft-ask-hook.sh");
-    git_exclude(cwd, ".weft-ask.settings.json");
-    Injection {
-        args: vec!["--settings".into(), settings.to_string_lossy().to_string()],
+
+    match tool {
+        "claude" => {
+            let settings = cwd.join(".weft-ask.settings.json");
+            let json = serde_json::json!({
+                "hooks": { "PreToolUse": [
+                    { "matcher": "*", "hooks": [
+                        { "type": "command",
+                          "command": format!("bash {}", script.to_string_lossy()),
+                          "timeout": 58 }
+                    ] }
+                ] }
+            });
+            if std::fs::write(&settings, serde_json::to_vec_pretty(&json).unwrap_or_default()).is_err() {
+                return Injection { args: vec![] };
+            }
+            git_exclude(cwd, ".weft-ask.settings.json");
+            Injection {
+                args: vec!["--settings".into(), settings.to_string_lossy().to_string()],
+            }
+        }
+        // Codex defines the same hook in config.toml. We pass it inline via `-c`
+        // and add --dangerously-bypass-hook-trust: that flag only waives
+        // SOURCE-trust for our own generated hook so it runs unattended — it does
+        // NOT skip approvals or the sandbox (the hook IS the approval surface).
+        "codex" => {
+            let hooks = format!(
+                "hooks.PreToolUse=[{{ matcher = \".*\", hooks = [{{ type = \"command\", command = \"bash {}\" }}] }}]",
+                script.to_string_lossy()
+            );
+            Injection {
+                args: vec!["--dangerously-bypass-hook-trust".into(), "-c".into(), hooks],
+            }
+        }
+        _ => Injection { args: vec![] },
     }
 }
 
@@ -215,6 +232,44 @@ mod tests {
         // the bus config is a SEPARATE file — planner doesn't clobber it
         assert_ne!(inj.args[1], dir.join(".weft-bus.mcp.json").to_string_lossy());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn claude_ask_hook_wires_pretooluse_settings() {
+        let dir = std::env::temp_dir().join(format!("weft-askh-c-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let inj = inject_ask_hook("http://127.0.0.1:9", 1, "10", "claude", &dir);
+        assert_eq!(inj.args[0], "--settings");
+        let script = std::fs::read_to_string(dir.join(".weft-ask-hook.sh")).unwrap();
+        assert!(script.contains("/ask/1/10?tool=claude"));
+        let settings: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join(".weft-ask.settings.json")).unwrap())
+                .unwrap();
+        assert!(settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .contains(".weft-ask-hook.sh"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn codex_ask_hook_injects_pretooluse_via_config() {
+        let dir = std::env::temp_dir().join(format!("weft-askh-x-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let inj = inject_ask_hook("http://127.0.0.1:9", 2, "30", "codex", &dir);
+        assert_eq!(inj.args[0], "--dangerously-bypass-hook-trust");
+        assert_eq!(inj.args[1], "-c");
+        assert!(inj.args[2].starts_with("hooks.PreToolUse=["));
+        assert!(inj.args[2].contains(".weft-ask-hook.sh"));
+        let script = std::fs::read_to_string(dir.join(".weft-ask-hook.sh")).unwrap();
+        assert!(script.contains("/ask/2/30?tool=codex"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn opencode_ask_hook_is_noop_for_now() {
+        let inj = inject_ask_hook("http://127.0.0.1:9", 1, "10", "opencode", Path::new("/tmp"));
+        assert!(inj.args.is_empty());
     }
 
     #[test]

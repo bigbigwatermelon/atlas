@@ -8,13 +8,14 @@ use crate::ask::{AskRegistry, Decision};
 use crate::bus::BusRegistry;
 use crate::store::Db;
 use axum::{
-    extract::{FromRef, Path, State},
+    extract::{FromRef, Path, Query, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::time::Duration;
 
 /// Shared state for the local server: the in-memory thread bus, the DB (the
@@ -62,12 +63,14 @@ const ASK_WAIT: Duration = Duration::from_secs(50);
 /// silent stall). Identity (thread/dir) comes from the URL path, not the body.
 async fn handle_ask(
     Path((thread, dir)): Path<(i32, String)>,
+    Query(q): Query<HashMap<String, String>>,
     State(asks): State<AskRegistry>,
     Json(req): Json<Value>,
 ) -> Response {
+    let tool = q.get("tool").map(|s| s.as_str()).unwrap_or("claude");
     let tool_name = req.get("tool_name").and_then(|v| v.as_str()).unwrap_or("tool");
     let (summary, detail) = summarize(tool_name, req.get("tool_input"));
-    let (id, rx) = asks.request(thread, &dir, "claude", &summary, &detail);
+    let (id, rx) = asks.request(thread, &dir, tool, &summary, &detail);
 
     match tokio::time::timeout(ASK_WAIT, rx).await {
         Ok(Ok(decision)) => {

@@ -469,7 +469,7 @@ async fn plan_with_lead_impl(
     let inj = crate::bus::inject::inject_planner(&base, thread_id, &tool, &cwd);
     // The lead is read-only planning, but install the Ask Bridge too so any
     // permission prompt it hits still surfaces instead of stalling.
-    let ask = crate::bus::inject::inject_ask_hook(&base, thread_id, "", &tool, &cwd);
+    let ask = crate::bus::inject::inject_ask_hook(&base, thread_id, "lead", &tool, &cwd);
 
     // Seed the planning prompt as the agent's initial positional message. It must
     // come BEFORE --mcp-config: claude's --mcp-config is variadic and would
