@@ -101,6 +101,13 @@ fn spawn(
         pixel_height: 0,
     })?;
 
+    // Pre-accept claude's folder-trust gate for this weft-created cwd so an
+    // unattended dispatch starts instead of stalling on the trust prompt. Not a
+    // permission bypass — per-action approvals still surface via the Ask Bridge.
+    if tool == "claude" {
+        crate::claude::ensure_trusted(cwd);
+    }
+
     let driver = crate::drivers::driver_for(tool);
     let spec = crate::drivers::SpawnSpec {
         cwd: cwd.clone(),
