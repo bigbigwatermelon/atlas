@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { useTranslation } from "react-i18next";
 import { Megaphone, Radio, Send } from "lucide-react";
 import { useStore } from "../state/store";
 import type { Direction } from "../lib/types";
@@ -11,6 +12,7 @@ import { cn } from "../lib/cn";
 /** A right-rail panel: the thread's bus timeline + a human composer. */
 export function CoordinationPanel({ directions }: { directions: Direction[] }) {
   const { messages, postHuman } = useStore();
+  const { t } = useTranslation();
   const [to, setTo] = useState<string>("*");
   const [text, setText] = useState("");
 
@@ -22,10 +24,10 @@ export function CoordinationPanel({ directions }: { directions: Direction[] }) {
 
   const options = useMemo(
     () => [
-      { value: "*", label: "Broadcast · all directions" },
+      { value: "*", label: t("bus.broadcast") },
       ...directions.map((d) => ({ value: String(d.id), label: d.name })),
     ],
-    [directions],
+    [directions, t],
   );
 
   async function send() {
@@ -38,9 +40,9 @@ export function CoordinationPanel({ directions }: { directions: Direction[] }) {
     <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-surface">
       <header className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         <Radio size={13} className="text-brand" />
-        <span className="text-[12px] font-semibold text-ink">Thread bus</span>
+        <span className="text-[12px] font-semibold text-ink">{t("bus.title")}</span>
         <span className="ml-auto text-[11px] text-ink-faint">
-          {messages.length} {messages.length === 1 ? "message" : "messages"}
+          {t("bus.messages", { count: messages.length })}
         </span>
       </header>
 
@@ -75,7 +77,7 @@ export function CoordinationPanel({ directions }: { directions: Direction[] }) {
           </AnimatePresence>
           {messages.length === 0 && (
             <p className="px-1 py-6 text-center text-[11px] leading-relaxed text-ink-faint">
-              No messages yet. Directions post here via the bus; you can too.
+              {t("bus.empty")}
             </p>
           )}
         </div>
@@ -91,7 +93,7 @@ export function CoordinationPanel({ directions }: { directions: Direction[] }) {
         <Select value={to} onValueChange={setTo} ariaLabel="Recipient" options={options} />
         <div className="flex gap-2">
           <Input
-            placeholder="Message the thread…"
+            placeholder={t("bus.compose")}
             value={text}
             onChange={(e) => setText(e.currentTarget.value)}
           />

@@ -1,4 +1,5 @@
 import * as DM from "@radix-ui/react-dropdown-menu";
+import { useTranslation } from "react-i18next";
 import {
   Copy,
   FolderOpen,
@@ -27,11 +28,12 @@ export function Inspect({
   className?: string;
   size?: number;
 }) {
+  const { t } = useTranslation();
   return (
     <DM.Root>
       <DM.Trigger
         aria-label="Inspect"
-        title="Inspect — open terminal, reveal, copy path"
+        title={t("inspect.label")}
         className={cn(
           "grid place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink",
           className,
@@ -48,31 +50,31 @@ export function Inspect({
           className="weft-pop z-[60] w-60 rounded-[var(--radius-md)] border border-border bg-raised p-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]"
         >
           <Item icon={<SquareTerminal size={13} />} onSelect={() => void api.openTerminal(path)}>
-            Open terminal here
+            {t("inspect.openTerminal")}
           </Item>
           <Item icon={<FolderOpen size={13} />} onSelect={() => void api.revealPath(path)}>
-            Reveal working copy
+            {t("inspect.reveal")}
           </Item>
           <Item
             icon={<Copy size={13} />}
             onSelect={() => void navigator.clipboard?.writeText(path)}
           >
-            Copy path
+            {t("inspect.copyPath")}
           </Item>
 
           <DM.Separator className="my-1 h-px bg-border" />
           <div className="px-2 py-1 text-[10px] leading-relaxed text-ink-faint">
             <div className="truncate" title={path}>
-              <span className="text-ink-muted">copy</span> {shortPath(path)}
+              <span className="text-ink-muted">{t("inspect.pathLabel")}</span> {shortPath(path)}
             </div>
             {branch && (
               <div className="truncate font-mono" title={branch}>
-                <span className="font-sans text-ink-muted">branch</span> {branch}
+                <span className="font-sans text-ink-muted">{t("inspect.branchLabel")}</span> {branch}
               </div>
             )}
             {nativeId && (
               <div className="truncate font-mono" title={nativeId}>
-                <span className="font-sans text-ink-muted">session</span>{" "}
+                <span className="font-sans text-ink-muted">{t("inspect.sessionLabel")}</span>{" "}
                 {nativeId.slice(0, 12)}
               </div>
             )}

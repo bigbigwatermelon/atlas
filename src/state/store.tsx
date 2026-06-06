@@ -9,6 +9,7 @@ import {
 } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "../lib/api";
+import { currentLang } from "../i18n";
 import type {
   BusMsg,
   Direction,
@@ -324,7 +325,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setShowRepoMap(false);
         return;
       }
-      const info = await api.openSession(directionId, repoId);
+      const info = await api.openSession(directionId, repoId, currentLang());
       lastOutputRef.current[info.session_id] = Date.now();
       autoCheckedRef.current.delete(directionId);
       setSessions((m) => ({
@@ -347,7 +348,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const planWithLead = useCallback(async () => {
     if (activeThreadId == null) return;
-    const lead = await api.planWithLead(activeThreadId);
+    const lead = await api.planWithLead(activeThreadId, currentLang());
     const info: SessionInfo = {
       session_id: lead.session_id,
       repo: "",

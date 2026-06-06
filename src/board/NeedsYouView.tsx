@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useTranslation } from "react-i18next";
 import { ArrowUpRight, Check, HelpCircle, Send, ShieldQuestion, X } from "lucide-react";
 import { useStore } from "../state/store";
 import type { NeedItem, PermissionAsk } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
+import type { TFunction } from "i18next";
 
 /**
  * The "Needs-you" surface (PRODUCT §7): every open agent→human question across
@@ -14,6 +16,7 @@ import { Input } from "../components/ui/Input";
  */
 export function NeedsYouView() {
   const { needs, asks } = useStore();
+  const { t } = useTranslation();
   const reduce = useReducedMotion();
   const total = needs.length + asks.length;
 
@@ -24,7 +27,7 @@ export function NeedsYouView() {
           <HelpCircle size={14} className="text-waiting" />
         </span>
         <h1 className="text-[16px] font-semibold tracking-tight text-ink">
-          Needs you
+          {t("needs.title")}
         </h1>
         {total > 0 && (
           <span className="rounded-full bg-waiting/15 px-2 py-0.5 text-[11px] font-medium tabular-nums text-waiting">
@@ -32,7 +35,7 @@ export function NeedsYouView() {
           </span>
         )}
         <span className="ml-auto text-[12px] text-ink-faint">
-          approvals and questions only you can answer
+          {t("needs.subtitle")}
         </span>
       </header>
 
@@ -80,14 +83,15 @@ export function NeedsYouView() {
 
 function PermissionRow({ ask }: { ask: PermissionAsk }) {
   const { answerPermission } = useStore();
+  const { t } = useTranslation();
   return (
     <div className="overflow-hidden rounded-[var(--radius-lg)] border border-approval/40 bg-surface">
       <div className="flex items-center gap-2 px-3.5 pt-3 text-[12px]">
         <ShieldQuestion size={13} className="shrink-0 text-approval" />
         <span className="font-medium capitalize text-ink">{ask.tool}</span>
-        <span className="text-ink-faint">wants permission</span>
+        <span className="text-ink-faint">{t("needs.wantsPermission")}</span>
         <span className="ml-auto whitespace-nowrap text-ink-faint tabular-nums">
-          {ago(ask.ts)}
+          {ago(ask.ts, t)}
         </span>
       </div>
       <p className="truncate px-3.5 pb-1 pt-1.5 font-mono text-[13px] text-ink" title={ask.detail}>
@@ -96,11 +100,11 @@ function PermissionRow({ ask }: { ask: PermissionAsk }) {
       <div className="flex gap-2 border-t border-border bg-bg/40 px-3.5 py-2.5">
         <Button variant="primary" onClick={() => void answerPermission(ask.id, true)}>
           <Check size={13} />
-          Allow
+          {t("common.allow")}
         </Button>
         <Button variant="ghost" onClick={() => void answerPermission(ask.id, false)}>
           <X size={13} />
-          Deny
+          {t("common.deny")}
         </Button>
       </div>
     </div>
@@ -109,6 +113,7 @@ function PermissionRow({ ask }: { ask: PermissionAsk }) {
 
 function AskRow({ item }: { item: NeedItem }) {
   const { answerAsk, goToAsk } = useStore();
+  const { t } = useTranslation();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -132,12 +137,12 @@ function AskRow({ item }: { item: NeedItem }) {
         <span className="text-ink-faint">·</span>
         <span className="truncate text-ink-muted">{item.thread_title}</span>
         <span className="ml-auto whitespace-nowrap text-ink-faint tabular-nums">
-          {ago(item.ts)}
+          {ago(item.ts, t)}
         </span>
         <button
           onClick={() => void goToAsk(item)}
-          title="Open this direction"
-          aria-label="Open this direction"
+          title={t("needs.openDirection")}
+          aria-label={t("needs.openDirection")}
           className="-mr-1 grid h-6 w-6 shrink-0 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
         >
           <ArrowUpRight size={14} />
@@ -157,7 +162,7 @@ function AskRow({ item }: { item: NeedItem }) {
       >
         <Input
           autoFocus
-          placeholder={`Answer ${item.direction_name}…`}
+          placeholder={t("needs.answerPlaceholder", { name: item.direction_name })}
           value={text}
           onChange={(e) => setText(e.currentTarget.value)}
         />
@@ -170,27 +175,27 @@ function AskRow({ item }: { item: NeedItem }) {
 }
 
 function EmptyNeeds() {
+  const { t } = useTranslation();
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center">
       <div className="grid h-12 w-12 place-items-center rounded-[var(--radius-lg)] border border-border bg-surface">
         <Check size={22} className="text-running" />
       </div>
-      <h2 className="mt-4 text-[15px] font-semibold text-ink">Nothing needs you</h2>
+      <h2 className="mt-4 text-[15px] font-semibold text-ink">{t("needs.emptyTitle")}</h2>
       <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-ink-faint">
-        When an agent hits a decision only you can make, it asks here. Answer
-        once and the reply goes straight back to its inbox, so you never have to
-        go hunting for the session.
+        {t("needs.emptyBody")}
       </p>
     </div>
   );
 }
 
-function ago(ts: number): string {
+/** Localized relative time. */
+function ago(ts: number, t: TFunction): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000) - ts);
-  if (s < 60) return "just now";
+  if (s < 60) return t("time.justNow");
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return t("time.mAgo", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return t("time.hAgo", { n: h });
+  return t("time.dAgo", { n: Math.floor(h / 24) });
 }

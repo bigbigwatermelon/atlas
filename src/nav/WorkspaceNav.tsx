@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
+import { useTranslation } from "react-i18next";
 import {
   Check,
   ChevronRight,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { useStore } from "../state/store";
 import { useTheme } from "../state/theme";
+import { setLang } from "../i18n";
 import type { Thread } from "../lib/types";
 import { cn } from "../lib/cn";
 import {
@@ -33,13 +35,14 @@ export function WorkspaceNav() {
   } = useStore();
   const [dlg, setDlg] = useState<null | "ws" | "repo" | "thread">(null);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
+  const { t } = useTranslation();
 
   return (
     <nav className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-surface">
       <div className="flex items-center gap-2 px-3 pb-2 pt-3">
         <button
           onClick={backToWorkspace}
-          title="Workspace board"
+          title={t("nav.home")}
           className="flex select-none items-center gap-1.5 rounded-[var(--radius-sm)] px-1 py-0.5 transition-colors hover:bg-brand-ghost"
         >
           <img src="/weft-mark.svg" alt="" className="h-[18px] w-[18px]" draggable={false} />
@@ -65,16 +68,16 @@ export function WorkspaceNav() {
         <button
           onClick={openRepoMap}
           disabled={!active}
-          title="Open the repo map"
+          title={t("nav.repoMap")}
           className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-[12px] text-ink-muted disabled:opacity-40"
         >
           <FolderGit2 size={13} className="text-ink-faint" />
-          {repos.length} {repos.length === 1 ? "repo" : "repos"}
+          {t("nav.repos", { count: repos.length })}
         </button>
         <button
           onClick={() => setDlg("repo")}
           disabled={!active}
-          aria-label="Add repo"
+          aria-label={t("dialog.addRepo")}
           className="mr-1 grid h-6 w-6 place-items-center rounded text-ink-faint opacity-0 transition-opacity hover:text-ink group-hover:opacity-100 disabled:opacity-40"
         >
           <Plus size={14} />
@@ -85,12 +88,12 @@ export function WorkspaceNav() {
 
       <div className="flex items-center justify-between px-3 py-1.5">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-          Threads
+          {t("nav.threads")}
         </span>
         <button
           onClick={() => setDlg("thread")}
           disabled={!active}
-          aria-label="New thread"
+          aria-label={t("nav.newThread")}
           className="grid h-5 w-5 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink disabled:opacity-40"
         >
           <Plus size={14} />
@@ -100,9 +103,7 @@ export function WorkspaceNav() {
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {threads.length === 0 ? (
           <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-ink-faint">
-            {active
-              ? "No threads yet. Create one to start a work line."
-              : "Create a workspace to begin."}
+            {active ? t("nav.noThreads") : t("nav.createWorkspaceFirst")}
           </p>
         ) : (
           <ul className="flex flex-col gap-0.5">
@@ -114,8 +115,11 @@ export function WorkspaceNav() {
       </div>
 
       <footer className="flex items-center justify-between border-t border-border px-3 py-2">
-        <span className="text-[11px] text-ink-faint">Local · no server</span>
-        <ThemeToggle />
+        <span className="text-[11px] text-ink-faint">{t("nav.local")}</span>
+        <div className="flex items-center gap-1">
+          <LangToggle />
+          <ThemeToggle />
+        </div>
       </footer>
 
       <CreateWorkspaceDialog open={dlg === "ws"} onOpenChange={(o) => !o && setDlg(null)} />
@@ -127,13 +131,14 @@ export function WorkspaceNav() {
 
 function NeedsButton() {
   const { needs, asks, showNeeds, openNeeds } = useStore();
+  const { t } = useTranslation();
   const count = needs.length + asks.length;
   const has = count > 0;
 
   return (
     <button
       onClick={openNeeds}
-      aria-label={has ? `${count} waiting on you` : "Needs you"}
+      aria-label={t("nav.needsYou")}
       className={cn(
         "group mx-2 mb-1 mt-1 flex items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-left transition-colors",
         showNeeds
@@ -153,7 +158,7 @@ function NeedsButton() {
         <Check size={13} className="text-ink-faint" />
       )}
       <span className="text-[13px] font-medium">
-        {has ? "Needs you" : "Nothing needs you"}
+        {has ? t("nav.needsYou") : t("nav.nothingNeedsYou")}
       </span>
       {has && (
         <span className="ml-auto rounded-full bg-waiting/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-waiting">
@@ -166,15 +171,31 @@ function NeedsButton() {
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme();
+  const { t } = useTranslation();
   const dark = theme === "dark";
   return (
     <button
       onClick={toggle}
-      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
-      title={dark ? "Light theme" : "Dark theme"}
+      aria-label={dark ? t("nav.lightTheme") : t("nav.darkTheme")}
+      title={dark ? t("nav.lightTheme") : t("nav.darkTheme")}
       className="grid h-6 w-6 place-items-center rounded-[var(--radius-md)] text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
     >
       {dark ? <Sun size={14} /> : <Moon size={14} />}
+    </button>
+  );
+}
+
+function LangToggle() {
+  const { i18n } = useTranslation();
+  const zh = i18n.language === "zh";
+  return (
+    <button
+      onClick={() => setLang(zh ? "en" : "zh")}
+      title={zh ? "English" : "中文"}
+      aria-label="Toggle language"
+      className="grid h-6 min-w-[24px] place-items-center rounded-[var(--radius-md)] px-1 text-[11px] font-semibold text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
+    >
+      {zh ? "EN" : "中"}
     </button>
   );
 }
@@ -187,6 +208,7 @@ function ThreadRow({ thread }: { thread: Thread }) {
     deleteThread,
     sessions,
   } = useStore();
+  const { t } = useTranslation();
   const isActive = activeThreadId === thread.id;
   const dirCount = directionsByThread[thread.id]?.length;
   const liveCount = Object.values(sessions).filter(
@@ -225,7 +247,7 @@ function ThreadRow({ thread }: { thread: Thread }) {
       </button>
       <button
         onClick={() => void deleteThread(thread.id)}
-        aria-label="Delete thread"
+        aria-label={t("nav.deleteThread")}
         className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded bg-surface text-ink-faint opacity-0 transition-opacity hover:bg-[oklch(0.64_0.2_25/0.15)] hover:text-danger group-hover:opacity-100"
       >
         <Trash2 size={12} />
@@ -246,10 +268,11 @@ function WorkspacePicker({
   onNew: () => void;
 }) {
   const active = workspaces.find((w) => w.id === activeId);
+  const { t } = useTranslation();
   return (
     <details className="group relative flex-1">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[13px] font-medium text-ink hover:bg-brand-ghost">
-        <span className="truncate">{active?.name ?? "No workspace"}</span>
+        <span className="truncate">{active?.name ?? t("nav.noWorkspace")}</span>
         <ChevronRight
           size={13}
           className="text-ink-faint transition-transform group-open:rotate-90"
@@ -281,7 +304,7 @@ function WorkspacePicker({
           }}
           className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-[13px] text-ink-muted hover:bg-brand-ghost hover:text-ink"
         >
-          <Plus size={13} /> New workspace
+          <Plus size={13} /> {t("nav.newWorkspace")}
         </button>
       </div>
     </details>

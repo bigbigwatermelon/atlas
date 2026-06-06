@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Check } from "lucide-react";
 import { Dialog, DialogContent } from "../components/ui/Dialog";
 import { Button } from "../components/ui/Button";
@@ -30,6 +31,7 @@ function TextDialog({
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { t } = useTranslation();
   async function submit() {
     if (!value.trim() || busy) return;
     setBusy(true);
@@ -65,10 +67,10 @@ function TextDialog({
           {err && <p className="text-[12px] text-danger">{err}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" variant="primary" disabled={!value.trim() || busy}>
-              {busy ? "Working…" : cta}
+              {busy ? t("dialog.creating") : cta}
             </Button>
           </div>
         </form>
@@ -79,15 +81,16 @@ function TextDialog({
 
 export function CreateWorkspaceDialog({ open, onOpenChange }: DProps) {
   const { createWorkspace } = useStore();
+  const { t } = useTranslation();
   return (
     <TextDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="New workspace"
-      description="A logical group of repositories. References, not copies."
-      label="Name"
-      placeholder="payments platform"
-      cta="Create workspace"
+      title={t("dialog.newWorkspaceTitle")}
+      description={t("dialog.newWorkspaceDesc")}
+      label={t("dialog.workspaceName")}
+      placeholder={t("dialog.workspaceNamePlaceholder")}
+      cta={t("dialog.createWorkspace")}
       onSubmit={createWorkspace}
     />
   );
@@ -95,6 +98,7 @@ export function CreateWorkspaceDialog({ open, onOpenChange }: DProps) {
 
 export function AddRepoDialog({ open, onOpenChange }: DProps) {
   const { addRepo } = useStore();
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
@@ -118,8 +122,8 @@ export function AddRepoDialog({ open, onOpenChange }: DProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="Add repository"
-        description="Reference an existing local git repo by path."
+        title={t("dialog.addRepoTitle")}
+        description={t("dialog.addRepoDesc")}
       >
         <form
           onSubmit={(e) => {
@@ -128,7 +132,7 @@ export function AddRepoDialog({ open, onOpenChange }: DProps) {
           }}
           className="flex flex-col gap-4"
         >
-          <Field label="Local git path">
+          <Field label={t("dialog.repoPath")}>
             <Input
               autoFocus
               placeholder="/Users/you/code/web-app"
@@ -136,7 +140,7 @@ export function AddRepoDialog({ open, onOpenChange }: DProps) {
               onChange={(e) => setPath(e.currentTarget.value)}
             />
           </Field>
-          <Field label="Name" hint="Defaults to the folder name.">
+          <Field label={t("dialog.repoName")}>
             <Input
               placeholder="web-app"
               value={name}
@@ -146,10 +150,10 @@ export function AddRepoDialog({ open, onOpenChange }: DProps) {
           {err && <p className="text-[12px] text-danger">{err}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" variant="primary" disabled={!path.trim() || busy}>
-              {busy ? "Adding…" : "Add repository"}
+              {busy ? t("dialog.creating") : t("dialog.addRepo")}
             </Button>
           </div>
         </form>
@@ -160,6 +164,7 @@ export function AddRepoDialog({ open, onOpenChange }: DProps) {
 
 export function CreateThreadDialog({ open, onOpenChange }: DProps) {
   const { createThread } = useStore();
+  const { t } = useTranslation();
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState("feature");
   const [busy, setBusy] = useState(false);
@@ -181,8 +186,8 @@ export function CreateThreadDialog({ open, onOpenChange }: DProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="New thread"
-        description="A work line. Its planning ceremony scales with type."
+        title={t("dialog.newThreadTitle")}
+        description={t("dialog.newThreadDesc")}
       >
         <form
           onSubmit={(e) => {
@@ -191,34 +196,34 @@ export function CreateThreadDialog({ open, onOpenChange }: DProps) {
           }}
           className="flex flex-col gap-4"
         >
-          <Field label="Title">
+          <Field label={t("dialog.threadTitle")}>
             <Input
               autoFocus
-              placeholder="Add SSO login"
+              placeholder={t("dialog.threadTitlePlaceholder")}
               value={title}
               onChange={(e) => setTitle(e.currentTarget.value)}
             />
           </Field>
-          <Field label="Type">
+          <Field label={t("dialog.threadType")}>
             <Select
               value={kind}
               onValueChange={setKind}
-              ariaLabel="Thread type"
+              ariaLabel={t("dialog.threadType")}
               options={[
-                { value: "feature", label: "Feature" },
-                { value: "bugfix", label: "Bugfix" },
-                { value: "refactor", label: "Refactor" },
-                { value: "spike", label: "Spike" },
+                { value: "feature", label: t("kind.feature") },
+                { value: "bugfix", label: t("kind.bugfix") },
+                { value: "refactor", label: t("kind.refactor") },
+                { value: "spike", label: t("kind.spike") },
               ]}
             />
           </Field>
           {err && <p className="text-[12px] text-danger">{err}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" variant="primary" disabled={!title.trim() || busy}>
-              {busy ? "Creating…" : "Create thread"}
+              {busy ? t("dialog.creating") : t("dialog.createThread")}
             </Button>
           </div>
         </form>
@@ -233,6 +238,7 @@ export function CreateDirectionDialog({
   threadId,
 }: DProps & { threadId: number }) {
   const { repos, createDirection } = useStore();
+  const { t } = useTranslation();
   const [name, setName] = useState("main");
   const [tool, setTool] = useState("claude");
   const [writes, setWrites] = useState<Set<number>>(new Set());
@@ -270,8 +276,8 @@ export function CreateDirectionDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="New direction"
-        description="Pick which repos this direction will write. Each gets its own worktree."
+        title={t("dialog.newDirectionTitle")}
+        description={t("dialog.newDirectionDesc")}
         className="w-[min(520px,calc(100vw-2rem))]"
       >
         <form
@@ -282,7 +288,7 @@ export function CreateDirectionDialog({
           className="flex flex-col gap-4"
         >
           <div className="grid grid-cols-[1fr_auto] gap-3">
-            <Field label="Name">
+            <Field label={t("dialog.directionName")}>
               <Input
                 autoFocus
                 placeholder="main"
@@ -290,12 +296,12 @@ export function CreateDirectionDialog({
                 onChange={(e) => setName(e.currentTarget.value)}
               />
             </Field>
-            <Field label="Tool">
+            <Field label={t("dialog.tool")}>
               <div className="w-32">
                 <Select
                   value={tool}
                   onValueChange={setTool}
-                  ariaLabel="Tool"
+                  ariaLabel={t("dialog.tool")}
                   options={[
                     { value: "claude", label: "Claude Code" },
                     { value: "codex", label: "Codex" },
@@ -308,11 +314,11 @@ export function CreateDirectionDialog({
 
           <div className="flex flex-col gap-1.5">
             <span className="text-[12px] font-medium text-ink-muted">
-              Writes
+              {t("dialog.writes")}
             </span>
             {repos.length === 0 ? (
               <p className="rounded-[var(--radius-md)] border border-dashed border-border px-3 py-4 text-center text-[12px] text-ink-faint">
-                No repos in this workspace yet. Add one first.
+                {t("scope.addReposFirst")}
               </p>
             ) : (
               <div className="flex flex-col gap-0.5 rounded-[var(--radius-md)] border border-border bg-bg/50 p-1">
@@ -349,27 +355,24 @@ export function CreateDirectionDialog({
                 })}
               </div>
             )}
-            <span className="text-[11px] text-ink-faint">
-              Each write repo gets an isolated worktree. Agents read any repo
-              freely, so reads aren't listed.
-            </span>
+            <span className="text-[11px] text-ink-faint">{t("dialog.writesHint")}</span>
           </div>
 
           {err && <p className="text-[12px] text-danger">{err}</p>}
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] text-ink-faint">
-              {writeCount} write {writeCount === 1 ? "repo" : "repos"}
+              {t("dialog.writeRepos", { count: writeCount })}
             </span>
             <div className="flex gap-2">
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 type="submit"
                 variant="primary"
                 disabled={!name.trim() || busy || writeCount === 0}
               >
-                {busy ? "Materializing…" : "Create direction"}
+                {busy ? t("dialog.materializing") : t("dialog.createDirection")}
               </Button>
             </div>
           </div>

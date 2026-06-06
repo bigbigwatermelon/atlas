@@ -1,18 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
+import { useTranslation } from "react-i18next";
 import { Flame, Layers, Plus, X } from "lucide-react";
 import { useStore } from "../state/store";
 import type { ThreadOverview } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { CreateThreadDialog } from "../nav/dialogs";
 import { cn } from "../lib/cn";
-
-const KIND_LABEL: Record<string, string> = {
-  feature: "Feature",
-  bugfix: "Bugfix",
-  refactor: "Refactor",
-  spike: "Spike",
-};
 
 /**
  * The workspace board (ARCHITECTURE §4.6, §5.2): a portfolio of every thread in
@@ -23,6 +17,7 @@ const KIND_LABEL: Record<string, string> = {
 export function WorkspaceBoard() {
   const { workspaces, activeWorkspaceId, overview, refreshOverview, selectThread } =
     useStore();
+  const { t } = useTranslation();
   const [newThread, setNewThread] = useState(false);
   const ws = workspaces.find((w) => w.id === activeWorkspaceId);
 
@@ -53,13 +48,12 @@ export function WorkspaceBoard() {
             {ws?.name ?? "Workspace"}
           </h1>
           <span className="mt-0.5 text-[12px] text-ink-faint">
-            {overview.length} {overview.length === 1 ? "thread" : "threads"} in
-            flight · click one to open its directions
+            {t("workspace.threadsInFlight", { count: overview.length })}
           </span>
         </div>
         <Button variant="primary" className="ml-auto" onClick={() => setNewThread(true)} disabled={!ws}>
           <Plus size={14} />
-          New thread
+          {t("nav.newThread")}
         </Button>
       </header>
 
@@ -67,16 +61,16 @@ export function WorkspaceBoard() {
         {hot.size > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-approval/40 bg-approval/10 px-3 py-2 text-[12px]">
             <Flame size={14} className="shrink-0 text-approval" />
-            <span className="text-ink-muted">Contended repos:</span>
+            <span className="text-ink-muted">{t("workspace.contendedRepos")}</span>
             {[...hot.values()].map((v) => (
               <span
                 key={v.name}
                 className="rounded-full bg-approval/15 px-2 py-0.5 font-medium text-approval"
               >
-                {v.name} · {v.threads} threads
+                {v.name} · {t("workspace.threadsCount", { count: v.threads })}
               </span>
             ))}
-            <span className="text-ink-faint">— these branches will need reconciling.</span>
+            <span className="text-ink-faint">{t("workspace.reconcile")}</span>
           </div>
         )}
 
@@ -111,6 +105,7 @@ function ThreadCard({
   onOpen: () => void;
 }) {
   const { sessions, needs, asks, checksByDirection } = useStore();
+  const { t: tr } = useTranslation();
   const live = Object.values(sessions).filter(
     (s) => s.status === "running" && t.direction_ids.includes(s.directionId),
   ).length;
@@ -133,20 +128,20 @@ function ThreadCard({
           {t.title}
         </span>
         <span className="shrink-0 rounded bg-bg px-1.5 py-0.5 font-mono text-[10px] uppercase text-ink-faint">
-          {KIND_LABEL[t.kind] ?? t.kind}
+          {tr(`kind.${t.kind}`, t.kind)}
         </span>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
         {t.write_repos.length === 0 ? (
-          <span className="text-[11px] text-ink-faint">no scope yet</span>
+          <span className="text-[11px] text-ink-faint">{tr("workspace.noScope")}</span>
         ) : (
           t.write_repos.map((r) => {
             const isHot = hotIds.has(r.id);
             return (
               <span
                 key={r.id}
-                title={isHot ? "Written by another thread too" : undefined}
+                title={isHot ? tr("workspace.writtenByAnother") : undefined}
                 className={cn(
                   "flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]",
                   isHot
@@ -163,25 +158,22 @@ function ThreadCard({
       </div>
 
       <div className="flex items-center gap-3 text-[11px] text-ink-faint">
-        <span>
-          {t.direction_ids.length}{" "}
-          {t.direction_ids.length === 1 ? "direction" : "directions"}
-        </span>
+        <span>{tr("workspace.directions", { count: t.direction_ids.length })}</span>
         {live > 0 && (
           <span className="flex items-center gap-1 text-running">
             <span className="weft-pulse h-1.5 w-1.5 rounded-full bg-running" />
-            {live} live
+            {tr("workspace.live", { count: live })}
           </span>
         )}
         {failing > 0 && (
           <span className="flex items-center gap-1 text-danger">
             <X size={11} />
-            {failing} failing
+            {tr("workspace.failing", { count: failing })}
           </span>
         )}
         {attention > 0 && (
           <span className="ml-auto rounded-full bg-waiting/15 px-1.5 py-0.5 font-medium text-waiting">
-            {attention} needs you
+            {tr("workspace.needsYouBadge", { count: attention })}
           </span>
         )}
       </div>
@@ -190,23 +182,22 @@ function ThreadCard({
 }
 
 function EmptyWorkspace({ onAdd, hasWs }: { onAdd: () => void; hasWs: boolean }) {
+  const { t } = useTranslation();
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
       <div className="grid h-12 w-12 place-items-center rounded-[var(--radius-lg)] border border-border bg-surface">
         <Layers size={22} className="text-ink-faint" />
       </div>
       <h2 className="mt-4 text-[15px] font-semibold text-ink">
-        {hasWs ? "No threads yet" : "No workspace"}
+        {hasWs ? t("workspace.emptyTitleHas") : t("workspace.emptyTitleNoWs")}
       </h2>
       <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-ink-faint">
-        {hasWs
-          ? "A thread is one work line — a task you split across repos. Start one and weft plans the scope, dispatches agents, and surfaces what needs you."
-          : "Create a workspace to begin."}
+        {hasWs ? t("workspace.emptyBodyHas") : t("workspace.emptyBodyNoWs")}
       </p>
       {hasWs && (
         <Button variant="primary" className="mt-4" onClick={onAdd}>
           <Plus size={14} />
-          New thread
+          {t("nav.newThread")}
         </Button>
       )}
     </div>

@@ -81,6 +81,17 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Agent-output language directive (ARCHITECTURE §4.8, layer 2). Appended to the
+/// lead prompt / worker brief so prose follows the operator's UI language; code
+/// and identifiers always stay English. Empty for English (the default).
+fn lang_directive(lang: &str) -> &'static str {
+    if lang == "zh" {
+        "\n\n用中文撰写所有自然语言产出(计划、摘要、bus 消息、PR/commit 文案);代码、标识符与技术约定始终用英文。"
+    } else {
+        ""
+    }
+}
+
 /// Spawn the direction's tool into a fresh PTY at `cwd` and wire up
 /// output/exit/capture. PLAIN binaries — no permission overrides; each tool's
 /// own config applies. Tool-specific spawn/resume/capture lives in `drivers`.
@@ -234,8 +245,9 @@ pub async fn open_session(
     state: State<'_, PtyState>,
     direction_id: i32,
     repo_id: i32,
+    lang: Option<String>,
 ) -> Result<SessionInfo, String> {
-    open_session_impl(app, &db, &state, direction_id, repo_id)
+    open_session_impl(app, &db, &state, direction_id, repo_id, lang.as_deref().unwrap_or("en"))
         .await
         .map_err(|e| e.to_string())
 }
@@ -246,6 +258,7 @@ async fn open_session_impl(
     state: &PtyState,
     direction_id: i32,
     repo_id: i32,
+    lang: &str,
 ) -> Result<SessionInfo> {
     let wt = repo::worktree_for(db, direction_id, repo_id)
         .await?
@@ -273,7 +286,10 @@ async fn open_session_impl(
     // contracts, non-goals. Seeded as the initial message, BEFORE --mcp-config
     // (claude's variadic flag would otherwise eat it). Best-effort: a bare
     // session still opens if the brief can't be assembled.
-    let brief = crate::brief::assemble(db, direction_id).await.unwrap_or_default();
+    let mut brief = crate::brief::assemble(db, direction_id).await.unwrap_or_default();
+    if !brief.is_empty() {
+        brief.push_str(lang_directive(lang));
+    }
     let ask = crate::bus::inject::inject_ask_hook(
         &base,
         dir.thread_id,
@@ -435,8 +451,9 @@ pub async fn plan_with_lead(
     db: State<'_, Db>,
     state: State<'_, PtyState>,
     thread_id: i32,
+    lang: Option<String>,
 ) -> Result<LeadInfo, String> {
-    plan_with_lead_impl(app, &db, &state, thread_id)
+    plan_with_lead_impl(app, &db, &state, thread_id, lang.as_deref().unwrap_or("en"))
         .await
         .map_err(|e| e.to_string())
 }
@@ -446,6 +463,7 @@ async fn plan_with_lead_impl(
     db: &Db,
     state: &PtyState,
     thread_id: i32,
+    lang: &str,
 ) -> Result<LeadInfo> {
     // Validate the thread exists (the lead reads its task via the planner MCP).
     repo::get_thread(db, thread_id)
@@ -474,7 +492,7 @@ async fn plan_with_lead_impl(
     // Seed the planning prompt as the agent's initial positional message. It must
     // come BEFORE --mcp-config: claude's --mcp-config is variadic and would
     // otherwise swallow the prompt as a second config path (ENAMETOOLONG).
-    let mut args = vec![lead_prompt().to_string()];
+    let mut args = vec![format!("{}{}", lead_prompt(), lang_directive(lang))];
     args.extend(ask.args);
     args.extend(inj.args);
 

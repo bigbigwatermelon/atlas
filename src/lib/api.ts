@@ -71,10 +71,10 @@ export const api = {
   listWorktrees: (directionId: number) =>
     invoke<Worktree[]>("list_worktrees", { directionId }),
 
-  openSession: (directionId: number, repoId: number) =>
-    invoke<SessionInfo>("open_session", { directionId, repoId }),
-  planWithLead: (threadId: number) =>
-    invoke<LeadInfo>("plan_with_lead", { threadId }),
+  openSession: (directionId: number, repoId: number, lang: string) =>
+    invoke<SessionInfo>("open_session", { directionId, repoId, lang }),
+  planWithLead: (threadId: number, lang: string) =>
+    invoke<LeadInfo>("plan_with_lead", { threadId, lang }),
   resumeSession: (sessionId: number) =>
     invoke<SessionInfo>("resume_session", { sessionId }),
   writePty: (sessionId: number, data: string) =>

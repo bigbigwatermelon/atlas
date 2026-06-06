@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
+import { useTranslation } from "react-i18next";
 import {
   ArrowRight,
   Bell,
@@ -22,13 +23,6 @@ import { CoordinationPanel } from "./CoordinationPanel";
 import { ScopeConfirmView } from "./ScopeConfirmView";
 import { cn } from "../lib/cn";
 
-const KIND_LABEL: Record<string, string> = {
-  feature: "Feature",
-  bugfix: "Bugfix",
-  refactor: "Refactor",
-  spike: "Spike",
-};
-
 const TOOL_LABEL: Record<string, string> = {
   claude: "Claude",
   codex: "Codex",
@@ -38,6 +32,7 @@ const TOOL_LABEL: Record<string, string> = {
 export function ThreadBoard() {
   const { threads, activeThreadId, directionsByThread, repos, proposal } =
     useStore();
+  const { t } = useTranslation();
   const thread = threads.find((t) => t.id === activeThreadId);
   const [newDir, setNewDir] = useState(false);
   if (!thread) return null;
@@ -53,19 +48,19 @@ export function ThreadBoard() {
               {thread.title}
             </h1>
             <span className="rounded bg-surface px-1.5 py-0.5 font-mono text-[10px] uppercase text-ink-faint">
-              {KIND_LABEL[thread.kind] ?? thread.kind}
+              {t(`kind.${thread.kind}`, thread.kind)}
             </span>
           </div>
           <span className="mt-0.5 text-[12px] text-ink-faint">
             {proposing
-              ? "Review the proposed scope, then create the directions"
-              : `${dirs.length} ${dirs.length === 1 ? "direction" : "directions"} · parallel work lines, each scoped to its own repos`}
+              ? t("thread.reviewScope")
+              : t("thread.directionsSub", { count: dirs.length })}
           </span>
         </div>
         {!proposing && (
           <Button variant="primary" className="ml-auto" onClick={() => setNewDir(true)}>
             <Plus size={14} />
-            New direction
+            {t("thread.newDirection")}
           </Button>
         )}
       </header>
@@ -88,7 +83,7 @@ export function ThreadBoard() {
                 className="flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border text-ink-faint transition-colors hover:border-border-strong hover:bg-surface hover:text-ink-muted"
               >
                 <Plus size={18} />
-                <span className="text-[12px]">Add direction</span>
+                <span className="text-[12px]">{t("thread.addDirection")}</span>
               </button>
             </div>
           )}
@@ -112,6 +107,7 @@ function DirectionCard({ direction }: { direction: Direction }) {
     checkingDirections,
     verifyDirection,
   } = useStore();
+  const { t } = useTranslation();
   const hasLive = Object.values(sessions).some(
     (s) => s.directionId === direction.id && s.status === "running",
   );
@@ -132,8 +128,8 @@ function DirectionCard({ direction }: { direction: Direction }) {
         {hasLive && (
           <button
             onClick={() => void nudgeDirection(direction.id)}
-            aria-label="Nudge this direction to read its inbox"
-            title="Nudge: tell this agent to check the thread bus"
+            aria-label={t("thread.nudge")}
+            title={t("thread.nudge")}
             className="grid h-5 w-5 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-brand"
           >
             <Bell size={12} />
@@ -143,8 +139,8 @@ function DirectionCard({ direction }: { direction: Direction }) {
           <button
             onClick={() => void verifyDirection(direction.id)}
             disabled={checking}
-            aria-label="Run checks"
-            title="Run this direction's checks (lint / type / test)"
+            aria-label={t("thread.runChecks")}
+            title={t("thread.runChecks")}
             className="grid h-5 w-5 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-brand disabled:opacity-50"
           >
             <CircleCheck size={12} className={checking ? "animate-pulse" : ""} />
@@ -180,7 +176,7 @@ function DirectionCard({ direction }: { direction: Direction }) {
                   {repo?.name ?? `repo ${w.repo_id}`}
                 </span>
                 <span className="rounded bg-bg px-1 py-px font-mono text-[9px] uppercase text-running">
-                  write
+                  {t("thread.write")}
                 </span>
                 <span className="ml-auto flex items-center">
                   {sess ? (
@@ -217,11 +213,12 @@ function DirectionCard({ direction }: { direction: Direction }) {
 }
 
 function ChecksRow({ rc }: { rc: RepoChecks }) {
+  const { t } = useTranslation();
   if (rc.checks.length === 0) {
     return (
       <div className="flex items-center gap-2 text-[11px]">
         <span className="truncate text-ink-muted">{rc.repo}</span>
-        <span className="text-ink-faint">no checks inferred</span>
+        <span className="text-ink-faint">{t("thread.noChecks")}</span>
       </div>
     );
   }
@@ -250,28 +247,27 @@ function ChecksRow({ rc }: { rc: RepoChecks }) {
 
 function EmptyBoard({ onAdd }: { onAdd: () => void }) {
   const { startDraftPlan, planWithLead } = useStore();
+  const { t } = useTranslation();
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
       <div className="grid h-11 w-11 place-items-center rounded-[var(--radius-lg)] border border-border bg-surface">
         <Layers size={20} className="text-ink-faint" />
       </div>
-      <h2 className="mt-3 text-[14px] font-semibold text-ink">Plan this thread</h2>
+      <h2 className="mt-3 text-[14px] font-semibold text-ink">{t("thread.planTitle")}</h2>
       <p className="mt-1 max-w-xs text-[12px] leading-relaxed text-ink-faint">
-        Let the lead read the repo map and propose how to split the task across
-        repos — or draft the scope yourself. You review and confirm before any
-        worktree is created.
+        {t("thread.planBody")}
       </p>
       <div className="mt-4 flex items-center gap-2">
         <Button variant="primary" onClick={() => void planWithLead()}>
           <Sparkles size={14} />
-          Plan with lead
+          {t("thread.planWithLead")}
         </Button>
         <Button variant="ghost" onClick={() => void startDraftPlan()}>
-          Draft manually
+          {t("thread.draftManually")}
         </Button>
         <Button variant="ghost" onClick={onAdd}>
           <Plus size={14} />
-          New direction
+          {t("thread.newDirection")}
         </Button>
       </div>
     </div>

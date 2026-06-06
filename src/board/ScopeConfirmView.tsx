@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Check, Layers, Lightbulb, Plus, Sparkles, X } from "lucide-react";
 import { useStore } from "../state/store";
 import type { Proposal, RepoRef, ResolvedProposal } from "../lib/types";
@@ -35,6 +36,7 @@ export function ScopeConfirmView({
   taskTitle: string;
 }) {
   const { saveProposal, confirmProposal } = useStore();
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
 
   const [dirs, setDirs] = useState<DraftDir[]>(() =>
@@ -106,9 +108,7 @@ export function ScopeConfirmView({
     <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3 px-5 py-5">
       <div className="flex items-center gap-2 text-[12px] text-ink-faint">
         <Sparkles size={13} className="text-accent" />
-        <span>
-          Proposed plan for <span className="text-ink-muted">{taskTitle}</span>
-        </span>
+        <span>{t("scope.proposedFor", { title: taskTitle })}</span>
       </div>
 
       {proposal.rationale && (
@@ -137,23 +137,22 @@ export function ScopeConfirmView({
         className="flex items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border py-2.5 text-[12px] text-ink-faint transition-colors hover:border-border-strong hover:bg-surface hover:text-ink-muted"
       >
         <Plus size={14} />
-        Add direction
+        {t("scope.addDirection")}
       </button>
 
       <div className="sticky bottom-0 mt-1 flex items-center gap-2 border-t border-border bg-bg/90 py-3 backdrop-blur">
         <span className="text-[12px] text-ink-faint">
           {writeCount > 0
-            ? `${dirs.length} ${dirs.length === 1 ? "direction" : "directions"} · only write repos get a worktree`
-            : "Pick at least one repo for a direction to write"}
+            ? t("scope.hintReady", { count: dirs.length })
+            : t("scope.hintNeedWrite")}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" onClick={() => void saveDraft()} disabled={busy}>
-            Save draft
+            {t("scope.saveDraft")}
           </Button>
           <Button variant="primary" onClick={() => void create()} disabled={!canCreate}>
             <Layers size={14} />
-            Create {writeCount > 0 ? writeCount : ""}{" "}
-            {writeCount === 1 ? "direction" : "directions"}
+            {t("scope.createDirections", { count: writeCount })}
           </Button>
         </div>
       </div>
@@ -176,6 +175,7 @@ function DirectionEditor({
   onToggle: (repoId: number) => void;
   onRemove?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-[var(--radius-lg)] border border-border bg-surface">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
@@ -183,16 +183,16 @@ function DirectionEditor({
         <input
           value={dir.name}
           onChange={(e) => onName(e.currentTarget.value)}
-          placeholder="Direction name"
+          placeholder={t("scope.directionName")}
           className="min-w-0 flex-1 bg-transparent text-[13px] font-medium text-ink outline-none placeholder:text-ink-faint"
         />
         <div className="w-32 shrink-0">
-          <Select value={dir.tool} onValueChange={onTool} ariaLabel="Tool" options={TOOL_OPTIONS} />
+          <Select value={dir.tool} onValueChange={onTool} ariaLabel={t("dialog.tool")} options={TOOL_OPTIONS} />
         </div>
         {onRemove && (
           <button
             onClick={onRemove}
-            aria-label="Remove direction"
+            aria-label={t("scope.removeDirection")}
             className="grid h-6 w-6 shrink-0 place-items-center rounded text-ink-faint transition-colors hover:bg-[oklch(0.64_0.2_25/0.15)] hover:text-danger"
           >
             <X size={13} />
@@ -226,7 +226,7 @@ function DirectionEditor({
                 </span>
                 {writes && (
                   <span className="ml-auto rounded bg-running/15 px-1.5 py-0.5 font-mono text-[9px] uppercase text-running">
-                    write
+                    {t("thread.write")}
                   </span>
                 )}
               </button>
@@ -235,7 +235,7 @@ function DirectionEditor({
         })}
         {repos.length === 0 && (
           <li className="px-2 py-3 text-center text-[11px] text-ink-faint">
-            Add repos to this workspace first.
+            {t("scope.addReposFirst")}
           </li>
         )}
       </ul>
