@@ -16,6 +16,7 @@ pub mod bus;
 mod claude;
 mod coordinator;
 mod drivers;
+mod inspect;
 mod pty;
 mod commands;
 
@@ -84,6 +85,8 @@ pub fn run() {
             pty::write_pty,
             pty::resize_pty,
             pty::kill_session,
+            inspect::open_terminal,
+            inspect::reveal_path,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| fatal("running tauri application", e));

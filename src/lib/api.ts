@@ -60,4 +60,8 @@ export const api = {
     invoke<BusMsg[]>("thread_messages", { threadId }),
   busPostHuman: (threadId: number, to: string | null, text: string) =>
     invoke<void>("bus_post_human", { threadId, to, text }),
+
+  // Inspect escape hatches (§4.7): real ways into the hidden plumbing.
+  openTerminal: (path: string) => invoke<void>("open_terminal", { path }),
+  revealPath: (path: string) => invoke<void>("reveal_path", { path }),
 };

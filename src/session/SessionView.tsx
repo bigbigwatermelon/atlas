@@ -1,26 +1,36 @@
 import { motion } from "motion/react";
-import {
-  ArrowLeft,
-  GitBranch,
-  RotateCcw,
-  Square,
-  TerminalSquare,
-} from "lucide-react";
+import { ArrowLeft, RotateCcw, Square, TerminalSquare } from "lucide-react";
 import { useStore } from "../state/store";
 import type { SessionStatus } from "../lib/types";
 import { TerminalPanel } from "../panels/TerminalPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
+import { Inspect } from "../components/Inspect";
 
 export function SessionView() {
-  const { sessions, activeSessionId, resumeSession, killSession, backToBoard } =
-    useStore();
+  const {
+    sessions,
+    activeSessionId,
+    resumeSession,
+    killSession,
+    backToBoard,
+    repos,
+    directionsByThread,
+    activeThreadId,
+  } = useStore();
   const active = activeSessionId != null ? sessions[activeSessionId] : null;
 
   if (!active) return null;
 
   const { info, status, nativeId } = active;
-  const cwdShort = info.worktree.replace(/^.*\/worktrees\//, "…/");
+  // Product words, not plumbing: "<repo> · <direction>". The real worktree
+  // path / branch / native id live in Inspect (§4.7).
+  const repoName =
+    repos.find((r) => r.id === active.repoId)?.name ?? "working copy";
+  const dirName =
+    (activeThreadId != null ? directionsByThread[activeThreadId] : undefined)?.find(
+      (d) => d.id === active.directionId,
+    )?.name ?? "direction";
 
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-bg">
@@ -37,15 +47,10 @@ export function SessionView() {
           <TerminalSquare size={12} className="text-brand" />
           {info.tool}
         </span>
-        <span className="flex items-center gap-1.5 font-mono text-[12px] text-ink-muted">
-          <GitBranch size={12} className="text-ink-faint" />
-          {info.branch}
-        </span>
-        <span
-          className="truncate font-mono text-[11px] text-ink-faint"
-          title={info.worktree}
-        >
-          {cwdShort}
+        <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-ink">
+          <span className="truncate font-medium">{repoName}</span>
+          <span className="text-ink-faint">·</span>
+          <span className="truncate text-ink-muted">{dirName}</span>
         </span>
 
         <div className="ml-auto flex items-center gap-2">
@@ -55,7 +60,7 @@ export function SessionView() {
             variant="default"
             onClick={() => void resumeSession(info.session_id)}
             disabled={!nativeId}
-            title={nativeId ? "Resume in the same worktree" : "Capturing session id…"}
+            title={nativeId ? "Resume this session" : "Starting…"}
           >
             <RotateCcw size={12} />
             Resume
@@ -68,6 +73,12 @@ export function SessionView() {
             <Square size={11} />
             Kill
           </Button>
+          <Inspect
+            path={info.worktree}
+            branch={info.branch}
+            nativeId={nativeId}
+            className="h-7 w-7"
+          />
         </div>
       </header>
 

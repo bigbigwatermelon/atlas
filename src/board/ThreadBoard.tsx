@@ -4,7 +4,6 @@ import {
   ArrowRight,
   Bell,
   Eye,
-  GitBranch,
   Layers,
   Plus,
   TerminalSquare,
@@ -13,6 +12,7 @@ import { useStore } from "../state/store";
 import type { Direction, RepoRef, SessionStatus } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { StatusDot } from "../components/ui/StatusChip";
+import { Inspect } from "../components/Inspect";
 import { CreateDirectionDialog } from "../nav/dialogs";
 import { CoordinationPanel } from "./CoordinationPanel";
 import { cn } from "../lib/cn";
@@ -137,28 +137,22 @@ function DirectionCard({ direction }: { direction: Direction }) {
         </span>
       </div>
 
-      <div className="flex items-center gap-1.5 px-3 py-1.5">
-        <GitBranch size={11} className="shrink-0 text-ink-faint" />
-        <span
-          className="truncate font-mono text-[10px] text-ink-faint"
-          title={direction.branch}
-        >
-          {direction.branch}
-        </span>
-      </div>
-
-      {/* write repos — openable session slots */}
-      <ul className="flex flex-col gap-0.5 px-1.5 pb-1.5">
+      {/* write repos — openable session slots. Each is an isolated working copy;
+          the real path/branch lives in Inspect (§4.7), not on the card face. */}
+      <ul className="flex flex-col gap-0.5 px-1.5 py-1.5">
         {writes.map((w) => {
           const repo = repos.find((r) => r.id === w.repo_id);
           const sess = Object.values(sessions).find(
             (s) => s.directionId === direction.id && s.repoId === w.repo_id,
           );
           return (
-            <li key={w.id}>
+            <li
+              key={w.id}
+              className="group flex items-center gap-0.5 rounded-[var(--radius-md)] transition-colors hover:bg-brand-ghost"
+            >
               <button
                 onClick={() => void openSession(direction.id, w.repo_id)}
-                className="group flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-left transition-colors hover:bg-brand-ghost"
+                className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
               >
                 <span className="grid h-5 w-5 place-items-center rounded bg-raised">
                   <TerminalSquare size={12} className="text-brand" />
@@ -180,6 +174,13 @@ function DirectionCard({ direction }: { direction: Direction }) {
                   )}
                 </span>
               </button>
+              <Inspect
+                path={w.path}
+                branch={w.branch}
+                nativeId={sess?.nativeId}
+                size={13}
+                className="mr-1 h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100"
+              />
             </li>
           );
         })}
