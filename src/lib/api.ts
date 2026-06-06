@@ -3,6 +3,7 @@ import type {
   BusMsg,
   Direction,
   DirectionRepo,
+  NeedItem,
   RepoRef,
   Role,
   SessionInfo,
@@ -60,6 +61,12 @@ export const api = {
     invoke<BusMsg[]>("thread_messages", { threadId }),
   busPostHuman: (threadId: number, to: string | null, text: string) =>
     invoke<void>("bus_post_human", { threadId, to, text }),
+
+  // Needs-you: open agent→human questions, aggregated across the workspace.
+  needsYou: (workspaceId: number) =>
+    invoke<NeedItem[]>("needs_you", { workspaceId }),
+  answerAsk: (threadId: number, askId: number, text: string) =>
+    invoke<void>("answer_ask", { threadId, askId, text }),
 
   // Inspect escape hatches (§4.7): real ways into the hidden plumbing.
   openTerminal: (path: string) => invoke<void>("open_terminal", { path }),

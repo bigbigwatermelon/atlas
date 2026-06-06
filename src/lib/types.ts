@@ -90,3 +90,14 @@ export interface BusMsg {
   ts: number;
   kind: string;
 }
+
+/** An open agent→human question, aggregated workspace-wide for "Needs you". */
+export interface NeedItem {
+  ask_id: number;
+  thread_id: number;
+  thread_title: string;
+  direction_id: number;
+  direction_name: string;
+  text: string;
+  ts: number;
+}

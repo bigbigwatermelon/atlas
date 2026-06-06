@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { ChevronRight, FolderGit2, Moon, Plus, Sun, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  FolderGit2,
+  HelpCircle,
+  Moon,
+  Plus,
+  Sun,
+  Trash2,
+} from "lucide-react";
 import { useStore } from "../state/store";
 import { useTheme } from "../state/theme";
 import type { Thread } from "../lib/types";
@@ -39,6 +48,8 @@ export function WorkspaceNav() {
           onNew={() => setDlg("ws")}
         />
       </div>
+
+      <NeedsButton />
 
       <button
         onClick={() => setDlg("repo")}
@@ -96,6 +107,45 @@ export function WorkspaceNav() {
       <AddRepoDialog open={dlg === "repo"} onOpenChange={(o) => !o && setDlg(null)} />
       <CreateThreadDialog open={dlg === "thread"} onOpenChange={(o) => !o && setDlg(null)} />
     </nav>
+  );
+}
+
+function NeedsButton() {
+  const { needs, showNeeds, openNeeds } = useStore();
+  const count = needs.length;
+  const has = count > 0;
+
+  return (
+    <button
+      onClick={openNeeds}
+      aria-label={has ? `${count} waiting on you` : "Needs you"}
+      className={cn(
+        "group mx-2 mb-1 mt-1 flex items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-left transition-colors",
+        showNeeds
+          ? has
+            ? "bg-waiting/15 text-ink"
+            : "bg-raised text-ink"
+          : has
+            ? "bg-waiting/10 text-ink hover:bg-waiting/15"
+            : "text-ink-faint hover:bg-brand-ghost hover:text-ink-muted",
+      )}
+    >
+      {has ? (
+        <span className="grid h-3.5 w-3.5 place-items-center">
+          <HelpCircle size={13} className="text-waiting" />
+        </span>
+      ) : (
+        <Check size={13} className="text-ink-faint" />
+      )}
+      <span className="text-[13px] font-medium">
+        {has ? "Needs you" : "Nothing needs you"}
+      </span>
+      {has && (
+        <span className="ml-auto rounded-full bg-waiting/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-waiting">
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 

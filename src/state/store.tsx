@@ -12,6 +12,7 @@ import type {
   BusMsg,
   Direction,
   DirectionRepo,
+  NeedItem,
   RepoRef,
   SessionInfo,
   SessionStatus,
@@ -44,6 +45,15 @@ interface Store {
   messages: BusMsg[];
   postHuman: (to: string | null, text: string) => Promise<void>;
   nudgeDirection: (directionId: number) => Promise<void>;
+
+  /** Open agent→human questions across the workspace; the Needs-you surface. */
+  needs: NeedItem[];
+  /** Whether the Needs-you view occupies the main region. */
+  showNeeds: boolean;
+  openNeeds: () => void;
+  refreshNeeds: () => Promise<void>;
+  answerAsk: (item: NeedItem, text: string) => Promise<void>;
+  goToAsk: (item: NeedItem) => Promise<void>;
 
   selectWorkspace: (id: number) => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
@@ -89,6 +99,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Record<number, OpenSession>>({});
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [messages, setMessages] = useState<BusMsg[]>([]);
+  const [needs, setNeeds] = useState<NeedItem[]>([]);
+  const [showNeeds, setShowNeeds] = useState(false);
 
   const refreshWorkspaces = useCallback(async () => {
     const ws = await api.listWorkspaces();
@@ -105,6 +117,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setWorktrees({});
     setActiveThreadId(null);
     setActiveSessionId(null);
+    setShowNeeds(false);
   }, []);
 
   const loadThreadChildren = useCallback(async (threadId: number) => {
@@ -136,6 +149,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (threadId: number) => {
       setActiveThreadId(threadId);
       setActiveSessionId(null);
+      setShowNeeds(false);
       await loadThreadChildren(threadId);
     },
     [loadThreadChildren],
@@ -213,6 +227,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
       if (existing) {
         setActiveSessionId(existing.info.session_id);
+        setShowNeeds(false);
         return;
       }
       const info = await api.openSession(directionId, repoId);
@@ -221,6 +236,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         [info.session_id]: { info, status: "starting", directionId, repoId, nativeId: null },
       }));
       setActiveSessionId(info.session_id);
+      setShowNeeds(false);
     },
     [sessions],
   );
@@ -264,6 +280,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [sessions],
   );
 
+  const refreshNeeds = useCallback(async () => {
+    if (activeWorkspaceId == null) {
+      setNeeds([]);
+      return;
+    }
+    try {
+      setNeeds(await api.needsYou(activeWorkspaceId));
+    } catch {
+      /* bus may not be ready */
+    }
+  }, [activeWorkspaceId]);
+
+  const openNeeds = useCallback(() => {
+    setActiveSessionId(null);
+    setShowNeeds(true);
+  }, []);
+
+  const answerAsk = useCallback(
+    async (item: NeedItem, text: string) => {
+      if (!text.trim()) return;
+      // optimistic: drop the answered ask immediately, then reconcile
+      setNeeds((cur) => cur.filter((n) => n.ask_id !== item.ask_id));
+      await api.answerAsk(item.thread_id, item.ask_id, text.trim());
+      await refreshNeeds();
+    },
+    [refreshNeeds],
+  );
+
+  const goToAsk = useCallback(
+    async (item: NeedItem) => {
+      setShowNeeds(false);
+      const live = Object.values(sessions).find(
+        (s) => s.directionId === item.direction_id,
+      );
+      if (live) {
+        setActiveThreadId(item.thread_id);
+        setActiveSessionId(live.info.session_id);
+        return;
+      }
+      await selectThread(item.thread_id);
+    },
+    [sessions, selectThread],
+  );
+
   // bridge events: session id capture + exit drive UI status
   useEffect(() => {
     const unId = listen<{ sessionId: number; nativeId: string }>(
@@ -293,6 +353,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (activeWorkspaceId != null) void selectWorkspace(activeWorkspaceId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId]);
+
+  // Needs-you: poll workspace-wide, plus a push refresh when the coordinator
+  // signals a new ask (needs-you://changed). Poll is the safety net; the event
+  // makes new questions appear near-instantly.
+  useEffect(() => {
+    if (activeWorkspaceId == null) {
+      setNeeds([]);
+      return;
+    }
+    let alive = true;
+    const tick = () => {
+      if (alive) void refreshNeeds();
+    };
+    tick();
+    const h = setInterval(tick, 4000);
+    const unChanged = listen("needs-you://changed", tick);
+    return () => {
+      alive = false;
+      clearInterval(h);
+      void unChanged.then((f) => f());
+    };
+  }, [activeWorkspaceId, refreshNeeds]);
 
   useEffect(() => {
     if (activeThreadId == null) {
@@ -330,6 +412,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     messages,
     postHuman,
     nudgeDirection,
+    needs,
+    showNeeds,
+    openNeeds,
+    refreshNeeds,
+    answerAsk,
+    goToAsk,
     selectWorkspace,
     refreshWorkspaces,
     selectThread,

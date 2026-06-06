@@ -2,10 +2,12 @@ import { Layers } from "lucide-react";
 import { StoreProvider, useStore } from "./state/store";
 import { WorkspaceNav } from "./nav/WorkspaceNav";
 import { ThreadBoard } from "./board/ThreadBoard";
+import { NeedsYouView } from "./board/NeedsYouView";
 import { SessionView } from "./session/SessionView";
 
 function Main() {
-  const { activeSessionId, activeThreadId } = useStore();
+  const { activeSessionId, activeThreadId, showNeeds } = useStore();
+  if (showNeeds) return <NeedsYouView />;
   if (activeSessionId != null) return <SessionView />;
   if (activeThreadId != null) return <ThreadBoard />;
   return <NoThread />;

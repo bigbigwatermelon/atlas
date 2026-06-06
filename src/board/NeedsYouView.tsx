@@ -1,0 +1,154 @@
+import { useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { ArrowUpRight, Check, HelpCircle, Send } from "lucide-react";
+import { useStore } from "../state/store";
+import type { NeedItem } from "../lib/types";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+
+/**
+ * The "Needs-you" surface (PRODUCT §7): every open agent→human question across
+ * the workspace, the one thing the human is here to handle. A pure projection of
+ * the bus's ask channel — no TUI parsing. Answering routes the reply straight
+ * back to the asking direction's inbox.
+ */
+export function NeedsYouView() {
+  const { needs } = useStore();
+  const reduce = useReducedMotion();
+
+  return (
+    <section className="flex min-w-0 flex-1 flex-col bg-bg">
+      <header className="flex items-center gap-2.5 border-b border-border px-5 py-3">
+        <span className="grid h-6 w-6 place-items-center rounded-[var(--radius-sm)] bg-waiting/15">
+          <HelpCircle size={14} className="text-waiting" />
+        </span>
+        <h1 className="text-[16px] font-semibold tracking-tight text-ink">
+          Needs you
+        </h1>
+        {needs.length > 0 && (
+          <span className="rounded-full bg-waiting/15 px-2 py-0.5 text-[11px] font-medium tabular-nums text-waiting">
+            {needs.length}
+          </span>
+        )}
+        <span className="ml-auto text-[12px] text-ink-faint">
+          questions only you can answer, across every thread
+        </span>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {needs.length === 0 ? (
+          <EmptyNeeds />
+        ) : (
+          <div className="mx-auto flex w-full max-w-[680px] flex-col gap-2.5 px-5 py-5">
+            <AnimatePresence initial={false}>
+              {needs.map((item) => (
+                <motion.div
+                  key={item.ask_id}
+                  layout={!reduce}
+                  initial={reduce ? false : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={
+                    reduce
+                      ? { opacity: 0 }
+                      : { opacity: 0, height: 0, marginBottom: -10, scale: 0.98 }
+                  }
+                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <AskRow item={item} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AskRow({ item }: { item: NeedItem }) {
+  const { answerAsk, goToAsk } = useStore();
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    try {
+      await answerAsk(item, text);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface">
+      <div className="flex items-center gap-2 px-3.5 pt-3 text-[12px]">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-waiting" />
+        <span className="truncate font-medium text-ink">
+          {item.direction_name}
+        </span>
+        <span className="text-ink-faint">·</span>
+        <span className="truncate text-ink-muted">{item.thread_title}</span>
+        <span className="ml-auto whitespace-nowrap text-ink-faint tabular-nums">
+          {ago(item.ts)}
+        </span>
+        <button
+          onClick={() => void goToAsk(item)}
+          title="Open this direction"
+          aria-label="Open this direction"
+          className="-mr-1 grid h-6 w-6 shrink-0 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
+        >
+          <ArrowUpRight size={14} />
+        </button>
+      </div>
+
+      <p className="px-3.5 pb-3 pt-1.5 text-[14px] leading-relaxed text-ink">
+        {item.text}
+      </p>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+        className="flex gap-2 border-t border-border bg-bg/40 px-3.5 py-2.5"
+      >
+        <Input
+          autoFocus
+          placeholder={`Answer ${item.direction_name}…`}
+          value={text}
+          onChange={(e) => setText(e.currentTarget.value)}
+        />
+        <Button type="submit" variant="primary" size="icon" disabled={!text.trim() || busy}>
+          <Send size={14} />
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+function EmptyNeeds() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+      <div className="grid h-12 w-12 place-items-center rounded-[var(--radius-lg)] border border-border bg-surface">
+        <Check size={22} className="text-running" />
+      </div>
+      <h2 className="mt-4 text-[15px] font-semibold text-ink">Nothing needs you</h2>
+      <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-ink-faint">
+        When an agent hits a decision only you can make, it asks here. Answer
+        once and the reply goes straight back to its inbox, so you never have to
+        go hunting for the session.
+      </p>
+    </div>
+  );
+}
+
+function ago(ts: number): string {
+  const s = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
