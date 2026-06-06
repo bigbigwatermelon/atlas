@@ -14,6 +14,7 @@ pub mod materialize;
 mod batch;
 mod brief;
 pub mod bus;
+mod check;
 mod claude;
 mod coordinator;
 mod curator;
@@ -86,6 +87,7 @@ pub fn run() {
             commands::save_proposal,
             commands::confirm_proposal,
             commands::preview_brief,
+            commands::verify_direction,
             commands::list_direction_repos,
             commands::create_direction,
             commands::list_worktrees,

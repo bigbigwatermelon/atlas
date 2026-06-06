@@ -66,6 +66,19 @@ export interface SessionInfo {
   resumed: boolean;
 }
 
+/** One executable verification rung's result (ARCHITECTURE §4.13). */
+export interface CheckResult {
+  name: string;
+  status: string; // pass | fail
+  code: number;
+  output_tail: string;
+}
+export interface RepoChecks {
+  repo: string;
+  worktree: string;
+  checks: CheckResult[];
+}
+
 /** An ephemeral lead (planning) session spawned to propose a decomposition. */
 export interface LeadInfo {
   session_id: number;

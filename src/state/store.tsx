@@ -14,6 +14,7 @@ import type {
   DirectionRepo,
   NeedItem,
   Proposal,
+  RepoChecks,
   RepoEdge,
   RepoProfile,
   RepoRef,
@@ -96,6 +97,10 @@ interface Store {
 
   openSession: (directionId: number, repoId: number) => Promise<void>;
   planWithLead: () => Promise<void>;
+  /** Quality loop: executable-check results + in-flight set, per direction. */
+  checksByDirection: Record<number, RepoChecks[]>;
+  checkingDirections: Record<number, boolean>;
+  verifyDirection: (directionId: number) => Promise<void>;
   focusSession: (sessionId: number) => void;
   resumeSession: (sessionId: number) => Promise<void>;
   killSession: (sessionId: number) => Promise<void>;
@@ -120,6 +125,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   >({});
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
   const [sessions, setSessions] = useState<Record<number, OpenSession>>({});
+  const [checksByDirection, setChecksByDirection] = useState<Record<number, RepoChecks[]>>({});
+  const [checkingDirections, setCheckingDirections] = useState<Record<number, boolean>>({});
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [messages, setMessages] = useState<BusMsg[]>([]);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
@@ -321,6 +328,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setShowNeeds(false);
     setShowRepoMap(false);
   }, [activeThreadId]);
+
+  const verifyDirection = useCallback(async (directionId: number) => {
+    setCheckingDirections((m) => ({ ...m, [directionId]: true }));
+    try {
+      const res = await api.verifyDirection(directionId);
+      setChecksByDirection((m) => ({ ...m, [directionId]: res }));
+    } catch {
+      /* leave prior results */
+    } finally {
+      setCheckingDirections((m) => ({ ...m, [directionId]: false }));
+    }
+  }, []);
 
   const focusSession = useCallback((id: number) => setActiveSessionId(id), []);
 
@@ -635,6 +654,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteThread,
     openSession,
     planWithLead,
+    checksByDirection,
+    checkingDirections,
+    verifyDirection,
     focusSession,
     resumeSession,
     killSession,

@@ -3,13 +3,16 @@ import { motion } from "motion/react";
 import {
   ArrowRight,
   Bell,
+  Check,
+  CircleCheck,
   Layers,
   Plus,
   Sparkles,
   TerminalSquare,
+  X,
 } from "lucide-react";
 import { useStore } from "../state/store";
-import type { Direction, SessionStatus } from "../lib/types";
+import type { Direction, RepoChecks, SessionStatus } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { StatusDot } from "../components/ui/StatusChip";
 import { Inspect } from "../components/Inspect";
@@ -109,11 +112,16 @@ function DirectionCard({ direction }: { direction: Direction }) {
     sessions,
     openSession,
     nudgeDirection,
+    checksByDirection,
+    checkingDirections,
+    verifyDirection,
   } = useStore();
   const hasLive = Object.values(sessions).some(
     (s) => s.directionId === direction.id && s.status === "running",
   );
   const writes = worktreesByDirection[direction.id] ?? [];
+  const checks = checksByDirection[direction.id];
+  const checking = checkingDirections[direction.id];
 
   return (
     <motion.div
@@ -133,6 +141,17 @@ function DirectionCard({ direction }: { direction: Direction }) {
             className="grid h-5 w-5 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-brand"
           >
             <Bell size={12} />
+          </button>
+        )}
+        {writes.length > 0 && (
+          <button
+            onClick={() => void verifyDirection(direction.id)}
+            disabled={checking}
+            aria-label="Run checks"
+            title="Run this direction's checks (lint / type / test)"
+            className="grid h-5 w-5 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-brand disabled:opacity-50"
+          >
+            <CircleCheck size={12} className={checking ? "animate-pulse" : ""} />
           </button>
         )}
         <span className="ml-auto flex items-center gap-1.5 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
@@ -189,7 +208,47 @@ function DirectionCard({ direction }: { direction: Direction }) {
           );
         })}
       </ul>
+
+      {checks && checks.length > 0 && (
+        <div className="flex flex-col gap-1.5 border-t border-border px-3 py-2">
+          {checks.map((rc) => (
+            <ChecksRow key={rc.repo} rc={rc} />
+          ))}
+        </div>
+      )}
     </motion.div>
+  );
+}
+
+function ChecksRow({ rc }: { rc: RepoChecks }) {
+  if (rc.checks.length === 0) {
+    return (
+      <div className="flex items-center gap-2 text-[11px]">
+        <span className="truncate text-ink-muted">{rc.repo}</span>
+        <span className="text-ink-faint">no checks inferred</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+      <span className="mr-0.5 truncate text-ink-muted">{rc.repo}</span>
+      {rc.checks.map((c) => {
+        const pass = c.status === "pass";
+        return (
+          <span
+            key={c.name}
+            title={pass ? `${c.name}: passed` : c.output_tail || `${c.name}: failed (exit ${c.code})`}
+            className={cn(
+              "flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium",
+              pass ? "bg-running/15 text-running" : "bg-[oklch(0.64_0.2_25/0.15)] text-danger",
+            )}
+          >
+            {pass ? <Check size={10} /> : <X size={10} />}
+            {c.name}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 

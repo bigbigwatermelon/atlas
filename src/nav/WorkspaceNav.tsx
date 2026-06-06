@@ -20,13 +20,6 @@ import {
   CreateWorkspaceDialog,
 } from "./dialogs";
 
-const KIND_LABEL: Record<string, string> = {
-  feature: "feat",
-  bugfix: "fix",
-  refactor: "rfc",
-  spike: "spike",
-};
-
 export function WorkspaceNav() {
   const {
     workspaces,
@@ -220,12 +213,9 @@ function ThreadRow({ thread }: { thread: Thread }) {
           </span>
         )}
         <span className="ml-auto flex items-center gap-1.5">
-          {dirCount != null && (
+          {dirCount != null && dirCount > 0 && (
             <span className="text-[10px] tabular-nums text-ink-faint">{dirCount}</span>
           )}
-          <span className="rounded bg-bg px-1.5 py-0.5 font-mono text-[10px] uppercase text-ink-faint">
-            {KIND_LABEL[thread.kind] ?? thread.kind}
-          </span>
         </span>
       </button>
       <button

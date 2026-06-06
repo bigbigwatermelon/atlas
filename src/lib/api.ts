@@ -6,6 +6,7 @@ import type {
   LeadInfo,
   NeedItem,
   Proposal,
+  RepoChecks,
   RepoGraph,
   RepoRef,
   ResolvedProposal,
@@ -78,6 +79,10 @@ export const api = {
     invoke<void>("resize_pty", { sessionId, rows, cols }),
   killSession: (sessionId: number) =>
     invoke<void>("kill_session", { sessionId }),
+
+  // Quality loop: run inferred checks across a direction's write worktrees.
+  verifyDirection: (directionId: number) =>
+    invoke<RepoChecks[]>("verify_direction", { directionId }),
 
   threadMessages: (threadId: number) =>
     invoke<BusMsg[]>("thread_messages", { threadId }),
