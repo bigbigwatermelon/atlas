@@ -23,6 +23,7 @@ export function SessionView() {
   if (!active) return null;
 
   const { info, status, nativeId } = active;
+  const isLead = active.kind === "lead";
   // Product words, not plumbing: "<repo> · <direction>". The real worktree
   // path / branch / native id live in Inspect (§4.7).
   const repoName =
@@ -44,14 +45,23 @@ export function SessionView() {
           <ArrowLeft size={15} />
         </button>
         <span className="flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-raised px-2 py-0.5 text-[11px] font-medium capitalize text-ink-muted">
-          <TerminalSquare size={12} className="text-brand" />
+          <TerminalSquare size={12} className={isLead ? "text-accent" : "text-brand"} />
           {info.tool}
         </span>
-        <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-ink">
-          <span className="truncate font-medium">{repoName}</span>
-          <span className="text-ink-faint">·</span>
-          <span className="truncate text-ink-muted">{dirName}</span>
-        </span>
+        {isLead ? (
+          <span className="flex items-center gap-1.5 text-[13px]">
+            <span className="rounded-full bg-accent-ghost px-2 py-0.5 text-[11px] font-medium text-accent">
+              Lead
+            </span>
+            <span className="text-ink-muted">planning this thread…</span>
+          </span>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-ink">
+            <span className="truncate font-medium">{repoName}</span>
+            <span className="text-ink-faint">·</span>
+            <span className="truncate text-ink-muted">{dirName}</span>
+          </span>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <StatusChip status={status as SessionStatus} />

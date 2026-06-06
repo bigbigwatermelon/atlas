@@ -194,7 +194,7 @@ function DirectionCard({ direction }: { direction: Direction }) {
 }
 
 function EmptyBoard({ onAdd }: { onAdd: () => void }) {
-  const { startDraftPlan } = useStore();
+  const { startDraftPlan, planWithLead } = useStore();
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
       <div className="grid h-11 w-11 place-items-center rounded-[var(--radius-lg)] border border-border bg-surface">
@@ -202,14 +202,17 @@ function EmptyBoard({ onAdd }: { onAdd: () => void }) {
       </div>
       <h2 className="mt-3 text-[14px] font-semibold text-ink">Plan this thread</h2>
       <p className="mt-1 max-w-xs text-[12px] leading-relaxed text-ink-faint">
-        Split the task into directions — parallel work lines, each scoped to the
-        repos it writes. Draft the scope here, then create them all at once; only
-        write repos get a worktree.
+        Let the lead read the repo map and propose how to split the task across
+        repos — or draft the scope yourself. You review and confirm before any
+        worktree is created.
       </p>
       <div className="mt-4 flex items-center gap-2">
-        <Button variant="primary" onClick={() => void startDraftPlan()}>
+        <Button variant="primary" onClick={() => void planWithLead()}>
           <Sparkles size={14} />
-          Draft a plan
+          Plan with lead
+        </Button>
+        <Button variant="ghost" onClick={() => void startDraftPlan()}>
+          Draft manually
         </Button>
         <Button variant="ghost" onClick={onAdd}>
           <Plus size={14} />

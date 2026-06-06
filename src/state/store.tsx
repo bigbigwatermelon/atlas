@@ -32,6 +32,8 @@ export interface OpenSession {
   directionId: number;
   repoId: number;
   nativeId: string | null;
+  /** worker = a direction's session; lead = an ephemeral planning session */
+  kind: "worker" | "lead";
 }
 
 interface Store {
@@ -93,6 +95,7 @@ interface Store {
   deleteThread: (threadId: number) => Promise<void>;
 
   openSession: (directionId: number, repoId: number) => Promise<void>;
+  planWithLead: () => Promise<void>;
   focusSession: (sessionId: number) => void;
   resumeSession: (sessionId: number) => Promise<void>;
   killSession: (sessionId: number) => Promise<void>;
@@ -276,7 +279,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const info = await api.openSession(directionId, repoId);
       setSessions((m) => ({
         ...m,
-        [info.session_id]: { info, status: "starting", directionId, repoId, nativeId: null },
+        [info.session_id]: {
+          info,
+          status: "starting",
+          directionId,
+          repoId,
+          nativeId: null,
+          kind: "worker",
+        },
       }));
       setActiveSessionId(info.session_id);
       setShowNeeds(false);
@@ -284,6 +294,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [sessions],
   );
+
+  const planWithLead = useCallback(async () => {
+    if (activeThreadId == null) return;
+    const lead = await api.planWithLead(activeThreadId);
+    const info: SessionInfo = {
+      session_id: lead.session_id,
+      repo: "",
+      worktree: lead.cwd,
+      branch: "",
+      tool: lead.tool,
+      resumed: false,
+    };
+    setSessions((m) => ({
+      ...m,
+      [lead.session_id]: {
+        info,
+        status: "running",
+        directionId: -1,
+        repoId: -1,
+        nativeId: null,
+        kind: "lead",
+      },
+    }));
+    setActiveSessionId(lead.session_id);
+    setShowNeeds(false);
+    setShowRepoMap(false);
+  }, [activeThreadId]);
 
   const focusSession = useCallback((id: number) => setActiveSessionId(id), []);
 
@@ -494,6 +531,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [activeWorkspaceId, refreshNeeds]);
 
+  // While an ephemeral lead session is planning, watch for its proposal; when it
+  // lands, stop the lead and drop back to the board's scope-confirm step.
+  const leadActive =
+    activeSessionId != null && sessions[activeSessionId]?.kind === "lead";
+  useEffect(() => {
+    if (!leadActive || activeThreadId == null || activeSessionId == null) return;
+    const thread = activeThreadId;
+    const leadId = activeSessionId;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const p = await api.getProposal(thread);
+        if (alive && p && p.status === "proposed" && p.directions.length > 0) {
+          alive = false;
+          setProposal(p);
+          try {
+            await api.killSession(leadId);
+          } catch {
+            /* already gone */
+          }
+          setSessions((m) => {
+            const n = { ...m };
+            delete n[leadId];
+            return n;
+          });
+          setActiveSessionId(null);
+        }
+      } catch {
+        /* planner not ready */
+      }
+    };
+    const h = setInterval(tick, 2500);
+    return () => {
+      alive = false;
+      clearInterval(h);
+    };
+  }, [leadActive, activeThreadId, activeSessionId]);
+
   useEffect(() => {
     if (activeThreadId == null) {
       setMessages([]);
@@ -559,6 +634,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createDirection,
     deleteThread,
     openSession,
+    planWithLead,
     focusSession,
     resumeSession,
     killSession,

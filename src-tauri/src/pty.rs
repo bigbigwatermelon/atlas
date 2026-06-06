@@ -378,3 +378,90 @@ pub fn kill_session(state: State<PtyState>, session_id: i32) -> Result<(), Strin
     }
     Ok(())
 }
+
+#[derive(Serialize, Clone)]
+pub struct LeadInfo {
+    pub session_id: i32,
+    pub thread_id: i32,
+    pub cwd: String,
+    pub tool: String,
+}
+
+/// The planning prompt the lead is seeded with. It is told to drive the planner
+/// MCP and propose a write-only decomposition; the human confirms in weft.
+fn lead_prompt() -> &'static str {
+    "You are the planning lead in weft. Use the weft_planner MCP tools to plan, do not write code. \
+Steps: (1) call get_task to read the task; (2) call get_repo_map to see each repo's role and the \
+cross-repo dependency graph; (3) decide which repos each parallel direction must WRITE (reads are \
+free — never list them); (4) call propose_directions with a short rationale and the directions \
+(name, tool, writes[]). Prefer splitting frontend/backend/shared work so directions run in \
+parallel; put a shared contract's owner first. The human reviews and confirms your proposal."
+}
+
+/// Spawn an EPHEMERAL read-only lead session to plan a thread: a fresh agent in
+/// a per-thread scratch dir with the planner MCP injected and the planning
+/// prompt seeded. No worktree, no DB row — the lead proposes via the planner MCP
+/// and exits; the human confirms in the scope-confirm step. Keyed in PtyState by
+/// a synthetic negative id (`-thread_id`) so it never collides with worker ids.
+#[tauri::command]
+pub async fn plan_with_lead(
+    app: AppHandle,
+    db: State<'_, Db>,
+    state: State<'_, PtyState>,
+    thread_id: i32,
+) -> Result<LeadInfo, String> {
+    plan_with_lead_impl(app, &db, &state, thread_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn plan_with_lead_impl(
+    app: AppHandle,
+    db: &Db,
+    state: &PtyState,
+    thread_id: i32,
+) -> Result<LeadInfo> {
+    // Validate the thread exists (the lead reads its task via the planner MCP).
+    repo::get_thread(db, thread_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("thread not found"))?;
+    // Lead default tool (leadAgent override is a later milestone).
+    let tool = "claude".to_string();
+
+    let cwd = crate::paths::weft_home()?
+        .join("leads")
+        .join(thread_id.to_string());
+    std::fs::create_dir_all(&cwd).context("create lead scratch dir")?;
+    // git-init the scratch dir so claude's session store (keyed by cwd) and the
+    // injected config behave like any other cwd; harmless if it already exists.
+    let _ = std::process::Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&cwd)
+        .status();
+
+    let base = app.state::<crate::BusBase>().0.clone();
+    let inj = crate::bus::inject::inject_planner(&base, thread_id, &tool, &cwd);
+
+    // Seed the planning prompt as the agent's initial positional message. It must
+    // come BEFORE --mcp-config: claude's --mcp-config is variadic and would
+    // otherwise swallow the prompt as a second config path (ENAMETOOLONG).
+    let mut args = vec![lead_prompt().to_string()];
+    args.extend(inj.args);
+
+    let session_id = -thread_id; // synthetic, ephemeral, collision-free
+    // Replace any prior live lead session for this thread.
+    if let Some(mut a) = state.sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&session_id) {
+        a.alive.store(false, Ordering::SeqCst);
+        let _ = a.child.kill();
+    }
+    let active = spawn(&app, &tool, -1, &args, &cwd, None, session_id, db.clone())
+        .context("spawn lead")?;
+    state.sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id, active);
+
+    Ok(LeadInfo {
+        session_id,
+        thread_id,
+        cwd: cwd.to_string_lossy().to_string(),
+        tool,
+    })
+}

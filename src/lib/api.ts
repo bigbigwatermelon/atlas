@@ -3,6 +3,7 @@ import type {
   BusMsg,
   Direction,
   DirectionRepo,
+  LeadInfo,
   NeedItem,
   Proposal,
   RepoGraph,
@@ -67,6 +68,8 @@ export const api = {
 
   openSession: (directionId: number, repoId: number) =>
     invoke<SessionInfo>("open_session", { directionId, repoId }),
+  planWithLead: (threadId: number) =>
+    invoke<LeadInfo>("plan_with_lead", { threadId }),
   resumeSession: (sessionId: number) =>
     invoke<SessionInfo>("resume_session", { sessionId }),
   writePty: (sessionId: number, data: string) =>

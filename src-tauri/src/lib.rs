@@ -94,6 +94,7 @@ pub fn run() {
             commands::needs_you,
             commands::answer_ask,
             pty::open_session,
+            pty::plan_with_lead,
             pty::resume_session,
             pty::write_pty,
             pty::resize_pty,

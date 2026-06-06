@@ -66,6 +66,14 @@ export interface SessionInfo {
   resumed: boolean;
 }
 
+/** An ephemeral lead (planning) session spawned to propose a decomposition. */
+export interface LeadInfo {
+  session_id: number;
+  thread_id: number;
+  cwd: string;
+  tool: string;
+}
+
 /** UI-side runtime status for a live session panel. */
 export type SessionStatus =
   | "starting"
