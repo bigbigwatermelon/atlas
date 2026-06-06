@@ -1,8 +1,9 @@
 # Design
 
-Visual system for weft. Dark-primary, high-density, calm. Built on a cool
-near-black architecture with a single living moss-green brand accent. All
-color in OKLCH. Component base: **shadcn/ui (Radix + Tailwind)**, retuned to
+Visual system for weft. Dark-primary, high-density, calm. Built on a
+violet-tinted near-black architecture with an **indigo** brand (the weft mark's
+three work lines) and an **orange** convergence accent (the single outcome dot).
+All color in OKLCH. Component base: **shadcn/ui (Radix + Tailwind)**, retuned to
 these tokens — never the default shadcn look.
 
 > Status today: the M1 shell uses plain CSS as a functional placeholder. This
@@ -153,6 +154,24 @@ weft treatment:
 - **Approval bar**: appears in a session panel on `waiting-approval`; mirrors the
   native TUI options as buttons (Approve / Deny / Always) — a convenience layer
   over the native prompt, never a replacement.
+- **Home (lead conversation)**: the default surface. A focused chat with the
+  thread's lead — task in, scope/brief/decisions out — flanked by the board and
+  a session region. Reads like a control tower, not a chatbot: structured cards
+  (proposed scope, dispatched directions, escalations) inline in the stream, not
+  walls of prose.
+- **Board card (trust dashboard)**: the kanban atom. Carries a title, lifecycle
+  column, the tool(s) in play, and **acceptance signals** (tests x/y, contract
+  match, review-agent verdict) with expandable provenance. Green = trust at a
+  glance; red / escalated draws the eye and opens on click. Never a flat
+  icon-card grid — the signals are the content.
+- **Two-level board**: Workspace board (cards = threads, optional per-repo
+  swimlanes that expose cross-thread "hot repos") zooms into the Thread board
+  (cards = directions). `Needs you` is a pinned exception lane aggregated at both
+  levels. Cards flow themselves; the human acts (Approve / Answer / Open /
+  Review / Merge), it does not drag.
+- **Scope confirm**: the post-decompose step — every repo shown with an inferred
+  `write / read / none` chip the human can correct before materialization. The
+  visible face of the core wow; corrections feed the repo map.
 
 ## Motion
 

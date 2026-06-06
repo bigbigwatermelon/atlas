@@ -6,43 +6,63 @@ product
 
 ## Users
 
-Developers who run multiple coding agents (Claude Code, Codex, OpenCode) in
-parallel across several repositories. They organize work as
-`workspace → thread → direction → session`, and at any moment they are
-watching — and occasionally steering — several live agent runs at once. Their
-context: a focused, often long desktop session, frequently in a dark room or
-beside an IDE, switching attention between runs and wanting to know "what is
-each agent doing right now" at a glance.
+Developers who deliver features and fixes that span several repositories and
+want coding agents (Claude Code, Codex, OpenCode) to carry the work from intent
+to pull request, not just chat. They think in tasks ("add a discount code to
+checkout", "fix #4821"), not in worktrees or sessions. Their context: a focused
+desktop session beside an IDE, several work lines in flight at once, wanting to
+*supervise* delivery, not babysit terminals. They step in when something is
+genuinely stuck, not to push every step forward.
 
 ## Product Purpose
 
-weft is a local-first **orchestrator** for parallel, multi-repo, multi-tool
-agent work. The core is the *structure and coordination*, not the watching:
+weft is a local-first, no-server **delivery hub** where coding agents drive
+multi-repo work from a **Task to a PR**. The north star is **automation**: you
+state a task; weft plans it, decides which repos to touch, spawns the agents,
+coordinates them, verifies the result, and opens clean PRs. You supervise and
+handle exceptions — you are not a required checkpoint in the loop.
 
-1. **Organize** — turn scattered repos into a logical workspace; a plan derives
-   per-repo **scope** (write / read / none) and splits work into **directions**;
-   each write-repo gets an isolated git worktree.
-2. **Orchestrate** — run heterogeneous agents (Claude / Codex / OpenCode), one
-   per direction, in parallel across the workspace's threads.
-3. **Coordinate** — a per-thread **bus** (MCP) lets those agents talk
-   (post / inbox / ask) and a coordinator wakes them, so parallel directions
-   converge instead of drifting.
+The shape of the work:
 
-**Home is a conversation, not a terminal grid.** The primary surface is a **lead
-agent** (the user's main chat + control tower): it reads the repos read-only,
-plans, derives scope, and drives **worker** sessions per direction — it does not
-write code itself. Sessions carry `role = lead | worker`. Workers report back
-structured summaries + diff stat through the bus; the lead never ingests their
-raw transcripts. The embedded native TUI is the **interaction surface** for a
-single session, not the product's reason for being. Watching execution detail is
-incidental; the value is the orchestration + coordination layer no single-agent
-tool provides. Success looks like: a developer runs several agents across several
-repos on one feature and weft keeps the work structured, scoped, and coordinated
-— not five terminals to babysit.
+1. **Understand** — a workspace is a logical list of repo references. A
+   workspace-level **curator** agent profiles each repo (one-line role,
+   interfaces, stack) and weft builds a **cross-repo dependency graph**. This
+   map is the fuel for the core trick below.
+2. **Decompose (the wow)** — you give a **Task** (PRD / bug / refactor / spike /
+   link; PRD is just one kind). A per-thread **lead** agent classifies it, then
+   uses the repo map to derive **scope** (which repos are write / read / none)
+   and split it into **directions** — automatically. No other tool turns one
+   task into "which repos, and who does what" across a fleet.
+3. **Deliver, automatically** — each write-repo gets an isolated git worktree;
+   the lead spawns a **worker** per direction (heterogeneous tools allowed),
+   hands each a structured **brief** (scope + interface-contract + acceptance),
+   and drives them to convergence over a per-thread **bus**. Workers' output is
+   gated by **executable verification** (lint / type / test / contract /
+   review-agent), not by a human nod. Green flows to a PR; red retries within
+   bounds, then escalates.
 
-It is explicitly **not** a terminal emulator, and equally not a "watch the
-agents go" dashboard. It is the workspace-and-coordination fabric the agents
-run inside.
+**Home is a conversation, not a terminal grid.** The primary surface is the
+**lead** (your main chat + control tower): read-only across the repos, it plans,
+derives scope, and drives workers — it does not write code. Sessions carry
+`role = curator | lead | worker`. Workers report **structured summaries + diff
+stat** through the bus; the lead never ingests their raw transcripts. The
+embedded native TUI is the interaction surface for one session, not the
+product's reason for being.
+
+**The human handles exceptions, not the assembly line.** weft adds **no approval
+gate of its own**. The only blocking interruptions are the tools' own permission
+prompts (passed through verbatim, never overridden) plus a configurable
+irreversible-action boundary (e.g. merging a protected branch). Everything else
+runs; "what's waiting on me" is the rare exception, surfaced at the top of every
+view.
+
+**Delivery boundary = Task → PR.** merge / CI / release stay with the human and
+the repo's existing PR harness — because weft drives the native CLIs (it doesn't
+bypass hooks), opening a PR naturally triggers the repo's own checks. weft does
+light pre-PR verification to avoid opening junk; it does not re-implement CI.
+
+It is explicitly **not** a terminal emulator, and not a "watch the agents go"
+dashboard. It is the workspace-and-automation fabric the agents deliver inside.
 
 ## Brand Personality
 
@@ -67,31 +87,45 @@ designed, system-following + toggleable).
 
 ## Design Principles
 
-1. **Structure is the product.** The workspace → thread → direction → scope
-   model is what weft sells. Surfaces make that structure legible and editable;
-   the terminal is a leaf, not the headline.
-2. **Coordination over observation.** Favor what helps parallel directions
-   converge — scope, plan, handoffs, the thread bus — over features that merely
-   display execution. Don't build a "watch the agents go" dashboard.
-3. **Frame, don't redraw.** We host native TUIs verbatim as the interaction
-   surface for one session. weft's craft is the orchestration shell around them,
-   never reskinning or reinterpreting agent output.
-4. **Calm under parallelism.** Many threads and directions at once must read as
-   composed, not busy. Density without noise; the eye always finds the one
-   thing that changed.
-5. **Mirror the user's tools, never override them.** weft reflects native agent
-   state (permissions, sessions, config) and never invents or overrides it.
-6. **Hide the mechanism, present the decisions.** worktrees / PTY / MCP bus /
+1. **Automation is the north star.** The default path is autonomous: task in,
+   PRs out. Every surface is built for *supervising* that flow, not for driving
+   it step by step. If a screen assumes the human pushes each step forward, it
+   fights the product.
+2. **The human handles exceptions, not the line.** weft adds no gate of its own.
+   Surface the rare blocker (a tool's permission prompt, a true agent
+   escalation, a hard conflict) loudly; let routine flow pass silently. Never
+   manufacture a checkpoint where automation would do.
+3. **Structure is the product.** The `workspace → thread → direction → scope`
+   model, and the repo map that powers scope decomposition, are what weft sells.
+   Surfaces make that structure legible and editable; the terminal is a leaf.
+4. **Cross-repo scope decomposition is the wow.** One Task becoming "these
+   repos, this split, in this order" is the irreplaceable moment. Protect its
+   legibility: show what was inferred, let the human correct it, learn from the
+   correction.
+5. **Trust through verification, shown.** Because no human gates the work, the
+   board is a *trust dashboard*: each card carries its acceptance signals (tests
+   x/y, contract match, review-agent verdict) with expandable provenance. Green
+   you trust; red or escalated you open. Be honest where a repo isn't verifiable.
+6. **The board flows itself; the human acts, not drags.** A two-level kanban
+   (workspace = threads, thread = directions) is a live projection of agent +
+   git state. Cards move on their own through the lifecycle; the human's verbs
+   are Approve / Answer / Open / Review / Merge. "Needs you" aggregates real
+   exceptions at every level and is always the most prominent thing.
+7. **Frame, don't redraw.** Host native TUIs verbatim as one session's
+   interaction surface; mirror native state (permissions, sessions, config) and
+   never override it. Surface and observation are decoupled — a session can run
+   embedded or in its own app, observed the same way either side.
+8. **Hide the mechanism, present the decisions.** worktrees / PTY / MCP bus /
    add-dir / sidecar are plumbing — they recede into Inspect. What the user owns
-   stays first-class: scope, branch / PR / diff, tool choice, effective skills.
-   Every abstraction ships with an escape hatch (real path / open terminal) and
-   a readable failure.
-7. **Needs-you first.** The kanban is an agent + git projection that flows itself;
-   the human's job is exception-handling, so "what's waiting on me" is always the
-   most prominent thing, aggregated workspace-wide.
-8. **Bilingual from day one.** zh / en, two layers — UI strings AND agent output
-   language. Never hardcode user-facing strings; internal state enums stay
-   English, code/identifiers always English.
+   stays first-class: the task, scope, branch / PR / diff, tool choice, brief,
+   effective skills. Every abstraction ships with a real escape hatch (true
+   path / open terminal) and a readable failure.
+9. **Calm under parallelism.** Many threads and directions at once must read as
+   composed, not busy. Density without noise; motion only when something
+   actually changed; the eye always finds the one thing that needs it.
+10. **Bilingual from day one.** zh / en, two layers — UI strings AND agent output
+    language. Never hardcode user-facing strings; internal state enums stay
+    English, code/identifiers always English.
 
 ## Accessibility & Inclusion
 
