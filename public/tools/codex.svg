@@ -1,0 +1,25 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Codex">
+  <defs>
+    <linearGradient id="cx" x1="320" y1="180" x2="700" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a9a6f8"/>
+      <stop offset="0.45" stop-color="#7b82f6"/>
+      <stop offset="1" stop-color="#5560f1"/>
+    </linearGradient>
+  </defs>
+  <!-- scalloped cloud: overlapping lobes sharing one user-space gradient -->
+  <g fill="url(#cx)">
+    <circle cx="512" cy="512" r="250"/>
+    <circle cx="512" cy="300" r="150"/>
+    <circle cx="700" cy="360" r="140"/>
+    <circle cx="760" cy="540" r="150"/>
+    <circle cx="690" cy="710" r="140"/>
+    <circle cx="512" cy="760" r="150"/>
+    <circle cx="334" cy="710" r="140"/>
+    <circle cx="264" cy="540" r="150"/>
+    <circle cx="324" cy="360" r="140"/>
+  </g>
+  <!-- prompt: chevron + underscore -->
+  <path d="M380 430 L470 512 L380 594" fill="none" stroke="#ffffff" stroke-width="46"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="540" y="548" width="150" height="44" rx="22" fill="#ffffff"/>
+</svg>

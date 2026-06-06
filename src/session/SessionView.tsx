@@ -1,11 +1,12 @@
 import { motion } from "motion/react";
-import { ArrowLeft, RotateCcw, Square, TerminalSquare } from "lucide-react";
+import { ArrowLeft, RotateCcw, Square } from "lucide-react";
 import { useStore } from "../state/store";
 import type { SessionStatus } from "../lib/types";
 import { TerminalPanel } from "../panels/TerminalPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
 import { Inspect } from "../components/Inspect";
+import { ToolIcon } from "../components/ToolIcon";
 
 export function SessionView() {
   const {
@@ -45,7 +46,7 @@ export function SessionView() {
           <ArrowLeft size={15} />
         </button>
         <span className="flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-raised px-2 py-0.5 text-[11px] font-medium capitalize text-ink-muted">
-          <TerminalSquare size={12} className={isLead ? "text-accent" : "text-brand"} />
+          <ToolIcon tool={info.tool} size={12} />
           {info.tool}
         </span>
         {isLead ? (

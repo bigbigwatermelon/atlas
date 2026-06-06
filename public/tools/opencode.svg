@@ -1,0 +1,7 @@
+<svg viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenCode">
+  <rect width="600" height="600" rx="16" fill="#000000"/>
+  <!-- O: a square ring -->
+  <path fill="#ffffff" fill-rule="evenodd" d="M120 175 h150 v250 h-150 z M160 215 h70 v170 h-70 z"/>
+  <!-- C: a square C, open on the right -->
+  <path fill="#ffffff" d="M320 175 h150 v55 h-95 v140 h95 v55 h-150 z"/>
+</svg>

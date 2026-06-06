@@ -16,6 +16,7 @@ import type { Direction, RepoChecks, SessionStatus } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { StatusDot } from "../components/ui/StatusChip";
 import { Inspect } from "../components/Inspect";
+import { ToolIcon } from "../components/ToolIcon";
 import { CreateDirectionDialog } from "../nav/dialogs";
 import { CoordinationPanel } from "./CoordinationPanel";
 import { ScopeConfirmView } from "./ScopeConfirmView";
@@ -28,11 +29,6 @@ const KIND_LABEL: Record<string, string> = {
   spike: "Spike",
 };
 
-const TOOL_DOT: Record<string, string> = {
-  claude: "bg-accent",
-  codex: "bg-running",
-  opencode: "bg-idle",
-};
 const TOOL_LABEL: Record<string, string> = {
   claude: "Claude",
   codex: "Codex",
@@ -155,7 +151,7 @@ function DirectionCard({ direction }: { direction: Direction }) {
           </button>
         )}
         <span className="ml-auto flex items-center gap-1.5 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
-          <span className={cn("h-1.5 w-1.5 rounded-full", TOOL_DOT[direction.tool] ?? "bg-idle")} />
+          <ToolIcon tool={direction.tool} size={12} />
           {TOOL_LABEL[direction.tool] ?? direction.tool}
         </span>
       </div>

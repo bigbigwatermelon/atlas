@@ -1,0 +1,20 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Claude">
+  <defs>
+    <path id="cray" d="M94 104 L97 26 Q100 18 103 26 L106 104 Z" fill="#C76B47"/>
+  </defs>
+  <g fill="#C76B47">
+    <use href="#cray" transform="rotate(0 100 100)"/>
+    <use href="#cray" transform="rotate(30 100 100)"/>
+    <use href="#cray" transform="rotate(60 100 100)"/>
+    <use href="#cray" transform="rotate(90 100 100)"/>
+    <use href="#cray" transform="rotate(120 100 100)"/>
+    <use href="#cray" transform="rotate(150 100 100)"/>
+    <use href="#cray" transform="rotate(180 100 100)"/>
+    <use href="#cray" transform="rotate(210 100 100)"/>
+    <use href="#cray" transform="rotate(240 100 100)"/>
+    <use href="#cray" transform="rotate(270 100 100)"/>
+    <use href="#cray" transform="rotate(300 100 100)"/>
+    <use href="#cray" transform="rotate(330 100 100)"/>
+    <circle cx="100" cy="100" r="22"/>
+  </g>
+</svg>
