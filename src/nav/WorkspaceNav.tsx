@@ -116,6 +116,7 @@ export function WorkspaceNav() {
         <WsNavItem
           icon={Activity}
           label={t("workspace.tabOverview")}
+          attnCount={activeWorkspaceId != null ? needsByWorkspace[activeWorkspaceId] ?? 0 : 0}
           active={onHome && homeTab === "overview"}
           onClick={() => {
             backToWorkspace();
@@ -172,6 +173,7 @@ function WsNavItem({
   icon: Icon,
   label,
   count,
+  attnCount,
   active,
   onClick,
   onAdd,
@@ -180,6 +182,7 @@ function WsNavItem({
   icon: typeof LayoutGrid;
   label: string;
   count?: number;
+  attnCount?: number;
   active: boolean;
   onClick: () => void;
   onAdd?: () => void;
@@ -201,9 +204,13 @@ function WsNavItem({
       >
         <Icon size={14} className={active ? "text-brand" : "text-ink-faint"} />
         <span className="truncate">{label}</span>
-        {count != null && count > 0 && (
+        {attnCount != null && attnCount > 0 ? (
+          <span className="ml-auto rounded-full bg-waiting/20 px-1.5 py-px text-[10px] font-semibold tabular-nums text-waiting">
+            {attnCount}
+          </span>
+        ) : count != null && count > 0 ? (
           <span className="ml-auto text-[10px] tabular-nums text-ink-faint">{count}</span>
-        )}
+        ) : null}
       </button>
       {onAdd && (
         <button
@@ -363,7 +370,8 @@ function WorkspacePicker({
               >
                 <Check size={13} className={cn("shrink-0", isActive ? "text-brand" : "text-transparent")} />
                 <span className="truncate">{w.name}</span>
-                {count > 0 && (
+                {/* only flag OTHER workspaces — the current one is shown in-app */}
+                {!isActive && count > 0 && (
                   <span className="ml-auto rounded-full bg-waiting/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-waiting">
                     {count}
                   </span>
