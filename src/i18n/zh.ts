@@ -19,6 +19,8 @@ export const zh = {
     threads: "会话",
     newThread: "新建会话",
     deleteThread: "删除会话",
+    collapseSidebar: "收起侧边栏",
+    expandSidebar: "展开侧边栏",
     noThreads: "还没有会话。新建一个开始。",
     createWorkspaceFirst: "先创建一个工作区。",
     repoMap: "仓库地图",

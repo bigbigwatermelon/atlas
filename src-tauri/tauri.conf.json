@@ -12,9 +12,10 @@
   "app": {
     "windows": [
       {
-        "title": "weft — session orchestrator",
+        "title": "",
         "width": 1100,
-        "height": 760
+        "height": 760,
+        "minWidth": 520
       }
     ],
     "security": {

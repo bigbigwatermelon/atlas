@@ -71,6 +71,9 @@ interface Store {
   /** The thread-bus drawer (demoted from a permanent rail). */
   showBus: boolean;
   setShowBus: (open: boolean) => void;
+  /** Left sidebar collapse (manual + auto on narrow windows). */
+  navCollapsed: boolean;
+  setNavCollapsed: (v: boolean) => void;
   /** Whether the board canvas is showing the proposal's scope-confirm. */
   reviewingProposal: boolean;
   setReviewingProposal: (v: boolean) => void;
@@ -190,6 +193,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   >({});
   const [showBus, setShowBus] = useState(false);
   const [reviewingProposal, setReviewingProposal] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(() => window.innerWidth < 820);
+
+  // Auto-collapse the sidebar when the window gets narrow; auto-restore when it
+  // widens again (only on threshold crossings, so manual toggles stick).
+  useEffect(() => {
+    const TH = 820;
+    let prevNarrow = window.innerWidth < TH;
+    const onResize = () => {
+      const narrow = window.innerWidth < TH;
+      if (narrow !== prevNarrow) {
+        prevNarrow = narrow;
+        setNavCollapsed(narrow);
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const refreshWorkspaces = useCallback(async () => {
     const ws = await api.listWorkspaces();
@@ -848,6 +868,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toggleLeadCollapsed,
     showBus,
     setShowBus,
+    navCollapsed,
+    setNavCollapsed,
     reviewingProposal,
     setReviewingProposal,
     needs,

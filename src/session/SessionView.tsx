@@ -18,6 +18,7 @@ import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
 import { Inspect } from "../components/Inspect";
 import { ResumeMenu } from "../components/ResumeMenu";
+import { RailToggle } from "../components/RailToggle";
 import { ToolIcon } from "../components/ToolIcon";
 import { cn } from "../lib/cn";
 
@@ -63,6 +64,7 @@ export function SessionView() {
       <section className="flex min-w-0 flex-1 flex-col bg-bg">
       {/* session header */}
       <header className="flex items-center gap-3 border-b border-border bg-surface px-3 py-2">
+        <RailToggle />
         <button
           onClick={backToBoard}
           aria-label={t("session.back")}

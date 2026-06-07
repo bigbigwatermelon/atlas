@@ -20,6 +20,8 @@ export const en = {
     threads: "Threads",
     newThread: "New thread",
     deleteThread: "Delete thread",
+    collapseSidebar: "Collapse sidebar",
+    expandSidebar: "Show sidebar",
     noThreads: "No threads yet. Create one to start.",
     createWorkspaceFirst: "Create a workspace to begin.",
     repoMap: "Repo map",

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import { ChevronRight, Moon, Plus, Sun, Trash2 } from "lucide-react";
+import { ChevronRight, Moon, PanelLeftClose, Plus, Sun, Trash2 } from "lucide-react";
 import { useStore } from "../state/store";
 import { useTheme } from "../state/theme";
 import { setLang } from "../i18n";
@@ -17,6 +17,7 @@ export function WorkspaceNav() {
     selectWorkspace,
     backToWorkspace,
     needsByWorkspace,
+    setNavCollapsed,
   } = useStore();
   const [dlg, setDlg] = useState<null | "ws" | "repo" | "thread">(null);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
@@ -46,6 +47,14 @@ export function WorkspaceNav() {
           onSelect={(id) => void selectWorkspace(id)}
           onNew={() => setDlg("ws")}
         />
+        <button
+          onClick={() => setNavCollapsed(true)}
+          aria-label={t("nav.collapseSidebar")}
+          title={t("nav.collapseSidebar")}
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-[var(--radius-md)] text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
+        >
+          <PanelLeftClose size={15} />
+        </button>
       </div>
 
       <div className="mx-2 mb-1 border-t border-border" />

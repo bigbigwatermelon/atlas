@@ -11,13 +11,20 @@ function Main() {
   return <WorkspaceHome />;
 }
 
+function Shell() {
+  const { navCollapsed } = useStore();
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-bg text-ink">
+      {!navCollapsed && <WorkspaceNav />}
+      <Main />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <StoreProvider>
-      <div className="flex h-screen w-screen overflow-hidden bg-bg text-ink">
-        <WorkspaceNav />
-        <Main />
-      </div>
+      <Shell />
     </StoreProvider>
   );
 }

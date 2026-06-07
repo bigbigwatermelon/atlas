@@ -25,6 +25,7 @@ import { Inspect } from "../components/Inspect";
 import { ResumeMenu } from "../components/ResumeMenu";
 import { ToolIcon } from "../components/ToolIcon";
 import { CreateDirectionDialog } from "../nav/dialogs";
+import { RailToggle } from "../components/RailToggle";
 import { BusDrawer } from "./BusDrawer";
 import { LeadTab } from "../session/LeadTab";
 import { ScopeConfirmView } from "./ScopeConfirmView";
@@ -112,6 +113,7 @@ export function ThreadBoard() {
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
       <header className="flex items-center gap-4 border-b border-border px-5 py-2.5">
+        <RailToggle />
         <div className="flex min-w-0 items-center gap-2">
           <h1 className="truncate text-[15px] font-semibold tracking-tight text-ink">
             {thread.title}

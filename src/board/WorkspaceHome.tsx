@@ -8,6 +8,7 @@ import type { NormEvent } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { ToolIcon } from "../components/ToolIcon";
 import { RepoMapView } from "./RepoMapView";
+import { RailToggle } from "../components/RailToggle";
 import { PermissionRow, AskRow } from "./NeedsYouView";
 import { AddRepoDialog, CreateThreadDialog } from "../nav/dialogs";
 import { cn } from "../lib/cn";
@@ -45,6 +46,7 @@ export function WorkspaceHome() {
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
       <header className="flex items-center gap-4 border-b border-border px-5 py-2.5">
+        <RailToggle />
         <h1 className="shrink-0 text-[15px] font-semibold tracking-tight text-ink">
           {ws?.name ?? "Workspace"}
         </h1>
