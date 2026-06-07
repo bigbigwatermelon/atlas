@@ -44,7 +44,8 @@ pub fn open_url(url: String) -> Result<(), String> {
     }
 }
 
-/// Reveal `path` in the OS file manager (Finder on macOS).
+/// Reveal `path` in the OS file manager — opens the PARENT and selects the item
+/// (Finder `open -R`), rather than opening into the folder.
 #[tauri::command]
 pub fn reveal_path(path: String) -> Result<(), String> {
     if !std::path::Path::new(&path).exists() {
@@ -52,7 +53,7 @@ pub fn reveal_path(path: String) -> Result<(), String> {
     }
     #[cfg(target_os = "macos")]
     {
-        Command::new("open").arg(&path).status().map_err(err)?;
+        Command::new("open").args(["-R", &path]).status().map_err(err)?;
         Ok(())
     }
     #[cfg(not(target_os = "macos"))]

@@ -1,14 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import {
-  ArrowRight,
-  MessagesSquare,
-  RotateCcw,
-  Sparkles,
-  Square,
-  SquareTerminal,
-} from "lucide-react";
+import { ArrowRight, MessagesSquare, Sparkles, Square, SquareTerminal } from "lucide-react";
 import { useStore } from "../state/store";
 import type { SessionStatus } from "../lib/types";
 import { TerminalPanel } from "../panels/TerminalPanel";
@@ -16,7 +9,6 @@ import { Transcript } from "./Transcript";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
 import { Inspect } from "../components/Inspect";
-import { ResumeMenu } from "../components/ResumeMenu";
 import { ToolIcon } from "../components/ToolIcon";
 import { cn } from "../lib/cn";
 
@@ -63,25 +55,18 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
             </ViewTab>
           </div>
           <StatusChip status={status as SessionStatus} />
-          {running ? (
+          {running && (
             <Button size="sm" variant="danger" onClick={() => void killSession(info.session_id)}>
               <Square size={11} />
               {t("session.kill")}
             </Button>
-          ) : nativeId ? (
-            <ResumeMenu
-              tool={info.tool}
-              cwd={info.worktree}
-              nativeId={nativeId}
-              trigger={
-                <button className="flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-md)] border border-border px-2.5 text-[12px] text-ink-muted transition-colors hover:bg-surface hover:text-ink">
-                  <RotateCcw size={12} />
-                  {t("session.resumeMenu")}
-                </button>
-              }
-            />
-          ) : null}
-          <Inspect path={info.worktree} nativeId={nativeId} className="h-7 w-7" />
+          )}
+          <Inspect
+            path={info.worktree}
+            nativeId={nativeId}
+            tool={info.tool}
+            className="h-7 w-7"
+          />
         </div>
       </div>
 

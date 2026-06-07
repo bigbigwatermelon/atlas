@@ -1,34 +1,48 @@
+import { useState } from "react";
 import * as DM from "@radix-ui/react-dropdown-menu";
 import { useTranslation } from "react-i18next";
-import {
-  Copy,
-  FolderOpen,
-  MoreHorizontal,
-  SquareTerminal,
-} from "lucide-react";
+import { Check, Copy, ExternalLink, FolderOpen, MoreHorizontal, Terminal } from "lucide-react";
 import { api } from "../lib/api";
+import { appLink, resumeCommand } from "../lib/resume";
+import { ToolIcon } from "./ToolIcon";
 import { cn } from "../lib/cn";
 
 /**
- * The escape hatch (architecture §4.7). The product hides plumbing — worktree
- * paths, branches, native session ids — but Inspect always offers the real way
- * out: open the isolated working copy in a terminal or the file manager, copy
- * its path, and read the underlying git/session identifiers.
+ * The per-session "…" menu (escape hatch, §4.7 + resume §5.6). Leads with the
+ * way to pick the session back up in your own tools — copy the `cd … && <tool>
+ * resume <id>` command, or jump to it in the Codex app — then Reveal / Copy
+ * path. No "open terminal": an empty shell at the worktree doesn't resume.
  */
 export function Inspect({
   path,
   branch,
   nativeId,
+  tool,
   className,
   size = 14,
 }: {
   path: string;
   branch?: string;
   nativeId?: string | null;
+  tool?: string;
   className?: string;
   size?: number;
 }) {
   const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const link = tool && nativeId ? appLink(tool, nativeId) : null;
+
+  async function copyResume() {
+    if (!tool || !nativeId) return;
+    try {
+      await navigator.clipboard?.writeText(resumeCommand(tool, path, nativeId));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
     <DM.Root>
       <DM.Trigger
@@ -49,9 +63,27 @@ export function Inspect({
           onClick={(e) => e.stopPropagation()}
           className="weft-pop z-[60] w-64 rounded-[var(--radius-md)] border border-border bg-raised p-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]"
         >
-          <Item icon={<SquareTerminal size={13} />} onSelect={() => void api.openTerminal(path)}>
-            {t("inspect.openTerminal")}
-          </Item>
+          {nativeId && tool && (
+            <>
+              <Item
+                icon={copied ? <Check size={13} className="text-running" /> : <Terminal size={13} />}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  void copyResume();
+                }}
+              >
+                {copied ? t("resume.copied") : t("resume.copyCommand")}
+              </Item>
+              {link && (
+                <Item icon={<ToolIcon tool="codex" size={13} />} onSelect={() => void api.openUrl(link)}>
+                  {t("resume.openInCodex")}
+                  <ExternalLink size={11} className="ml-auto text-ink-faint" />
+                </Item>
+              )}
+              <DM.Separator className="my-1 h-px bg-border" />
+            </>
+          )}
+
           <Item icon={<FolderOpen size={13} />} onSelect={() => void api.revealPath(path)}>
             {t("inspect.reveal")}
           </Item>
@@ -86,7 +118,7 @@ function Item({
 }: {
   icon: React.ReactNode;
   children: React.ReactNode;
-  onSelect: () => void;
+  onSelect: (e: Event) => void;
 }) {
   return (
     <DM.Item
