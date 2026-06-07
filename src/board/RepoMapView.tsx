@@ -32,7 +32,7 @@ const ROLE_ICON: Record<string, typeof Server> = {
  * Inferred on add; correcting a summary teaches the map (source flips to user
  * and survives re-profiling).
  */
-export function RepoMapView() {
+export function RepoMapView({ embedded = false }: { embedded?: boolean }) {
   const { repoProfiles, repoEdges } = useStore();
   const { t } = useTranslation();
   const reduce = useReducedMotion();
@@ -43,26 +43,8 @@ export function RepoMapView() {
     return (id: number) => m.get(id) ?? `repo ${id}`;
   }, [repoProfiles]);
 
-  return (
-    <section className="flex min-w-0 flex-1 flex-col bg-bg">
-      <header className="flex items-center gap-2.5 border-b border-border px-5 py-3">
-        <span className="grid h-6 w-6 place-items-center rounded-[var(--radius-sm)] bg-brand-ghost">
-          <Network size={14} className="text-brand" />
-        </span>
-        <h1 className="text-[16px] font-semibold tracking-tight text-ink">
-          {t("nav.repoMap")}
-        </h1>
-        {repoProfiles.length > 0 && (
-          <span className="rounded-full bg-raised px-2 py-0.5 text-[11px] tabular-nums text-ink-muted">
-            {repoProfiles.length}
-          </span>
-        )}
-        <span className="ml-auto text-[12px] text-ink-faint">
-          {t("repomap.subtitle")}
-        </span>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
+  const body = (
+    <div className="min-h-0 flex-1 overflow-y-auto">
         {repoProfiles.length === 0 ? (
           <EmptyMap />
         ) : (
@@ -91,7 +73,28 @@ export function RepoMapView() {
             })}
           </div>
         )}
-      </div>
+    </div>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <section className="flex min-w-0 flex-1 flex-col bg-bg">
+      <header className="flex items-center gap-2.5 border-b border-border px-5 py-3">
+        <span className="grid h-6 w-6 place-items-center rounded-[var(--radius-sm)] bg-brand-ghost">
+          <Network size={14} className="text-brand" />
+        </span>
+        <h1 className="text-[16px] font-semibold tracking-tight text-ink">
+          {t("nav.repoMap")}
+        </h1>
+        {repoProfiles.length > 0 && (
+          <span className="rounded-full bg-raised px-2 py-0.5 text-[11px] tabular-nums text-ink-muted">
+            {repoProfiles.length}
+          </span>
+        )}
+        <span className="ml-auto text-[12px] text-ink-faint">{t("repomap.subtitle")}</span>
+      </header>
+      {body}
     </section>
   );
 }

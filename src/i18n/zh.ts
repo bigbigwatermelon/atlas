@@ -31,6 +31,12 @@ export const zh = {
     darkTheme: "暗色主题",
   },
   workspace: {
+    tabOverview: "概览",
+    tabRepos: "仓库",
+    runningNow: "正在运行",
+    aTask: "任务",
+    noActivityTitle: "没有在运行的 agent",
+    noActivityBody: "打开一个会话并派发任务,这里会显示实时动态。",
     threadsInFlight_other: "{{count}} 个进行中的会话 · 点击进入",
     contendedRepos: "争用的仓库：",
     threadsCount: "{{count}} 个会话",

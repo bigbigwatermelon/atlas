@@ -31,8 +31,11 @@ export function WorkspaceNav() {
     selectWorkspace,
     backToWorkspace,
     openRepoMap,
-    showRepoMap,
+    homeTab,
+    activeThreadId,
+    showNeeds,
   } = useStore();
+  const onReposTab = activeThreadId == null && !showNeeds && homeTab === "repos";
   const [dlg, setDlg] = useState<null | "ws" | "repo" | "thread">(null);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
   const { t } = useTranslation();
@@ -62,7 +65,7 @@ export function WorkspaceNav() {
       <div
         className={cn(
           "group mx-2 mb-1 flex items-center rounded-[var(--radius-md)] transition-colors",
-          showRepoMap ? "bg-brand-ghost" : "hover:bg-brand-ghost",
+          onReposTab ? "bg-brand-ghost" : "hover:bg-brand-ghost",
         )}
       >
         <button
@@ -207,6 +210,8 @@ function ThreadRow({ thread }: { thread: Thread }) {
     selectThread,
     deleteThread,
     sessions,
+    needs,
+    asks,
   } = useStore();
   const { t } = useTranslation();
   const isActive = activeThreadId === thread.id;
@@ -216,6 +221,9 @@ function ThreadRow({ thread }: { thread: Thread }) {
       s.status === "running" &&
       directionsByThread[thread.id]?.some((d) => d.id === s.directionId),
   ).length;
+  const needsYou =
+    needs.some((n) => n.thread_id === thread.id) ||
+    asks.some((a) => a.thread === thread.id);
 
   return (
     <li className="group relative">
@@ -240,6 +248,12 @@ function ThreadRow({ thread }: { thread: Thread }) {
           </span>
         )}
         <span className="ml-auto flex items-center gap-1.5">
+          {needsYou && (
+            <span
+              title={t("nav.needsYou")}
+              className="h-1.5 w-1.5 rounded-full bg-waiting"
+            />
+          )}
           {dirCount != null && dirCount > 0 && (
             <span className="text-[10px] tabular-nums text-ink-faint">{dirCount}</span>
           )}

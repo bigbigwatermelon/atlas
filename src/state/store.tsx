@@ -93,7 +93,10 @@ interface Store {
   /** The curator's repo map: profiles + dependency edges. */
   repoProfiles: RepoProfile[];
   repoEdges: RepoEdge[];
-  showRepoMap: boolean;
+  /** Which workspace-home tab is active (Overview · Repos). */
+  homeTab: "overview" | "repos";
+  setHomeTab: (t: "overview" | "repos") => void;
+  /** Jump to the workspace home's Repos tab. */
   openRepoMap: () => void;
   refreshRepoMap: () => Promise<void>;
   reprofileRepo: (repoId: number) => Promise<void>;
@@ -175,7 +178,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [showNeeds, setShowNeeds] = useState(false);
   const [repoProfiles, setRepoProfiles] = useState<RepoProfile[]>([]);
   const [repoEdges, setRepoEdges] = useState<RepoEdge[]>([]);
-  const [showRepoMap, setShowRepoMap] = useState(false);
+  const [homeTab, setHomeTab] = useState<"overview" | "repos">("overview");
   const [proposal, setProposal] = useState<ResolvedProposal | null>(null);
   const [overview, setOverview] = useState<ThreadOverview[]>([]);
   // Lead dock: per-thread collapse memory; bus drawer; proposal-review state.
@@ -201,7 +204,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setActiveThreadId(null);
     setActiveSessionId(null);
     setShowNeeds(false);
-    setShowRepoMap(false);
+    setHomeTab("overview");
     setRepoProfiles([]);
     setRepoEdges([]);
     setProposal(null);
@@ -238,7 +241,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setActiveThreadId(threadId);
       setActiveSessionId(null);
       setShowNeeds(false);
-      setShowRepoMap(false);
+      setHomeTab("overview");
       setShowBus(false);
       setReviewingProposal(false);
       try {
@@ -269,7 +272,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setActiveThreadId(null);
     setActiveSessionId(null);
     setShowNeeds(false);
-    setShowRepoMap(false);
+    setHomeTab("overview");
   }, []);
 
   const createWorkspace = useCallback(
@@ -341,7 +344,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (focus) {
           setActiveSessionId(existing.info.session_id);
           setShowNeeds(false);
-          setShowRepoMap(false);
+          setHomeTab("overview");
         }
         return;
       }
@@ -363,7 +366,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (focus) {
         setActiveSessionId(info.session_id);
         setShowNeeds(false);
-        setShowRepoMap(false);
+        setHomeTab("overview");
       }
     },
     [activeThreadId],
@@ -547,7 +550,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const openNeeds = useCallback(() => {
     setActiveSessionId(null);
-    setShowRepoMap(false);
+    setHomeTab("overview");
     setShowNeeds(true);
   }, []);
 
@@ -567,9 +570,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [activeWorkspaceId]);
 
   const openRepoMap = useCallback(() => {
+    setActiveThreadId(null);
     setActiveSessionId(null);
     setShowNeeds(false);
-    setShowRepoMap(true);
+    setHomeTab("repos");
     void refreshRepoMap();
   }, [refreshRepoMap]);
 
@@ -847,7 +851,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     answerPermission,
     repoProfiles,
     repoEdges,
-    showRepoMap,
+    homeTab,
+    setHomeTab,
     openRepoMap,
     refreshRepoMap,
     reprofileRepo,

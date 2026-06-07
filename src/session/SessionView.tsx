@@ -29,7 +29,6 @@ export function SessionView() {
     backToBoard,
     repos,
     directionsByThread,
-    activeThreadId,
   } = useStore();
   const { t } = useTranslation();
   const active = activeSessionId != null ? sessions[activeSessionId] : null;
@@ -53,9 +52,8 @@ export function SessionView() {
   const repoName =
     repos.find((r) => r.id === active.repoId)?.name ?? "working copy";
   const dirName =
-    (activeThreadId != null ? directionsByThread[activeThreadId] : undefined)?.find(
-      (d) => d.id === active.directionId,
-    )?.name ?? "task";
+    directionsByThread[active.threadId]?.find((d) => d.id === active.directionId)?.name ??
+    "task";
 
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-bg">

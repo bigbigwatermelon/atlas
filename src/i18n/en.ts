@@ -32,6 +32,13 @@ export const en = {
     darkTheme: "Dark theme",
   },
   workspace: {
+    tabOverview: "Overview",
+    tabRepos: "Repos",
+    runningNow: "Running now",
+    aTask: "task",
+    noActivityTitle: "No agents working",
+    noActivityBody:
+      "Open a thread and dispatch a task; live agent activity shows up here.",
     threadsInFlight_one: "{{count}} thread in flight · click one to open it",
     threadsInFlight_other: "{{count}} threads in flight · click one to open it",
     contendedRepos: "Contended repos:",
