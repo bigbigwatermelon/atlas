@@ -55,7 +55,11 @@ pub fn router(bus: BusRegistry, db: Db, asks: AskRegistry) -> Router {
 
 /// How long weft holds a permission Ask before letting the tool fall back to its
 /// own prompt. Kept under the hook's own timeout so the fallback is clean.
-const ASK_WAIT: Duration = Duration::from_secs(50);
+// Hold the tool call until the human answers in Needs-you. Long by design
+// (automation-first): a permission decision is the human's to make, so we wait
+// rather than time out into the tool's own hidden TUI prompt. Falls back only if
+// truly abandoned. Kept just under the hook/curl ceilings in inject.rs.
+const ASK_WAIT: Duration = Duration::from_secs(3600);
 
 /// The Ask Bridge endpoint. A tool's permission hook POSTs its PreToolUse-style
 /// payload here and BLOCKS until the human answers in weft (→ allow/deny) or the

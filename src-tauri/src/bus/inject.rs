@@ -41,9 +41,11 @@ pub fn inject_ask_hook(base: &str, thread: i32, dir: &str, tool: &str, cwd: &Pat
     let script = cwd.join(".weft-ask-hook.sh");
     // Reads the PreToolUse JSON on stdin, asks weft, echoes weft's decision JSON
     // (empty on failure/timeout → the tool falls back to its own prompt).
+    // -m matches the server's ASK_WAIT: hold the call until the human answers in
+    // Needs-you rather than timing out into the tool's own hidden prompt.
     let body = format!(
         "#!/usr/bin/env bash\n\
-         resp=$(curl -s -m 55 -X POST '{url}' -H 'Content-Type: application/json' --data-binary @- 2>/dev/null)\n\
+         resp=$(curl -s -m 3600 -X POST '{url}' -H 'Content-Type: application/json' --data-binary @- 2>/dev/null)\n\
          [ -n \"$resp\" ] && printf '%s' \"$resp\"\n\
          exit 0\n"
     );
@@ -61,7 +63,7 @@ pub fn inject_ask_hook(base: &str, thread: i32, dir: &str, tool: &str, cwd: &Pat
                     { "matcher": "*", "hooks": [
                         { "type": "command",
                           "command": format!("bash {}", script.to_string_lossy()),
-                          "timeout": 58 }
+                          "timeout": 3650 }
                     ] }
                 ] }
             });

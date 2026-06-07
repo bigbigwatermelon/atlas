@@ -167,7 +167,7 @@ export function LeadDock() {
               transition={{ duration: 0.16 }}
               className="min-h-0 flex-1 p-1.5"
             >
-              <TerminalPanel sessionId={leadSession.info.session_id} mode="readonly" />
+              <TerminalPanel sessionId={leadSession.info.session_id} />
             </motion.div>
           )}
           <Composer />

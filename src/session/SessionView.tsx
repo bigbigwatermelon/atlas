@@ -90,14 +90,14 @@ export function SessionView() {
             <ViewTab active={view === "chat"} onClick={() => setView("chat")} title={t("lead.viewChat")}>
               <MessagesSquare size={13} />
             </ViewTab>
+            <ViewTab active={view === "terminal"} onClick={() => setView("terminal")} title={t("lead.viewTerminal")}>
+              <SquareTerminal size={13} />
+            </ViewTab>
             {!isLead && (
               <ViewTab active={view === "diff"} onClick={() => setView("diff")} title={t("diff.tab")}>
                 <GitCompare size={13} />
               </ViewTab>
             )}
-            <ViewTab active={view === "terminal"} onClick={() => setView("terminal")} title={t("lead.viewTerminal")}>
-              <SquareTerminal size={13} />
-            </ViewTab>
           </div>
           <StatusChip status={status as SessionStatus} />
           <Button

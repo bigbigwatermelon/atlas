@@ -1,9 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { listen } from "@tauri-apps/api/event";
-import { useTranslation } from "react-i18next";
-import { MousePointerClick, Lock } from "lucide-react";
 import { api } from "../lib/api";
 import "@xterm/xterm/css/xterm.css";
 
@@ -15,31 +13,16 @@ function b64ToBytes(b64: string): Uint8Array {
 }
 
 /**
- * Embeds a native CLI TUI for ONE session. Observe/drive are decoupled: the
- * terminal renders read-only by default (it never steals focus or keystrokes),
- * and you opt into interaction explicitly.
- *
- * - mode="interactive" (workers): read-only until you click "interact"; a small
- *   indicator lets you drop back to read-only.
- * - mode="readonly" (the lead): always read-only — the dock composer is the
- *   input, so the embedded TUI is purely a live view.
+ * The interactive drive surface for ONE session — the raw native TUI. Read-only
+ * "observe" is the Chat tab's job (the sidecar transcript), so this terminal is
+ * always live: it takes focus and forwards keystrokes directly.
  *
  * On mount it fits, resizes, and NUDGES a repaint (resize ±1 row) so a TUI that
- * only redraws on SIGWINCH paints its current frame even on remount.
+ * only redraws on SIGWINCH (Ink / Bubble Tea) paints its current frame even on
+ * remount.
  */
-export function TerminalPanel({
-  sessionId,
-  mode = "interactive",
-}: {
-  sessionId: number;
-  mode?: "interactive" | "readonly";
-}) {
+export function TerminalPanel({ sessionId }: { sessionId: number }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const drivingRef = useRef(false);
-  const [driving, setDriving] = useState(false);
-  const { t } = useTranslation();
-  const canDrive = mode === "interactive";
 
   useEffect(() => {
     const term = new Terminal({
@@ -52,20 +35,18 @@ export function TerminalPanel({
         cursor: "#8b7bff",
         selectionBackground: "#2c2747",
       },
-      cursorBlink: false,
-      disableStdin: true, // observe by default; enabled on "interact"
+      cursorBlink: true,
       scrollback: 8000,
       allowProposedApi: true,
     });
-    termRef.current = term;
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(hostRef.current!);
     fit.fit();
+    term.focus();
 
-    // Keystrokes only forward while driving.
     const dataSub = term.onData((data) => {
-      if (drivingRef.current) void api.writePty(sessionId, data);
+      void api.writePty(sessionId, data);
     });
 
     const pushResize = () => {
@@ -76,8 +57,8 @@ export function TerminalPanel({
         /* not ready */
       }
     };
-    // Force a repaint: a TUI that only redraws on SIGWINCH (Ink / Bubble Tea)
-    // paints a blank/stale frame after spawn-resize or remount otherwise.
+    // Force a repaint: a TUI that only redraws on SIGWINCH paints a blank/stale
+    // frame after spawn-resize or remount otherwise.
     const nudge = () => {
       try {
         fit.fit();
@@ -113,47 +94,8 @@ export function TerminalPanel({
       ro.disconnect();
       void unOut.then((f) => f());
       term.dispose();
-      termRef.current = null;
     };
   }, [sessionId]);
 
-  function setDrive(on: boolean) {
-    drivingRef.current = on;
-    setDriving(on);
-    const term = termRef.current;
-    if (!term) return;
-    term.options.disableStdin = !on;
-    term.options.cursorBlink = on;
-    if (on) term.focus();
-    else term.blur();
-  }
-
-  return (
-    <div className="relative h-full">
-      <div ref={hostRef} className="term-host h-full" />
-
-      {canDrive && !driving && (
-        <button
-          onClick={() => setDrive(true)}
-          className="group absolute inset-0 z-10 flex items-end justify-center bg-transparent pb-4 transition-colors hover:bg-[oklch(0.16_0.02_285/0.12)]"
-        >
-          <span className="flex items-center gap-1.5 rounded-full border border-border-strong bg-raised/90 px-3 py-1.5 text-[11px] font-medium text-ink-muted shadow-[0_4px_16px_-6px_rgba(0,0,0,0.6)] backdrop-blur transition-colors group-hover:text-ink">
-            <MousePointerClick size={12} />
-            {t("session.clickToInteract")}
-          </span>
-        </button>
-      )}
-
-      {canDrive && driving && (
-        <button
-          onClick={() => setDrive(false)}
-          title={t("session.backToReadonly")}
-          className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-raised/90 px-2 py-1 text-[10px] font-medium text-running backdrop-blur transition-colors hover:text-ink"
-        >
-          <Lock size={10} />
-          {t("session.interacting")}
-        </button>
-      )}
-    </div>
-  );
+  return <div ref={hostRef} className="term-host h-full" />;
 }
