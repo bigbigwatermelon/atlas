@@ -7,10 +7,12 @@ import {
   Check,
   ChevronDown,
   FolderGit2,
+  FolderPlus,
   LayoutGrid,
   Moon,
   PanelLeftClose,
   Plus,
+  SquarePen,
   Sun,
   Trash2,
 } from "lucide-react";
@@ -78,6 +80,28 @@ export function WorkspaceNav() {
 
       <div className="mx-2 mb-1 border-t border-border" />
 
+      {/* primary actions */}
+      <div className="flex flex-col gap-0.5 px-2 py-1">
+        <button
+          onClick={() => setDlg("thread")}
+          disabled={!active}
+          className="flex items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-[13px] font-medium text-ink transition-colors hover:bg-brand-ghost disabled:opacity-40"
+        >
+          <SquarePen size={14} className="text-brand" />
+          {t("nav.newThread")}
+        </button>
+        <button
+          onClick={() => setDlg("repo")}
+          disabled={!active}
+          className="flex items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-[13px] text-ink-muted transition-colors hover:bg-brand-ghost hover:text-ink disabled:opacity-40"
+        >
+          <FolderPlus size={14} className="text-ink-faint" />
+          {t("dialog.addRepo")}
+        </button>
+      </div>
+
+      <div className="mx-2 my-1 border-t border-border" />
+
       {/* workspace views — the home tabs, moved into the rail (Linear-style) */}
       <ul className="flex flex-col gap-0.5 px-2 py-1">
         <WsNavItem
@@ -107,25 +131,15 @@ export function WorkspaceNav() {
             backToWorkspace();
             setHomeTab("repos");
           }}
-          onAdd={active ? () => setDlg("repo") : undefined}
-          addLabel={t("dialog.addRepo")}
         />
       </ul>
 
       <div className="mx-2 my-1 border-t border-border" />
 
-      <div className="flex items-center justify-between px-3 py-1.5">
+      <div className="px-3 py-1.5">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
           {t("nav.threads")}
         </span>
-        <button
-          onClick={() => setDlg("thread")}
-          disabled={!active}
-          aria-label={t("nav.newThread")}
-          className="grid h-5 w-5 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink disabled:opacity-40"
-        >
-          <Plus size={14} />
-        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
