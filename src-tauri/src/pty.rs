@@ -117,6 +117,8 @@ fn spawn(
     // permission bypass — per-action approvals still surface via the Ask Bridge.
     if tool == "claude" {
         crate::claude::ensure_trusted(cwd);
+    } else if tool == "codex" {
+        crate::codex::ensure_codex_trusted(cwd);
     }
 
     let driver = crate::drivers::driver_for(tool);

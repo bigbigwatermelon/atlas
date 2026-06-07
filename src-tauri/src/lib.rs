@@ -17,6 +17,7 @@ mod brief;
 pub mod bus;
 mod check;
 mod claude;
+mod codex;
 mod coordinator;
 mod curator;
 mod drivers;

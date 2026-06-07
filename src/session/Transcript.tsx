@@ -6,12 +6,13 @@ import type { NormEvent } from "../lib/types";
 import { cn } from "../lib/cn";
 
 /**
- * Observe-mode chat: renders the lead's transcript from its sidecar (the tool's
- * own jsonl), normalized to messages + tool calls. App-native React, so it
- * always renders correctly, reflows, and costs nothing close to a live TUI.
- * Polls while mounted; the PTY keeps running underneath regardless.
+ * Observe-mode chat for any agent (lead or worker): renders the session's
+ * transcript from its sidecar (the tool's own jsonl), normalized to messages +
+ * tool calls. App-native React, so it always renders correctly, reflows, and
+ * costs nothing close to a live TUI. Polls while mounted; the PTY keeps running
+ * underneath regardless.
  */
-export function LeadTranscript({ cwd, tool }: { cwd: string; tool: string }) {
+export function Transcript({ cwd, tool }: { cwd: string; tool: string }) {
   const { t } = useTranslation();
   const [events, setEvents] = useState<NormEvent[]>([]);
   const [loaded, setLoaded] = useState(false);

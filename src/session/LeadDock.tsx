@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useStore } from "../state/store";
 import { TerminalPanel } from "../panels/TerminalPanel";
-import { LeadTranscript } from "./LeadTranscript";
+import { Transcript } from "./Transcript";
 import { ToolIcon } from "../components/ToolIcon";
 import { Button } from "../components/ui/Button";
 import { cn } from "../lib/cn";
@@ -154,7 +154,7 @@ export function LeadDock() {
             )}
           </AnimatePresence>
           {view === "chat" ? (
-            <LeadTranscript
+            <Transcript
               cwd={leadSession.info.worktree}
               tool={leadSession.info.tool}
             />

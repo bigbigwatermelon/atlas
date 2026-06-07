@@ -1,13 +1,22 @@
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, RotateCcw, Square } from "lucide-react";
+import {
+  ArrowLeft,
+  MessagesSquare,
+  RotateCcw,
+  Square,
+  SquareTerminal,
+} from "lucide-react";
 import { useStore } from "../state/store";
 import type { SessionStatus } from "../lib/types";
 import { TerminalPanel } from "../panels/TerminalPanel";
+import { Transcript } from "./Transcript";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
 import { Inspect } from "../components/Inspect";
 import { ToolIcon } from "../components/ToolIcon";
+import { cn } from "../lib/cn";
 
 export function SessionView() {
   const {
@@ -22,6 +31,15 @@ export function SessionView() {
   } = useStore();
   const { t } = useTranslation();
   const active = activeSessionId != null ? sessions[activeSessionId] : null;
+  const tool = active?.info.tool;
+  // Observe by default (chat) for tools we can transcript; others open in the
+  // raw terminal until their sidecar parser lands.
+  const [view, setView] = useState<"chat" | "terminal">(
+    tool === "claude" || tool === "codex" ? "chat" : "terminal",
+  );
+  useEffect(() => {
+    setView(tool === "claude" || tool === "codex" ? "chat" : "terminal");
+  }, [active?.info.session_id, tool]);
 
   if (!active) return null;
 
@@ -67,6 +85,14 @@ export function SessionView() {
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center rounded-[var(--radius-md)] bg-bg p-0.5">
+            <ViewTab active={view === "chat"} onClick={() => setView("chat")} title={t("lead.viewChat")}>
+              <MessagesSquare size={13} />
+            </ViewTab>
+            <ViewTab active={view === "terminal"} onClick={() => setView("terminal")} title={t("lead.viewTerminal")}>
+              <SquareTerminal size={13} />
+            </ViewTab>
+          </div>
           <StatusChip status={status as SessionStatus} />
           <Button
             size="sm"
@@ -95,17 +121,50 @@ export function SessionView() {
         </div>
       </header>
 
-      {/* embedded native TUI — keyed so each session gets a fresh terminal */}
-      <motion.div
-        key={info.session_id}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.16 }}
-        className="min-h-0 flex-1 p-1.5"
-      >
-        <TerminalPanel sessionId={info.session_id} />
-      </motion.div>
+      {view === "chat" ? (
+        <Transcript cwd={info.worktree} tool={info.tool} />
+      ) : (
+        /* embedded native TUI — keyed so each session gets a fresh terminal */
+        <motion.div
+          key={info.session_id}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.16 }}
+          className="min-h-0 flex-1 p-1.5"
+        >
+          <TerminalPanel sessionId={info.session_id} />
+        </motion.div>
+      )}
     </section>
+  );
+}
+
+function ViewTab({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+      className={cn(
+        "grid h-6 w-7 place-items-center rounded-[var(--radius-sm)] transition-colors",
+        active
+          ? "bg-raised text-ink shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
+          : "text-ink-faint hover:text-ink-muted",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

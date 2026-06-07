@@ -2,11 +2,13 @@
 //! app-native events (NormEvent) for the observe-mode chat view — so the common
 //! "watch the agent" case never depends on rendering a live TUI in xterm.
 //!
-//! Phase 2 covers Claude (the lead is always Claude): tail the session jsonl
-//! under ~/.claude/projects/<encoded-cwd>/. Codex (rollout jsonl) and OpenCode
-//! (SQLite / SSE) come next behind the same NormEvent shape.
+//! Claude: jsonl under ~/.claude/projects/<encoded-cwd>/.
+//! Codex: rollout jsonl under ~/.codex/sessions/<date>/, located by matching the
+//! session_meta cwd. OpenCode (messages live in a WAL-locked SQLite db) is not
+//! transcripted yet — those workers fall back to the raw terminal view.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// A normalized, tool-agnostic transcript event for the chat view.
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
@@ -23,7 +25,18 @@ pub enum NormEvent {
 pub fn read_transcript(cwd: &Path, tool: &str) -> Vec<NormEvent> {
     match tool {
         "claude" => read_claude(cwd).unwrap_or_default(),
-        _ => Vec::new(), // codex / opencode: later
+        "codex" => read_codex(cwd).unwrap_or_default(),
+        _ => Vec::new(), // opencode: SQLite-backed, falls back to terminal view
+    }
+}
+
+/// One-line, truncated summary string for a tool call.
+fn truncate(s: &str) -> String {
+    let line = s.lines().next().unwrap_or("");
+    if line.chars().count() > 80 {
+        line.chars().take(80).collect::<String>() + "…"
+    } else {
+        line.to_string()
     }
 }
 
@@ -67,18 +80,14 @@ fn is_seed(text: &str) -> bool {
 
 fn summarize_tool(_name: &str, input: Option<&serde_json::Value>) -> String {
     let s = |k: &str| input.and_then(|i| i.get(k)).and_then(|v| v.as_str());
-    let pick = s("command")
-        .or_else(|| s("file_path"))
-        .or_else(|| s("filePath"))
-        .or_else(|| s("path"))
-        .or_else(|| s("pattern"))
-        .unwrap_or("");
-    let pick = pick.lines().next().unwrap_or("");
-    if pick.chars().count() > 80 {
-        pick.chars().take(80).collect::<String>() + "…"
-    } else {
-        pick.to_string()
-    }
+    truncate(
+        s("command")
+            .or_else(|| s("file_path"))
+            .or_else(|| s("filePath"))
+            .or_else(|| s("path"))
+            .or_else(|| s("pattern"))
+            .unwrap_or(""),
+    )
 }
 
 fn parse_claude_line(v: &serde_json::Value, out: &mut Vec<NormEvent>) {
@@ -139,6 +148,117 @@ fn parse_claude_line(v: &serde_json::Value, out: &mut Vec<NormEvent>) {
     }
 }
 
+// ---- Codex (rollout jsonl, located by session_meta cwd) ----
+
+fn collect_jsonl(dir: &Path, out: &mut Vec<(SystemTime, PathBuf)>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            collect_jsonl(&p, out);
+        } else if p.extension().and_then(|x| x.to_str()) == Some("jsonl") {
+            if let Ok(mt) = std::fs::metadata(&p).and_then(|m| m.modified()) {
+                out.push((mt, p));
+            }
+        }
+    }
+}
+
+fn read_codex(cwd: &Path) -> Option<Vec<NormEvent>> {
+    let home = std::env::var("HOME").ok()?;
+    let root = PathBuf::from(home).join(".codex").join("sessions");
+    let canon = std::fs::canonicalize(cwd)
+        .ok()
+        .map(|c| c.to_string_lossy().to_string());
+    let raw = cwd.to_string_lossy().to_string();
+
+    let mut files: Vec<(SystemTime, PathBuf)> = Vec::new();
+    collect_jsonl(&root, &mut files);
+    files.sort_by(|a, b| b.0.cmp(&a.0)); // newest first
+
+    for (_, path) in files {
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        // The first line is session_meta; match its cwd to ours.
+        let first = content.lines().next().unwrap_or("");
+        let meta: serde_json::Value = match serde_json::from_str(first) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let mcwd = meta.pointer("/payload/cwd").and_then(|c| c.as_str()).unwrap_or("");
+        if mcwd != raw && Some(mcwd.to_string()) != canon {
+            continue;
+        }
+        let mut out = Vec::new();
+        for line in content.lines() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                parse_codex_line(&v, &mut out);
+            }
+        }
+        return Some(out);
+    }
+    None
+}
+
+fn codex_call_summary(arguments: Option<&serde_json::Value>) -> String {
+    let s = arguments.and_then(|a| a.as_str()).unwrap_or("");
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
+        let pick = match v.get("cmd").or_else(|| v.get("command")) {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            Some(serde_json::Value::Array(a)) => a
+                .iter()
+                .filter_map(|x| x.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
+            _ => v
+                .get("path")
+                .or_else(|| v.get("workdir"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+        };
+        return truncate(&pick);
+    }
+    truncate(s)
+}
+
+fn parse_codex_line(v: &serde_json::Value, out: &mut Vec<NormEvent>) {
+    if v.get("type").and_then(|t| t.as_str()) != Some("response_item") {
+        return; // session_meta / event_msg (UI mirror) — skip
+    }
+    let ts = v.get("timestamp").and_then(|t| t.as_str()).unwrap_or("").to_string();
+    let Some(p) = v.get("payload") else { return };
+    match p.get("type").and_then(|t| t.as_str()) {
+        Some("message") => {
+            let role = p.get("role").and_then(|r| r.as_str()).unwrap_or("assistant").to_string();
+            let mut text = String::new();
+            if let Some(arr) = p.get("content").and_then(|c| c.as_array()) {
+                for b in arr {
+                    if let Some(t) = b.get("text").and_then(|t| t.as_str()) {
+                        text.push_str(t);
+                    }
+                }
+            }
+            let text = text.trim();
+            if !text.is_empty() && !(role == "user" && is_seed(text)) {
+                out.push(NormEvent::Message { role, text: text.to_string(), ts });
+            }
+        }
+        Some("function_call") => {
+            let name = p.get("name").and_then(|n| n.as_str()).unwrap_or("tool").to_string();
+            out.push(NormEvent::Tool {
+                name,
+                summary: codex_call_summary(p.get("arguments")),
+                ts,
+            });
+        }
+        _ => {} // function_call_output / reasoning / etc.
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,6 +292,45 @@ mod tests {
                 NormEvent::Message { role: "user".into(), text: "add a discount field".into(), ts: "t1".into() },
                 NormEvent::Tool { name: "Bash".into(), summary: "ls -la /very/long/path/that/keeps/going".into(), ts: "t2".into() },
                 NormEvent::Message { role: "assistant".into(), text: "On it.".into(), ts: "t2".into() },
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_codex_messages_and_calls() {
+        let mut out = Vec::new();
+        // session_meta -> skipped
+        parse_codex_line(
+            &serde_json::json!({"type":"session_meta","payload":{"cwd":"/x"}}),
+            &mut out,
+        );
+        // event_msg mirror -> skipped (we parse response_item only, no dupes)
+        parse_codex_line(
+            &serde_json::json!({"type":"event_msg","payload":{"type":"user_message","message":"hi"}}),
+            &mut out,
+        );
+        // user message
+        parse_codex_line(
+            &serde_json::json!({"type":"response_item","timestamp":"t1",
+                "payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"add a field"}]}}),
+            &mut out,
+        );
+        // function call with arguments as a JSON string
+        parse_codex_line(
+            &serde_json::json!({"type":"response_item","timestamp":"t2",
+                "payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"git status\"}"}}),
+            &mut out,
+        );
+        // tool output -> skipped
+        parse_codex_line(
+            &serde_json::json!({"type":"response_item","payload":{"type":"function_call_output","output":"x"}}),
+            &mut out,
+        );
+        assert_eq!(
+            out,
+            vec![
+                NormEvent::Message { role: "user".into(), text: "add a field".into(), ts: "t1".into() },
+                NormEvent::Tool { name: "exec_command".into(), summary: "git status".into(), ts: "t2".into() },
             ]
         );
     }
