@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import { ChevronRight, Moon, PanelLeftClose, Plus, Sun, Trash2 } from "lucide-react";
+import * as DM from "@radix-ui/react-dropdown-menu";
+import { Check, ChevronDown, Moon, PanelLeftClose, Plus, Sun, Trash2 } from "lucide-react";
 import { useStore } from "../state/store";
 import { useTheme } from "../state/theme";
 import { setLang } from "../i18n";
@@ -51,7 +52,7 @@ export function WorkspaceNav() {
           onClick={() => setNavCollapsed(true)}
           aria-label={t("nav.collapseSidebar")}
           title={t("nav.collapseSidebar")}
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-[var(--radius-md)] text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
+          className="ml-auto grid h-6 w-6 shrink-0 place-items-center rounded-[var(--radius-md)] text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
         >
           <PanelLeftClose size={15} />
         </button>
@@ -217,59 +218,51 @@ function WorkspacePicker({
   const active = workspaces.find((w) => w.id === activeId);
   const { t } = useTranslation();
   return (
-    <details className="group relative flex-1">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[13px] font-medium text-ink hover:bg-brand-ghost">
-        <span className="truncate">{active?.name ?? t("nav.noWorkspace")}</span>
-        <span className="flex items-center gap-1.5">
-          {otherNeeds && (
-            <span
-              title={t("nav.otherWorkspaceNeeds")}
-              className="h-1.5 w-1.5 rounded-full bg-waiting"
-            />
-          )}
-          <ChevronRight
-            size={13}
-            className="text-ink-faint transition-transform group-open:rotate-90"
-          />
-        </span>
-      </summary>
-      <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-[var(--radius-md)] border border-border bg-raised p-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)]">
-        {workspaces.map((w) => {
-          const count = needsByWorkspace[w.id] ?? 0;
-          return (
-            <button
-              key={w.id}
-              onClick={(ev) => {
-                onSelect(w.id);
-                (ev.currentTarget.closest("details") as HTMLDetailsElement).open = false;
-              }}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-[13px]",
-                w.id === activeId
-                  ? "bg-brand-ghost text-ink"
-                  : "text-ink-muted hover:bg-brand-ghost hover:text-ink",
-              )}
-            >
-              <span className="truncate">{w.name}</span>
-              {count > 0 && (
-                <span className="ml-auto rounded-full bg-waiting/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-waiting">
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-        <div className="my-1 border-t border-border" />
-        <button
-          onClick={(ev) => {
-            onNew();
-            (ev.currentTarget.closest("details") as HTMLDetailsElement).open = false;
-          }}
-          className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-[13px] text-ink-muted hover:bg-brand-ghost hover:text-ink"
+    <DM.Root>
+      <DM.Trigger className="flex min-w-0 items-center gap-1 rounded-[var(--radius-md)] px-1.5 py-1 text-[13px] font-medium text-ink outline-none transition-colors hover:bg-brand-ghost data-[state=open]:bg-brand-ghost">
+        <span className="max-w-[150px] truncate">{active?.name ?? t("nav.noWorkspace")}</span>
+        {otherNeeds && (
+          <span title={t("nav.otherWorkspaceNeeds")} className="h-1.5 w-1.5 shrink-0 rounded-full bg-waiting" />
+        )}
+        <ChevronDown size={13} className="shrink-0 text-ink-faint" />
+      </DM.Trigger>
+      <DM.Portal>
+        <DM.Content
+          align="start"
+          sideOffset={5}
+          className="weft-pop z-[60] w-56 rounded-[var(--radius-md)] border border-border bg-raised p-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)]"
         >
-          <Plus size={13} /> {t("nav.newWorkspace")}
-        </button>
-      </div>
-    </details>
+          {workspaces.map((w) => {
+            const count = needsByWorkspace[w.id] ?? 0;
+            const isActive = w.id === activeId;
+            return (
+              <DM.Item
+                key={w.id}
+                onSelect={() => onSelect(w.id)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink",
+                  isActive ? "text-ink" : "text-ink-muted",
+                )}
+              >
+                <Check size={13} className={cn("shrink-0", isActive ? "text-brand" : "text-transparent")} />
+                <span className="truncate">{w.name}</span>
+                {count > 0 && (
+                  <span className="ml-auto rounded-full bg-waiting/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-waiting">
+                    {count}
+                  </span>
+                )}
+              </DM.Item>
+            );
+          })}
+          <DM.Separator className="my-1 h-px bg-border" />
+          <DM.Item
+            onSelect={onNew}
+            className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] text-ink-muted outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink"
+          >
+            <Plus size={13} /> {t("nav.newWorkspace")}
+          </DM.Item>
+        </DM.Content>
+      </DM.Portal>
+    </DM.Root>
   );
 }
