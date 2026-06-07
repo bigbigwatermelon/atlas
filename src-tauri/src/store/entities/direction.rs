@@ -10,6 +10,10 @@ pub struct Model {
     pub slug: String,
     pub tool: String,
     pub branch: String,
+    /// Agent/human-driven lifecycle: queued | working | review | done.
+    /// Reversible; weft never forces it (an open ask overlays Needs-you in the UI).
+    #[sea_orm(default_value = "queued")]
+    pub status: String,
     pub created_at: String,
 }
 

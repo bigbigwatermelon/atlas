@@ -113,6 +113,8 @@ interface Store {
 
   openSession: (directionId: number, repoId: number) => Promise<void>;
   planWithLead: () => Promise<void>;
+  /** Set a task's lifecycle status (human override). */
+  setTaskStatus: (directionId: number, status: string) => Promise<void>;
   /** Quality loop: executable-check results + in-flight set, per direction. */
   checksByDirection: Record<number, RepoChecks[]>;
   checkingDirections: Record<number, boolean>;
@@ -375,6 +377,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setShowNeeds(false);
     setShowRepoMap(false);
   }, [activeThreadId]);
+
+  const setTaskStatus = useCallback(async (directionId: number, status: string) => {
+    // optimistic: flip the card now, then persist
+    setDirections((m) => {
+      const next: Record<number, Direction[]> = {};
+      for (const [tid, list] of Object.entries(m)) {
+        next[Number(tid)] = list.map((d) =>
+          d.id === directionId ? { ...d, status } : d,
+        );
+      }
+      return next;
+    });
+    try {
+      await api.setTaskStatus(directionId, status);
+    } catch {
+      /* reverts on next poll */
+    }
+  }, []);
 
   const verifyDirection = useCallback(async (directionId: number) => {
     setCheckingDirections((m) => ({ ...m, [directionId]: true }));
@@ -696,6 +716,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch {
         /* bus may not be ready */
       }
+      // reflect agent-driven status changes (set via the bus MCP tool)
+      try {
+        const dirs = await api.listDirections(activeThreadId);
+        if (alive) setDirections((m) => ({ ...m, [activeThreadId]: dirs }));
+      } catch {
+        /* ignore */
+      }
     };
     void tick();
     const h = setInterval(tick, 1500);
@@ -754,6 +781,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteThread,
     openSession,
     planWithLead,
+    setTaskStatus,
     checksByDirection,
     checkingDirections,
     verifyDirection,

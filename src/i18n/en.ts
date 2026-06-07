@@ -69,7 +69,9 @@ export const en = {
     colRunning: "In progress",
     colNeeds: "Needs you",
     colReview: "Review",
+    colDone: "Done",
     colEmpty: "—",
+    setStatus: "Set status",
   },
   scope: {
     proposedFor: "Proposed plan for {{title}}",

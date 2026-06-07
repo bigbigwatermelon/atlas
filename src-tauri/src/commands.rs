@@ -227,6 +227,13 @@ pub async fn create_direction(
     Ok(dir)
 }
 
+/// Set a task's lifecycle status (human override; the agent does this via the
+/// bus tool). queued | working | review | done — freely reversible.
+#[tauri::command]
+pub async fn set_task_status(db: State<'_, Db>, direction_id: i32, status: String) -> R<()> {
+    repo::set_direction_status(&db, direction_id, &status).await.map_err(e)
+}
+
 #[tauri::command]
 pub async fn list_worktrees(db: State<'_, Db>, direction_id: Option<i32>) -> R<Vec<entities::worktree::Model>> {
     repo::list_worktrees(&db, direction_id).await.map_err(e)

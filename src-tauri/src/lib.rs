@@ -88,6 +88,7 @@ pub fn run() {
             commands::reprofile_repo,
             commands::update_repo_profile,
             commands::list_directions,
+            commands::set_task_status,
             commands::get_proposal,
             commands::save_proposal,
             commands::confirm_proposal,

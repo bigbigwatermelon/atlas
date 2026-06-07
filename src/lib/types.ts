@@ -38,6 +38,8 @@ export interface Direction {
   slug: string;
   tool: string;
   branch: string;
+  /** agent/human-driven lifecycle: queued | working | review | done. */
+  status: string;
   created_at: string;
 }
 

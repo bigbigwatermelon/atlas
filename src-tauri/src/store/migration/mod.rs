@@ -13,6 +13,7 @@ impl MigratorTrait for Migrator {
             Box::new(M0001Init),
             Box::new(M0002RepoProfile),
             Box::new(M0003Plan),
+            Box::new(M0004DirectionStatus),
         ]
     }
 }
@@ -111,5 +112,52 @@ impl MigrationTrait for M0003Plan {
             .drop_table(Table::drop().table(Alias::new("plan")).to_owned())
             .await?;
         Ok(())
+    }
+}
+
+/// Adds the agent/human-driven status column to directions (§4.6).
+pub struct M0004DirectionStatus;
+
+impl MigrationName for M0004DirectionStatus {
+    fn name(&self) -> &str {
+        "m0004_direction_status"
+    }
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for M0004DirectionStatus {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // M0001 reflects the current entity, so a FRESH db already has `status`;
+        // this migration only matters for dbs created before the column existed.
+        // sqlite has no ADD COLUMN IF NOT EXISTS, so tolerate the duplicate.
+        let r = manager
+            .alter_table(
+                Table::alter()
+                    .table(Alias::new("direction"))
+                    .add_column(
+                        ColumnDef::new(Alias::new("status"))
+                            .string()
+                            .not_null()
+                            .default("queued"),
+                    )
+                    .to_owned(),
+            )
+            .await;
+        match r {
+            Ok(()) => Ok(()),
+            Err(e) if e.to_string().to_lowercase().contains("duplicate column") => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Alias::new("direction"))
+                    .drop_column(Alias::new("status"))
+                    .to_owned(),
+            )
+            .await
     }
 }

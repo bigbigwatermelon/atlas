@@ -51,6 +51,8 @@ export const api = {
 
   listDirections: (threadId: number) =>
     invoke<Direction[]>("list_directions", { threadId }),
+  setTaskStatus: (directionId: number, status: string) =>
+    invoke<void>("set_task_status", { directionId, status }),
 
   // Planner: the lead's proposed Task → scope decomposition (§4.10, §5.1).
   getProposal: (threadId: number) =>

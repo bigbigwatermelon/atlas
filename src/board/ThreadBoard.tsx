@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
+import * as DM from "@radix-ui/react-dropdown-menu";
 import {
   ArrowRight,
   Bell,
   Check,
+  ChevronDown,
   CircleCheck,
   Layers,
   Plus,
@@ -29,15 +31,20 @@ const TOOL_LABEL: Record<string, string> = {
   opencode: "OpenCode",
 };
 
-/** Lifecycle status of a task, derived from live state (§4.6). */
-type TaskState = "queued" | "running" | "needs" | "review";
+/** Task lifecycle column. "needs" is a weft overlay (an open ask / failing
+ *  check); the rest are the agent/human-set stored status (§4.6). */
+type TaskState = "queued" | "working" | "needs" | "review" | "done";
 
 const COLUMNS: { key: TaskState; label: string; dot: string }[] = [
   { key: "queued", label: "thread.colQueued", dot: "bg-idle" },
-  { key: "running", label: "thread.colRunning", dot: "bg-running" },
+  { key: "working", label: "thread.colRunning", dot: "bg-running" },
   { key: "needs", label: "thread.colNeeds", dot: "bg-waiting" },
   { key: "review", label: "thread.colReview", dot: "bg-brand" },
+  { key: "done", label: "thread.colDone", dot: "bg-accent" },
 ];
+
+/** Statuses a human can set from a card (the "needs" lane is weft-owned). */
+const SETTABLE: TaskState[] = ["queued", "working", "review", "done"];
 
 export function ThreadBoard() {
   const {
@@ -46,7 +53,6 @@ export function ThreadBoard() {
     directionsByThread,
     repos,
     proposal,
-    sessions,
     needs,
     asks,
     checksByDirection,
@@ -58,16 +64,18 @@ export function ThreadBoard() {
   const dirs = directionsByThread[thread.id] ?? [];
   const proposing = proposal?.status === "proposed";
 
-  const statusOf = (dirId: number): TaskState => {
-    const sess = Object.values(sessions).find((s) => s.directionId === dirId);
+  // Column = the stored, agent/human-set status; an open ask/need or a failing
+  // check overlays the task into Needs-you (the exception lane weft owns).
+  const statusOf = (d: Direction): TaskState => {
     const need =
-      needs.some((n) => n.direction_id === dirId) ||
-      asks.some((a) => a.dir === String(dirId));
-    const checks = checksByDirection[dirId];
-    const failing = (checks ?? []).some((rc) => rc.checks.some((c) => c.status === "fail"));
+      needs.some((n) => n.direction_id === d.id) ||
+      asks.some((a) => a.dir === String(d.id));
+    const failing = (checksByDirection[d.id] ?? []).some((rc) =>
+      rc.checks.some((c) => c.status === "fail"),
+    );
     if (need || failing) return "needs";
-    if (sess && (sess.status === "running" || sess.status === "starting")) return "running";
-    if (sess?.status === "exited" || (checks && checks.length > 0)) return "review";
+    const s = d.status;
+    if (s === "working" || s === "review" || s === "done") return s;
     return "queued";
   };
 
@@ -108,7 +116,7 @@ export function ThreadBoard() {
           ) : (
             <div className="flex h-full min-w-fit gap-3 px-5 py-4">
               {COLUMNS.map((col) => {
-                const cards = dirs.filter((d) => statusOf(d.id) === col.key);
+                const cards = dirs.filter((d) => statusOf(d) === col.key);
                 return (
                   <div key={col.key} className="flex w-[300px] shrink-0 flex-col gap-2">
                     <div className="flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
@@ -199,10 +207,13 @@ function DirectionCard({ direction }: { direction: Direction }) {
             <CircleCheck size={12} className={checking ? "animate-pulse" : ""} />
           </button>
         )}
-        <span className="ml-auto flex items-center gap-1.5 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
-          <ToolIcon tool={direction.tool} size={12} />
-          {TOOL_LABEL[direction.tool] ?? direction.tool}
-        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <TaskStatusMenu direction={direction} />
+          <span className="flex items-center gap-1.5 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
+            <ToolIcon tool={direction.tool} size={12} />
+            {TOOL_LABEL[direction.tool] ?? direction.tool}
+          </span>
+        </div>
       </div>
 
       {/* write repos — openable session slots. Each is an isolated working copy;
@@ -295,6 +306,51 @@ function ChecksRow({ rc }: { rc: RepoChecks }) {
         );
       })}
     </div>
+  );
+}
+
+function TaskStatusMenu({ direction }: { direction: Direction }) {
+  const { setTaskStatus } = useStore();
+  const { t } = useTranslation();
+  const label: Record<string, string> = {
+    queued: t("thread.colQueued"),
+    working: t("thread.colRunning"),
+    review: t("thread.colReview"),
+    done: t("thread.colDone"),
+  };
+  return (
+    <DM.Root>
+      <DM.Trigger
+        aria-label={t("thread.setStatus")}
+        title={t("thread.setStatus")}
+        onClick={(e) => e.stopPropagation()}
+        className="flex items-center gap-0.5 rounded-full bg-bg px-1.5 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
+      >
+        {label[direction.status] ?? label.queued}
+        <ChevronDown size={10} />
+      </DM.Trigger>
+      <DM.Portal>
+        <DM.Content
+          align="end"
+          sideOffset={4}
+          onClick={(e) => e.stopPropagation()}
+          className="weft-pop z-[60] w-32 rounded-[var(--radius-md)] border border-border bg-raised p-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]"
+        >
+          {SETTABLE.map((s) => (
+            <DM.Item
+              key={s}
+              onSelect={() => void setTaskStatus(direction.id, s)}
+              className={cn(
+                "cursor-pointer rounded-[var(--radius-sm)] px-2 py-1.5 text-[12px] outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink",
+                direction.status === s ? "text-ink" : "text-ink-muted",
+              )}
+            >
+              {label[s]}
+            </DM.Item>
+          ))}
+        </DM.Content>
+      </DM.Portal>
+    </DM.Root>
   );
 }
 

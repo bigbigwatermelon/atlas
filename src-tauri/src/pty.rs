@@ -307,6 +307,8 @@ async fn open_session_impl(
     let active = spawn(&app, &dir.tool, direction_id, &args, &cwd, None, sess.id, db.clone())
         .context("spawn agent")?;
     state.sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(sess.id, active);
+    // Dispatch moves the task into "working"; the agent advances it from there.
+    let _ = repo::set_direction_status(db, direction_id, "working").await;
 
     Ok(SessionInfo {
         session_id: sess.id,

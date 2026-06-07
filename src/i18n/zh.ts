@@ -65,7 +65,9 @@ export const zh = {
     colRunning: "进行中",
     colNeeds: "需要你",
     colReview: "待审阅",
+    colDone: "已完成",
     colEmpty: "—",
+    setStatus: "设置状态",
   },
   scope: {
     proposedFor: "「{{title}}」的建议方案",

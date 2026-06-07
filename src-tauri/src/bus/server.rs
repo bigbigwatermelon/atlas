@@ -144,6 +144,7 @@ fn sse(value: Value) -> Response {
 async fn handle(
     Path((thread, dir)): Path<(i32, String)>,
     State(reg): State<BusRegistry>,
+    State(db): State<Db>,
     Json(req): Json<Value>,
 ) -> Response {
     // Notifications (no id) get a bare 202.
@@ -170,12 +171,37 @@ async fn handle(
                 .pointer("/params/arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            call_tool(&reg, thread, &dir, name, &args)
+            // set_task_status writes the DB (the task is `dir`); the rest are
+            // in-memory bus ops.
+            if name == "set_task_status" {
+                let status = args.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                set_task_status_tool(&db, &dir, status).await
+            } else {
+                call_tool(&reg, thread, &dir, name, &args)
+            }
         }
         _ => json!({}),
     };
 
     sse(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+}
+
+/// Bus tool: the agent sets its own task's lifecycle status. `dir` is the
+/// direction id from the URL path, so the agent can't move another task.
+async fn set_task_status_tool(db: &Db, dir: &str, status: &str) -> Value {
+    let allowed = ["queued", "working", "review", "done"];
+    if !allowed.contains(&status) {
+        return text_result(format!(
+            "invalid status '{status}'; use one of: queued, working, review, done"
+        ));
+    }
+    match dir.parse::<i32>() {
+        Ok(id) => match crate::store::repo::set_direction_status(db, id, status).await {
+            Ok(()) => text_result(format!("status set to {status}")),
+            Err(e) => text_result(format!("error: {e}")),
+        },
+        Err(_) => text_result("this session has no task to update".into()),
+    }
 }
 
 fn text_result(s: String) -> Value {
@@ -354,6 +380,12 @@ fn tool_specs() -> Value {
             "description": "Broadcast a contract/interface change to the other directions.",
             "inputSchema": { "type": "object",
                 "properties": { "summary": str_prop() }, "required": ["summary"] }
+        },
+        {
+            "name": "set_task_status",
+            "description": "Move your task on the board as work really progresses: queued (not started), working (actively building), review (done coding, awaiting the human's look), done (delivered/accepted). Reversible — set it back to working if the human asks for changes. Use this to keep the human's board honest instead of leaving it to guesswork.",
+            "inputSchema": { "type": "object",
+                "properties": { "status": str_prop() }, "required": ["status"] }
         }
     ])
 }

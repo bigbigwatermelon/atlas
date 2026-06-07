@@ -224,6 +224,7 @@ pub async fn create_direction(
         slug: Set(slug),
         tool: Set(tool.to_string()),
         branch: Set(branch),
+        status: Set("queued".to_string()),
         created_at: Set(now()),
         ..Default::default()
     }
@@ -240,6 +241,16 @@ pub async fn create_direction(
         .await?;
     }
     Ok(dir)
+}
+
+/// Set a direction's lifecycle status (agent- or human-driven). No-op if gone.
+pub async fn set_direction_status(db: &Db, direction_id: i32, status: &str) -> Result<()> {
+    if let Some(d) = direction::Entity::find_by_id(direction_id).one(&db.0).await? {
+        let mut a: direction::ActiveModel = d.into();
+        a.status = Set(status.to_string());
+        a.update(&db.0).await?;
+    }
+    Ok(())
 }
 
 pub async fn direction_write_repos(db: &Db, direction_id: i32) -> Result<Vec<repo_ref::Model>> {
