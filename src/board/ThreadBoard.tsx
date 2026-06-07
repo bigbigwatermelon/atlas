@@ -121,7 +121,7 @@ export function ThreadBoard() {
           </span>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {TABS.map((tb) => {
             const active = tab === tb.key;
             return (
@@ -132,7 +132,7 @@ export function ThreadBoard() {
                   if (tb.key === "board") setReviewingProposal(false);
                 }}
                 className={cn(
-                  "relative flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12.5px] transition-colors",
+                  "relative flex items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12.5px] transition-colors",
                   active ? "text-ink" : "text-ink-faint hover:text-ink-muted",
                 )}
               >
@@ -152,10 +152,10 @@ export function ThreadBoard() {
           })}
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             onClick={() => setShowBus(!showBus)}
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-border px-2.5 py-1.5 text-[12px] text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-md)] border border-border px-2.5 py-1.5 text-[12px] text-ink-muted transition-colors hover:bg-surface hover:text-ink"
           >
             <Radio size={13} className="text-brand" />
             {t("bus.activity")}

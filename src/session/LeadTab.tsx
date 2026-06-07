@@ -43,11 +43,11 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
-        <span className="flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-raised px-2 py-0.5 text-[11px] capitalize text-ink-muted">
+        <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sm)] bg-raised px-2 py-0.5 text-[11px] capitalize text-ink-muted">
           <ToolIcon tool={info.tool} size={12} />
           {info.tool}
         </span>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <div className="flex items-center rounded-[var(--radius-md)] bg-bg p-0.5">
             <ViewTab active={view === "chat"} onClick={() => setView("chat")} title={t("lead.viewChat")}>
               <MessagesSquare size={13} />
@@ -68,7 +68,7 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
               cwd={info.worktree}
               nativeId={nativeId}
               trigger={
-                <button className="flex h-7 items-center gap-1.5 rounded-[var(--radius-md)] border border-border px-2.5 text-[12px] text-ink-muted transition-colors hover:bg-surface hover:text-ink">
+                <button className="flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-md)] border border-border px-2.5 text-[12px] text-ink-muted transition-colors hover:bg-surface hover:text-ink">
                   <RotateCcw size={12} />
                   {t("session.resumeMenu")}
                 </button>

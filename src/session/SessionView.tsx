@@ -70,7 +70,7 @@ export function SessionView() {
         >
           <ArrowLeft size={15} />
         </button>
-        <span className="flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-raised px-2 py-0.5 text-[11px] font-medium capitalize text-ink-muted">
+        <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sm)] bg-raised px-2 py-0.5 text-[11px] font-medium capitalize text-ink-muted">
           <ToolIcon tool={info.tool} size={12} />
           {info.tool}
         </span>
@@ -89,7 +89,7 @@ export function SessionView() {
           </span>
         )}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <div className="flex items-center rounded-[var(--radius-md)] bg-bg p-0.5">
             <ViewTab active={view === "chat"} onClick={() => setView("chat")} title={t("lead.viewChat")}>
               <MessagesSquare size={13} />
@@ -102,10 +102,10 @@ export function SessionView() {
             <button
               onClick={() => setShowDiff(true)}
               title={t("diff.tab")}
-              className="flex h-7 items-center gap-1.5 rounded-[var(--radius-md)] border border-border px-2.5 text-[12px] text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              aria-label={t("diff.tab")}
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-md)] border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
             >
               <GitCompare size={13} />
-              {t("diff.tab")}
             </button>
           )}
           <StatusChip status={status as SessionStatus} />
@@ -120,20 +120,20 @@ export function SessionView() {
               cwd={info.worktree}
               nativeId={nativeId}
               trigger={
-                <button className="flex h-7 items-center gap-1.5 rounded-[var(--radius-md)] border border-border px-2.5 text-[12px] text-ink-muted transition-colors hover:bg-surface hover:text-ink">
+                <button className="flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-md)] border border-border px-2.5 text-[12px] text-ink-muted transition-colors hover:bg-surface hover:text-ink">
                   <RotateCcw size={12} />
                   {t("session.resumeMenu")}
                 </button>
               }
             />
           ) : (
-            <span className="text-[11px] text-ink-faint">{t("session.starting")}</span>
+            <span className="whitespace-nowrap text-[11px] text-ink-faint">{t("session.starting")}</span>
           )}
           <Inspect
             path={info.worktree}
             branch={info.branch}
             nativeId={nativeId}
-            className="h-7 w-7"
+            className="h-7 w-7 shrink-0"
           />
         </div>
       </header>

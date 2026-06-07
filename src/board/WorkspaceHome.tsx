@@ -48,7 +48,7 @@ export function WorkspaceHome() {
         <h1 className="shrink-0 text-[15px] font-semibold tracking-tight text-ink">
           {ws?.name ?? "Workspace"}
         </h1>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {tabs.map((tab) => {
             const active = homeTab === tab.key;
             return (
@@ -56,7 +56,7 @@ export function WorkspaceHome() {
                 key={tab.key}
                 onClick={() => setHomeTab(tab.key)}
                 className={cn(
-                  "relative flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12.5px] transition-colors",
+                  "relative flex items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12.5px] transition-colors",
                   active ? "text-ink" : "text-ink-faint hover:text-ink-muted",
                 )}
               >
