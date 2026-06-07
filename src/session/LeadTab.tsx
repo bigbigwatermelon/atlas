@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import {
@@ -26,12 +26,18 @@ import { cn } from "../lib/cn";
  * proposes a plan, a card surfaces here; reviewing happens on the Board tab.
  */
 export function LeadTab({ onReview }: { onReview: () => void }) {
-  const { leadSession, killSession, proposal, reviewingProposal, setReviewingProposal } =
+  const { leadSession, startLead, killSession, proposal, reviewingProposal, setReviewingProposal } =
     useStore();
   const { t } = useTranslation();
   const [view, setView] = useState<"chat" | "terminal">("chat");
 
-  if (!leadSession) return <LeadStart />;
+  // Opening the Lead tab starts (or reuses) the lead and drops straight into
+  // read-only — no manual "start" step.
+  useEffect(() => {
+    if (!leadSession) void startLead();
+  }, [leadSession, startLead]);
+
+  if (!leadSession) return <LeadStarting />;
 
   const { info, status, nativeId } = leadSession;
   const running = status === "running" || status === "starting";
@@ -153,35 +159,14 @@ function ViewTab({
   );
 }
 
-function LeadStart() {
-  const { startLead } = useStore();
+function LeadStarting() {
   const { t } = useTranslation();
-  const [busy, setBusy] = useState(false);
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
       <div className="grid h-11 w-11 place-items-center rounded-[var(--radius-lg)] bg-accent-ghost">
-        <Sparkles size={20} className="text-accent" />
+        <Sparkles size={20} className="animate-pulse text-accent" />
       </div>
-      <h2 className="mt-3 text-[14px] font-semibold text-ink">{t("lead.startTitle")}</h2>
-      <p className="mt-1.5 max-w-[320px] text-[12px] leading-relaxed text-ink-faint">
-        {t("lead.startBody")}
-      </p>
-      <Button
-        variant="primary"
-        className="mt-4"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await startLead();
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <Sparkles size={14} />
-        {busy ? t("lead.starting") : t("lead.start")}
-      </Button>
+      <p className="mt-3 text-[13px] text-ink-muted">{t("lead.starting")}</p>
     </div>
   );
 }

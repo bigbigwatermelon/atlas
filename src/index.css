@@ -78,12 +78,13 @@
 /* ── LIGHT — near-white violet-tinted paper; brand deepened for contrast ── */
 :root[data-theme="light"] {
   color-scheme: light;
-  --c-bg: oklch(0.975 0.004 292);
-  --c-surface: oklch(0.995 0.002 292);
+  /* a clearly grayer canvas so white-ish cards/columns pop (was near-white) */
+  --c-bg: oklch(0.955 0.005 292);
+  --c-surface: oklch(0.99 0.003 292);
   --c-raised: oklch(1 0 0);
-  --c-border: oklch(0.9 0.006 292);
-  --c-border-strong: oklch(0.82 0.009 292);
-  --c-hover: oklch(0.95 0.006 292);
+  --c-border: oklch(0.88 0.007 292);
+  --c-border-strong: oklch(0.78 0.011 292);
+  --c-hover: oklch(0.94 0.007 292);
   --c-ink: oklch(0.26 0.02 292);
   --c-ink-muted: oklch(0.46 0.014 292);
   --c-ink-faint: oklch(0.55 0.012 292);
