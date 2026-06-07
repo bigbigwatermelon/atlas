@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import {
-  Bell,
   Check,
-  CircleCheck,
   Layers,
   LayoutGrid,
   MessagesSquare,
@@ -275,23 +273,9 @@ function EmptyDiscuss({ onTalk }: { onTalk: () => void }) {
 }
 
 function DirectionCard({ direction }: { direction: Direction }) {
-  const {
-    worktreesByDirection,
-    repos,
-    sessions,
-    openSession,
-    nudgeDirection,
-    checksByDirection,
-    checkingDirections,
-    verifyDirection,
-  } = useStore();
-  const { t } = useTranslation();
-  const hasLive = Object.values(sessions).some(
-    (s) => s.directionId === direction.id && s.status === "running",
-  );
+  const { worktreesByDirection, repos, sessions, openSession, checksByDirection } = useStore();
   const writes = worktreesByDirection[direction.id] ?? [];
   const checks = checksByDirection[direction.id];
-  const checking = checkingDirections[direction.id];
 
   return (
     <motion.div
@@ -303,27 +287,6 @@ function DirectionCard({ direction }: { direction: Direction }) {
           <Layers size={13} className="text-ink-faint" />
           {direction.name}
         </span>
-        {hasLive && (
-          <button
-            onClick={() => void nudgeDirection(direction.id)}
-            aria-label={t("thread.nudge")}
-            title={t("thread.nudge")}
-            className="grid h-5 w-5 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-brand"
-          >
-            <Bell size={12} />
-          </button>
-        )}
-        {writes.length > 0 && (
-          <button
-            onClick={() => void verifyDirection(direction.id)}
-            disabled={checking}
-            aria-label={t("thread.runChecks")}
-            title={t("thread.runChecks")}
-            className="grid h-5 w-5 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-brand disabled:opacity-50"
-          >
-            <CircleCheck size={12} className={checking ? "animate-pulse" : ""} />
-          </button>
-        )}
         <span className="ml-auto flex items-center gap-1.5 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
           <ToolIcon tool={direction.tool} size={12} />
           {TOOL_LABEL[direction.tool] ?? direction.tool}
