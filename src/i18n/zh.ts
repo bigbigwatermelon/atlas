@@ -129,6 +129,7 @@ export const zh = {
     starting: "启动中…",
     kill: "终止",
     clickToInteract: "点击进入交互",
+    resumeMenu: "恢复…",
     interacting: "交互中",
     backToReadonly: "返回只读",
   },
@@ -146,6 +147,11 @@ export const zh = {
     empty: "还没有消息。各任务通过 bus 在这里发言,你也可以。",
     broadcast: "广播 · 所有任务",
     compose: "给总线发消息…",
+  },
+  resume: {
+    copyCommand: "复制恢复命令",
+    copied: "已复制到剪贴板",
+    openInCodex: "在 Codex 中打开",
   },
   repomap: {
     subtitle: "每个仓库是什么,以及它们如何相互依赖",

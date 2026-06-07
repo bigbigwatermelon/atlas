@@ -117,4 +117,5 @@ export const api = {
   // Inspect escape hatches (§4.7): real ways into the hidden plumbing.
   openTerminal: (path: string) => invoke<void>("open_terminal", { path }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
+  openUrl: (url: string) => invoke<void>("open_url", { url }),
 };

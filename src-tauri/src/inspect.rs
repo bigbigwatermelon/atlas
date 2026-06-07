@@ -29,6 +29,21 @@ pub fn open_terminal(path: String) -> Result<(), String> {
     }
 }
 
+/// Open a URL or app deep link with the OS handler (e.g. `codex://threads/<id>`
+/// to jump to a session in the Codex app). Best-effort.
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open").arg(&url).status().map_err(err)?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("opening a url is only supported on macOS for now".into())
+    }
+}
+
 /// Reveal `path` in the OS file manager (Finder on macOS).
 #[tauri::command]
 pub fn reveal_path(path: String) -> Result<(), String> {

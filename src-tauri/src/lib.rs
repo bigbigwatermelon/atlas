@@ -118,6 +118,7 @@ pub fn run() {
             pty::kill_session,
             inspect::open_terminal,
             inspect::reveal_path,
+            inspect::open_url,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| fatal("running tauri application", e));

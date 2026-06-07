@@ -137,6 +137,7 @@ export const en = {
     starting: "Starting…",
     kill: "Kill",
     clickToInteract: "Click to interact",
+    resumeMenu: "Resume…",
     interacting: "Interacting",
     backToReadonly: "Back to read-only",
   },
@@ -156,6 +157,11 @@ export const en = {
     empty: "No messages yet. Tasks post here via the bus; you can too.",
     broadcast: "Broadcast · all tasks",
     compose: "Message the bus…",
+  },
+  resume: {
+    copyCommand: "Copy resume command",
+    copied: "Copied to clipboard",
+    openInCodex: "Open in Codex",
   },
   repomap: {
     subtitle: "what each repo is, and how they depend on each other",

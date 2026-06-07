@@ -13,10 +13,11 @@ import { useStore } from "../state/store";
 import type { SessionStatus } from "../lib/types";
 import { TerminalPanel } from "../panels/TerminalPanel";
 import { Transcript } from "./Transcript";
-import { DiffDrawer } from "./DiffDrawer";
+import { DiffPanel } from "./DiffPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
 import { Inspect } from "../components/Inspect";
+import { ResumeMenu } from "../components/ResumeMenu";
 import { ToolIcon } from "../components/ToolIcon";
 import { cn } from "../lib/cn";
 
@@ -24,7 +25,6 @@ export function SessionView() {
   const {
     sessions,
     activeSessionId,
-    resumeSession,
     killSession,
     backToBoard,
     repos,
@@ -59,7 +59,8 @@ export function SessionView() {
     "task";
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col bg-bg">
+    <div className="flex min-w-0 flex-1">
+      <section className="flex min-w-0 flex-1 flex-col bg-bg">
       {/* session header */}
       <header className="flex items-center gap-3 border-b border-border bg-surface px-3 py-2">
         <button
@@ -113,17 +114,20 @@ export function SessionView() {
               <Square size={11} />
               {t("session.kill")}
             </Button>
+          ) : nativeId ? (
+            <ResumeMenu
+              tool={info.tool}
+              cwd={info.worktree}
+              nativeId={nativeId}
+              trigger={
+                <button className="flex h-7 items-center gap-1.5 rounded-[var(--radius-md)] border border-border px-2.5 text-[12px] text-ink-muted transition-colors hover:bg-surface hover:text-ink">
+                  <RotateCcw size={12} />
+                  {t("session.resumeMenu")}
+                </button>
+              }
+            />
           ) : (
-            <Button
-              size="sm"
-              variant="default"
-              onClick={() => void resumeSession(info.session_id)}
-              disabled={!nativeId}
-              title={nativeId ? t("session.resumeReady") : t("session.starting")}
-            >
-              <RotateCcw size={12} />
-              {t("session.resume")}
-            </Button>
+            <span className="text-[11px] text-ink-faint">{t("session.starting")}</span>
           )}
           <Inspect
             path={info.worktree}
@@ -148,11 +152,12 @@ export function SessionView() {
           <TerminalPanel sessionId={info.session_id} />
         </motion.div>
       )}
+      </section>
 
       {!isLead && (
-        <DiffDrawer cwd={info.worktree} open={showDiff} onClose={() => setShowDiff(false)} />
+        <DiffPanel cwd={info.worktree} open={showDiff} onClose={() => setShowDiff(false)} />
       )}
-    </section>
+    </div>
   );
 }
 

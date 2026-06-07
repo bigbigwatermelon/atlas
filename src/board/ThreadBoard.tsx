@@ -11,6 +11,7 @@ import {
   Layers,
   Plus,
   Radio,
+  RotateCcw,
   TerminalSquare,
   X,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import type { Direction, RepoChecks, SessionStatus } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { StatusDot } from "../components/ui/StatusChip";
 import { Inspect } from "../components/Inspect";
+import { ResumeMenu } from "../components/ResumeMenu";
 import { ToolIcon } from "../components/ToolIcon";
 import { CreateDirectionDialog } from "../nav/dialogs";
 import { BusDrawer } from "./BusDrawer";
@@ -289,6 +291,22 @@ function DirectionCard({ direction }: { direction: Direction }) {
                   )}
                 </span>
               </button>
+              {sess?.nativeId && (
+                <ResumeMenu
+                  tool={sess.info.tool}
+                  cwd={w.path}
+                  nativeId={sess.nativeId}
+                  trigger={
+                    <button
+                      aria-label={t("session.resumeMenu")}
+                      title={t("session.resumeMenu")}
+                      className="grid h-6 w-6 shrink-0 place-items-center rounded text-ink-faint opacity-0 transition-opacity hover:bg-brand-ghost hover:text-ink group-hover:opacity-100"
+                    >
+                      <RotateCcw size={12} />
+                    </button>
+                  }
+                />
+              )}
               <Inspect
                 path={w.path}
                 branch={w.branch}
