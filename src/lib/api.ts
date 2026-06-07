@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type {
   BusMsg,
   Direction,
@@ -16,6 +17,7 @@ import type {
   SessionInfo,
   Thread,
   ThreadOverview,
+  ToolStatus,
   Workspace,
   Worktree,
   WorktreeDiff,
@@ -118,4 +120,12 @@ export const api = {
   openTerminal: (path: string) => invoke<void>("open_terminal", { path }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
+
+  // Which coding-agent CLIs are installed locally (for Settings).
+  detectTools: () => invoke<ToolStatus[]>("detect_tools"),
+  // Native folder picker; returns the chosen absolute path, or null if cancelled.
+  pickFolder: async (title?: string) => {
+    const sel = await openDialog({ directory: true, multiple: false, title });
+    return typeof sel === "string" ? sel : null;
+  },
 };

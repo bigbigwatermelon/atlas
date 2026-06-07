@@ -9,19 +9,17 @@ import {
   FolderGit2,
   FolderPlus,
   LayoutGrid,
-  Moon,
   PanelLeftClose,
   Plus,
+  Settings,
   SquarePen,
-  Sun,
   Trash2,
 } from "lucide-react";
 import { useStore } from "../state/store";
-import { useTheme } from "../state/theme";
-import { setLang } from "../i18n";
 import type { Thread } from "../lib/types";
 import { cn } from "../lib/cn";
 import { AddRepoDialog, CreateThreadDialog, CreateWorkspaceDialog } from "./dialogs";
+import { SettingsDialog } from "./SettingsDialog";
 
 export function WorkspaceNav() {
   const {
@@ -37,7 +35,7 @@ export function WorkspaceNav() {
     activeThreadId,
     showNeeds,
   } = useStore();
-  const [dlg, setDlg] = useState<null | "ws" | "repo" | "thread">(null);
+  const [dlg, setDlg] = useState<null | "ws" | "repo" | "thread" | "settings">(null);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
   const { t } = useTranslation();
   // Any OTHER workspace waiting on the human → flag it on the switcher.
@@ -155,14 +153,20 @@ export function WorkspaceNav() {
         )}
       </div>
 
-      <footer className="flex items-center justify-end gap-1 border-t border-border px-3 py-2">
-        <LangToggle />
-        <ThemeToggle />
+      <footer className="border-t border-border p-2">
+        <button
+          onClick={() => setDlg("settings")}
+          className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-[13px] text-ink-muted transition-colors hover:bg-brand-ghost hover:text-ink"
+        >
+          <Settings size={14} className="text-ink-faint" />
+          {t("settings.title")}
+        </button>
       </footer>
 
       <CreateWorkspaceDialog open={dlg === "ws"} onOpenChange={(o) => !o && setDlg(null)} />
       <CreateThreadDialog open={dlg === "thread"} onOpenChange={(o) => !o && setDlg(null)} />
       <AddRepoDialog open={dlg === "repo"} onOpenChange={(o) => !o && setDlg(null)} />
+      <SettingsDialog open={dlg === "settings"} onOpenChange={(o) => !o && setDlg(null)} />
     </nav>
   );
 }
@@ -221,37 +225,6 @@ function WsNavItem({
         </button>
       )}
     </li>
-  );
-}
-
-function ThemeToggle() {
-  const { theme, toggle } = useTheme();
-  const { t } = useTranslation();
-  const dark = theme === "dark";
-  return (
-    <button
-      onClick={toggle}
-      aria-label={dark ? t("nav.lightTheme") : t("nav.darkTheme")}
-      title={dark ? t("nav.lightTheme") : t("nav.darkTheme")}
-      className="grid h-6 w-6 place-items-center rounded-[var(--radius-md)] text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
-    >
-      {dark ? <Sun size={14} /> : <Moon size={14} />}
-    </button>
-  );
-}
-
-function LangToggle() {
-  const { i18n } = useTranslation();
-  const zh = i18n.language === "zh";
-  return (
-    <button
-      onClick={() => setLang(zh ? "en" : "zh")}
-      title={zh ? "English" : "中文"}
-      aria-label="Toggle language"
-      className="grid h-6 min-w-[24px] place-items-center rounded-[var(--radius-md)] px-1 text-[11px] font-semibold text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
-    >
-      {zh ? "EN" : "中"}
-    </button>
   );
 }
 

@@ -74,6 +74,11 @@ interface Store {
   /** Left sidebar collapse (manual + auto on narrow windows). */
   navCollapsed: boolean;
   setNavCollapsed: (v: boolean) => void;
+  /** App settings (persisted to localStorage). */
+  projectsDir: string;
+  setProjectsDir: (p: string) => void;
+  defaultTool: string;
+  setDefaultTool: (t: string) => void;
   /** Whether the board canvas is showing the proposal's scope-confirm. */
   reviewingProposal: boolean;
   setReviewingProposal: (v: boolean) => void;
@@ -194,6 +199,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [showBus, setShowBus] = useState(false);
   const [reviewingProposal, setReviewingProposal] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(() => window.innerWidth < 820);
+
+  // App settings, persisted to localStorage.
+  const [projectsDir, setProjectsDirState] = useState(
+    () => localStorage.getItem("weft-projects-dir") ?? "",
+  );
+  const setProjectsDir = useCallback((p: string) => {
+    localStorage.setItem("weft-projects-dir", p);
+    setProjectsDirState(p);
+  }, []);
+  const [defaultTool, setDefaultToolState] = useState(
+    () => localStorage.getItem("weft-default-tool") ?? "claude",
+  );
+  const setDefaultTool = useCallback((tl: string) => {
+    localStorage.setItem("weft-default-tool", tl);
+    setDefaultToolState(tl);
+  }, []);
 
   // Auto-collapse the sidebar when the window gets narrow; auto-restore when it
   // widens again (only on threshold crossings, so manual toggles stick).
@@ -872,6 +893,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setNavCollapsed,
     reviewingProposal,
     setReviewingProposal,
+    projectsDir,
+    setProjectsDir,
+    defaultTool,
+    setDefaultTool,
     needs,
     asks,
     needsByWorkspace,

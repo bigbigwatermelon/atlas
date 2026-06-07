@@ -26,6 +26,7 @@ mod planner;
 pub mod profile;
 mod pty;
 mod sidecar;
+mod tools;
 mod commands;
 
 /// The bus server's base URL, e.g. "http://127.0.0.1:54321".
@@ -60,7 +61,9 @@ pub fn run() {
     let (wake_tx, wake_rx) = std::sync::mpsc::channel::<bus::Wake>();
     bus.set_wake_sender(wake_tx);
 
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init());
 
     #[cfg(debug_assertions)]
     {
@@ -119,6 +122,7 @@ pub fn run() {
             inspect::open_terminal,
             inspect::reveal_path,
             inspect::open_url,
+            tools::detect_tools,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| fatal("running tauri application", e));

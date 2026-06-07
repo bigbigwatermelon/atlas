@@ -187,6 +187,13 @@ export interface ResolvedProposal {
 }
 
 /** A thread's roll-up for the workspace board (cards = threads). */
+/** A locally-installed coding-agent CLI, for Settings' default-tool picker. */
+export interface ToolStatus {
+  tool: string;
+  installed: boolean;
+  version: string | null;
+}
+
 export interface ThreadOverview {
   thread_id: number;
   title: string;
