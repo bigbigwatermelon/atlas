@@ -52,11 +52,8 @@ export function WorkspaceHome() {
 
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
-      <header className="flex items-center gap-4 border-b border-border px-5 py-2.5">
+      <header className="flex items-center gap-3 border-b border-border px-5 py-2.5">
         <RailToggle />
-        <h1 className="shrink-0 text-[15px] font-semibold tracking-tight text-ink">
-          {ws?.name ?? "Workspace"}
-        </h1>
         <div className="flex shrink-0 items-center gap-1">
           {tabs.map((tab) => {
             const active = homeTab === tab.key;
