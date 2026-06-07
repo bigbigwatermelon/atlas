@@ -91,7 +91,7 @@ export const en = {
     starting: "Starting the lead…",
     viewChat: "Chat",
     viewTerminal: "Terminal",
-    transcriptEmpty: "The lead hasn't said anything yet.",
+    transcriptEmpty: "Nothing yet.",
   },
   scope: {
     proposedFor: "Proposed plan for {{title}}",

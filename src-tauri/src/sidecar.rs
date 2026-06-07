@@ -4,9 +4,11 @@
 //!
 //! Claude: jsonl under ~/.claude/projects/<encoded-cwd>/.
 //! Codex: rollout jsonl under ~/.codex/sessions/<date>/, located by matching the
-//! session_meta cwd. OpenCode (messages live in a WAL-locked SQLite db) is not
-//! transcripted yet — those workers fall back to the raw terminal view.
+//! session_meta cwd.
+//! OpenCode: messages in the SQLite db (~/.local/share/opencode/opencode.db),
+//! located by session.directory; read read-only so the live (WAL) db is safe.
 
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -22,11 +24,12 @@ pub enum NormEvent {
 
 /// Read the full normalized transcript for a session's cwd. Best-effort: an
 /// unreadable / not-yet-created file yields an empty list, not an error.
-pub fn read_transcript(cwd: &Path, tool: &str) -> Vec<NormEvent> {
+pub async fn read_transcript(cwd: &Path, tool: &str) -> Vec<NormEvent> {
     match tool {
         "claude" => read_claude(cwd).unwrap_or_default(),
         "codex" => read_codex(cwd).unwrap_or_default(),
-        _ => Vec::new(), // opencode: SQLite-backed, falls back to terminal view
+        "opencode" => read_opencode(cwd).await.unwrap_or_default(),
+        _ => Vec::new(),
     }
 }
 
@@ -259,6 +262,104 @@ fn parse_codex_line(v: &serde_json::Value, out: &mut Vec<NormEvent>) {
     }
 }
 
+// ---- OpenCode (read-only from its SQLite db, by session.directory) ----
+
+fn parse_opencode_part(role: &str, data: &serde_json::Value, out: &mut Vec<NormEvent>) {
+    match data.get("type").and_then(|t| t.as_str()) {
+        Some("text") => {
+            let text = data.get("text").and_then(|t| t.as_str()).unwrap_or("").trim();
+            if !text.is_empty() && !(role == "user" && is_seed(text)) {
+                out.push(NormEvent::Message {
+                    role: role.to_string(),
+                    text: text.to_string(),
+                    ts: String::new(),
+                });
+            }
+        }
+        Some("tool") => {
+            let name = data.get("tool").and_then(|t| t.as_str()).unwrap_or("tool");
+            out.push(NormEvent::Tool {
+                name: name.to_string(),
+                summary: summarize_tool(name, data.pointer("/state/input")),
+                ts: String::new(),
+            });
+        }
+        _ => {} // step-start / step-finish / reasoning
+    }
+}
+
+async fn read_opencode(cwd: &Path) -> Option<Vec<NormEvent>> {
+    use std::collections::HashMap;
+    let home = std::env::var("HOME").ok()?;
+    let db = PathBuf::from(home)
+        .join(".local/share/opencode/opencode.db");
+    if !db.exists() {
+        return None;
+    }
+    let raw = cwd.to_string_lossy().to_string();
+    let canon = std::fs::canonicalize(cwd)
+        .ok()
+        .map(|c| c.to_string_lossy().to_string())
+        .unwrap_or_else(|| raw.clone());
+
+    // Read-only so the live (WAL) db is never disturbed.
+    let url = format!("sqlite://{}?mode=ro", db.to_string_lossy());
+    let mut opt = ConnectOptions::new(url);
+    opt.max_connections(1).sqlx_logging(false);
+    let conn = Database::connect(opt).await.ok()?;
+
+    let q = |sql: &str, vals: Vec<sea_orm::Value>| {
+        Statement::from_sql_and_values(DbBackend::Sqlite, sql, vals)
+    };
+
+    let sid_rows = conn
+        .query_all(q(
+            "SELECT id FROM session WHERE directory = ? OR directory = ? ORDER BY time_updated DESC LIMIT 1",
+            vec![raw.clone().into(), canon.into()],
+        ))
+        .await
+        .ok()?;
+    let session_id: String = sid_rows.first()?.try_get("", "id").ok()?;
+
+    let mut role_of: HashMap<String, String> = HashMap::new();
+    if let Ok(rows) = conn
+        .query_all(q(
+            "SELECT id, data FROM message WHERE session_id = ?",
+            vec![session_id.clone().into()],
+        ))
+        .await
+    {
+        for r in rows {
+            let id: String = r.try_get("", "id").unwrap_or_default();
+            let data: String = r.try_get("", "data").unwrap_or_default();
+            let role = serde_json::from_str::<serde_json::Value>(&data)
+                .ok()
+                .and_then(|v| v.get("role").and_then(|x| x.as_str()).map(String::from))
+                .unwrap_or_else(|| "assistant".into());
+            role_of.insert(id, role);
+        }
+    }
+
+    let mut out = Vec::new();
+    let part_rows = conn
+        .query_all(q(
+            "SELECT message_id, data FROM part WHERE session_id = ? ORDER BY time_created, id",
+            vec![session_id.into()],
+        ))
+        .await
+        .ok()?;
+    for r in part_rows {
+        let mid: String = r.try_get("", "message_id").unwrap_or_default();
+        let data: String = r.try_get("", "data").unwrap_or_default();
+        let role = role_of.get(&mid).map(String::as_str).unwrap_or("assistant");
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
+            parse_opencode_part(role, &v, &mut out);
+        }
+    }
+    let _ = conn.close().await;
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +432,34 @@ mod tests {
             vec![
                 NormEvent::Message { role: "user".into(), text: "add a field".into(), ts: "t1".into() },
                 NormEvent::Tool { name: "exec_command".into(), summary: "git status".into(), ts: "t2".into() },
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_opencode_parts() {
+        let mut out = Vec::new();
+        parse_opencode_part(
+            "user",
+            &serde_json::json!({"type":"text","text":"build the gift-card field"}),
+            &mut out,
+        );
+        parse_opencode_part(
+            "assistant",
+            &serde_json::json!({"type":"tool","tool":"bash",
+                "state":{"status":"completed","input":{"command":"npm test"}}}),
+            &mut out,
+        );
+        parse_opencode_part(
+            "assistant",
+            &serde_json::json!({"type":"step-finish"}),
+            &mut out,
+        );
+        assert_eq!(
+            out,
+            vec![
+                NormEvent::Message { role: "user".into(), text: "build the gift-card field".into(), ts: String::new() },
+                NormEvent::Tool { name: "bash".into(), summary: "npm test".into(), ts: String::new() },
             ]
         );
     }

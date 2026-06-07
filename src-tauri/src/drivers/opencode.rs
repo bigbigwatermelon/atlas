@@ -24,6 +24,11 @@ impl ToolDriver for OpenCodeDriver {
         ("opencode".into(), args)
     }
 
+    /// OpenCode's positional is the project dir, so the seed goes via --prompt.
+    fn seed_args(&self, prompt: &str) -> Vec<String> {
+        vec!["--prompt".into(), prompt.to_string()]
+    }
+
     fn capture_session_id(&self, cwd: &Path, _since: u64) -> Option<String> {
         let home = std::env::var("HOME").ok()?;
         let db = Path::new(&home)

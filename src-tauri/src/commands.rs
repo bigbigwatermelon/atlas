@@ -237,8 +237,8 @@ pub async fn set_task_status(db: State<'_, Db>, direction_id: i32, status: Strin
 /// Observe-mode (§4.4): the agent's own transcript, normalized to app-native
 /// events so the chat view never depends on rendering the live TUI.
 #[tauri::command]
-pub fn read_transcript(cwd: String, tool: String) -> R<Vec<crate::sidecar::NormEvent>> {
-    Ok(crate::sidecar::read_transcript(std::path::Path::new(&cwd), &tool))
+pub async fn read_transcript(cwd: String, tool: String) -> R<Vec<crate::sidecar::NormEvent>> {
+    Ok(crate::sidecar::read_transcript(std::path::Path::new(&cwd), &tool).await)
 }
 
 #[tauri::command]

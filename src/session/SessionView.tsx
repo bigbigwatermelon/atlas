@@ -32,13 +32,14 @@ export function SessionView() {
   const { t } = useTranslation();
   const active = activeSessionId != null ? sessions[activeSessionId] : null;
   const tool = active?.info.tool;
-  // Observe by default (chat) for tools we can transcript; others open in the
-  // raw terminal until their sidecar parser lands.
+  // Observe by default (chat); all three tools have a sidecar transcript now.
+  const transcripted = tool === "claude" || tool === "codex" || tool === "opencode";
   const [view, setView] = useState<"chat" | "terminal">(
-    tool === "claude" || tool === "codex" ? "chat" : "terminal",
+    transcripted ? "chat" : "terminal",
   );
   useEffect(() => {
-    setView(tool === "claude" || tool === "codex" ? "chat" : "terminal");
+    setView(transcripted ? "chat" : "terminal");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.info.session_id, tool]);
 
   if (!active) return null;

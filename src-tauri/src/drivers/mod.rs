@@ -18,6 +18,13 @@ pub trait ToolDriver: Send + Sync {
     /// (program, args) to spawn a fresh or resumed interactive session at cwd.
     fn command(&self, spec: &SpawnSpec) -> (String, Vec<String>);
 
+    /// How this tool takes a seeded initial prompt (the lead prompt / worker
+    /// brief). Most CLIs accept it as a positional first arg; OpenCode's
+    /// positional is the project dir, so it needs the `--prompt` flag instead.
+    fn seed_args(&self, prompt: &str) -> Vec<String> {
+        vec![prompt.to_string()]
+    }
+
     /// Best-effort capture of the native session id for `cwd`, considering only
     /// sessions created at/after `since` (unix secs). Returns None until the
     /// tool has actually started persisting the session (e.g. after the user

@@ -301,7 +301,8 @@ async fn open_session_impl(
     );
     let mut args: Vec<String> = Vec::new();
     if !brief.trim().is_empty() {
-        args.push(brief);
+        // Per-tool seeding: positional for claude/codex, --prompt for opencode.
+        args.extend(crate::drivers::driver_for(&dir.tool).seed_args(&brief));
     }
     args.extend(ask.args);
     args.extend(inj.args);

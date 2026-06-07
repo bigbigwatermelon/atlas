@@ -86,7 +86,7 @@ export const zh = {
     starting: "正在启动 lead…",
     viewChat: "对话",
     viewTerminal: "终端",
-    transcriptEmpty: "lead 还没有说话。",
+    transcriptEmpty: "还没有产出。",
   },
   scope: {
     proposedFor: "「{{title}}」的建议方案",
