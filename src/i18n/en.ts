@@ -261,6 +261,7 @@ export const en = {
     detecting: "Detecting…",
     installed: "installed",
     installedVersion: "v{{version}}",
+    updateRecommended: "update recommended",
     notInstalled: "not found",
     dangerTitle: "Dangerous mode",
     dangerDesc:

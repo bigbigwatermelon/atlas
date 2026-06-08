@@ -184,6 +184,8 @@ export interface ToolStatus {
   tool: string;
   installed: boolean;
   version: string | null;
+  path: string | null;
+  meets_min: boolean;
 }
 
 export interface ThreadOverview {
