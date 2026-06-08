@@ -51,12 +51,18 @@ export function Transcript({
   const atBottomRef = useRef(true);
 
   useEffect(() => {
+    // New session (cwd/tool changed): clear so the transient-empty guard below
+    // doesn't carry the previous session's transcript over.
+    setEvents([]);
+    setLoaded(false);
     let alive = true;
     const tick = async () => {
       try {
         const ev = await api.readTranscript(cwd, tool);
         if (alive) {
-          setEvents(ev);
+          // A transient empty read (file mid-write / rotated) must not blank an
+          // already-populated transcript — keep the last good content.
+          setEvents((prev) => (ev.length === 0 && prev.length > 0 ? prev : ev));
           setLoaded(true);
         }
       } catch {

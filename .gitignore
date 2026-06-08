@@ -29,3 +29,6 @@ target/
 
 # Docs (design specs, plans, diagrams — kept local)
 docs/
+
+# weft local worktrees (materialized per task)
+.claude/worktrees/

@@ -66,7 +66,11 @@ fn read_claude(cwd: &Path) -> Option<Vec<NormEvent>> {
         if p.extension().and_then(|x| x.to_str()) != Some("jsonl") {
             continue;
         }
-        let mt = std::fs::metadata(&p).and_then(|m| m.modified()).ok()?;
+        // Skip a file whose metadata momentarily fails (claude mid-write) rather
+        // than aborting the whole read — aborting would blank the transcript.
+        let Ok(mt) = std::fs::metadata(&p).and_then(|m| m.modified()) else {
+            continue;
+        };
         if best.as_ref().map_or(true, |(bm, _)| mt >= *bm) {
             best = Some((mt, p));
         }
