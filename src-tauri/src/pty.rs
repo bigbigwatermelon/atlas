@@ -253,9 +253,19 @@ fn spawn(
                 }
                 let now = now_secs();
                 let last = last_activity_w.load(Ordering::SeqCst);
+                // Workers are keyed by their direction id; a LEAD spawns with a
+                // synthetic negative id and its permission asks carry the literal
+                // "lead" (empty-dir is matched too, defensively). Match both so a
+                // lead blocked on a human is never idle-killed.
+                let needle = direction_id.to_string();
+                let is_lead = direction_id < 0;
                 let has_open_ask = app
                     .try_state::<crate::ask::AskRegistry>()
-                    .map(|a| a.open().iter().any(|k| k.dir == direction_id.to_string()))
+                    .map(|a| {
+                        a.open().iter().any(|k| {
+                            k.dir == needle || (is_lead && (k.dir == "lead" || k.dir.is_empty()))
+                        })
+                    })
                     .unwrap_or(false);
                 if let Some(reason) =
                     watchdog_verdict(now, start, last, wall_cap, idle_cap, has_open_ask)
