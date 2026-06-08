@@ -24,7 +24,8 @@ Drop in a task — Weft drives your own Claude Code, Codex & OpenCode across man
 > required checkpoint in the loop.**
 >
 > Today that lands as clean pull requests; the north star is to carry each task the
-> rest of the way — **merge and CI/CD** — so a workspace *ships*, not just opens PRs.
+> rest of the way — **merge and deploy across environments** (staging → production) —
+> so a workspace *ships*, not just opens PRs.
 
 It is explicitly *not* a terminal emulator, and not a "watch the agents go"
 dashboard. It is the **workspace-and-automation fabric** the agents deliver inside.
@@ -41,7 +42,7 @@ dashboard. It is the **workspace-and-automation fabric** the agents deliver insi
 A single workspace is a logical list of repo references. One **Task** fans out
 into parallel **directions**, each running in its own isolated git worktree, each
 driven by an agent — and converges toward merged, shipped code (a PR today; merge
-+ CI/CD next).
++ multi-environment deploy next).
 
 <p align="center">
   <img src="assets/diagrams/flow-en.svg" alt="Task to shipped-code flow" width="940" />
@@ -62,7 +63,7 @@ split, in this order — and who does what."*
 | **Isolation** | one working tree | a **git worktree per write-repo**, lazily materialized |
 | **Human role** | drive every step | **supervise**; act only on exceptions |
 | **Quality gate** | a human nod | **executable verification** (lint · type · test · contract) |
-| **Destination** | open-ended | **Task → shipped** — opens a PR today, with **merge + CI/CD** as the goal |
+| **Destination** | open-ended | **Task → shipped** — opens a PR today; **merge + deploy across environments** is the goal |
 | **The agent CLIs** | re-wrapped / proxied | **native CLIs, verbatim** — hooks, skills, permissions intact |
 
 <p align="center">
@@ -233,8 +234,9 @@ delivery + i18n (M6) — are implemented or in progress. Current focus is
 simplifying scope to a label-free, lazy-materialization model.
 
 **Where it's heading.** Delivery today reaches a pull request per repo. The north
-star is to take each task the rest of the way — **auto-merge and CI/CD** — so the
-unit of *done* is shipped code, not an open PR. That's the roadmap, not today's behavior.
+star is to take each task the rest of the way — **auto-merge, then deploy across
+environments (staging → production)** — so the unit of *done* is shipped code, not an
+open PR. That's the roadmap, not today's behavior.
 
 The deep design is in [`ARCHITECTURE.md`](ARCHITECTURE.md); the product thesis in
 [`PRODUCT.md`](PRODUCT.md); the visual system in [`DESIGN.md`](DESIGN.md).

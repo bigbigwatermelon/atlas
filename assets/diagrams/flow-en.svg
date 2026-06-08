@@ -1,9 +1,10 @@
-<svg viewBox="0 0 1660 540" xmlns="http://www.w3.org/2000/svg" font-family="'Inter','SF Pro Display',-apple-system,'Segoe UI','PingFang SC','Noto Sans CJK SC',sans-serif">
+<svg viewBox="0 0 1720 540" xmlns="http://www.w3.org/2000/svg" font-family="'Inter','SF Pro Display',-apple-system,'Segoe UI','PingFang SC','Noto Sans CJK SC',sans-serif">
   <defs>
     <marker id="arr" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#5b5866"/></marker>
     <marker id="arrB" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#7c74f0"/></marker>
     <marker id="arrG" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#35c98b"/></marker>
     <marker id="arrA" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#caa14e"/></marker>
+    <marker id="arrO" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#f2683c"/></marker>
     <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="22"/></filter>
     <style>
       .ttl{fill:#f3f2f7;font-size:15px;font-weight:600}
@@ -14,11 +15,11 @@
     </style>
   </defs>
 
-  <rect x="0" y="0" width="1660" height="540" rx="18" fill="#15141a"/>
+  <rect x="0" y="0" width="1720" height="540" rx="18" fill="#15141a"/>
   <circle cx="319" cy="260" r="62" fill="#4f46e5" opacity="0.15" filter="url(#glow)"/>
   <circle cx="1576" cy="260" r="66" fill="#f2683c" opacity="0.17" filter="url(#glow)"/>
 
-  <!-- connectors: orchestration -->
+  <!-- orchestration connectors -->
   <path class="gl" d="M190,260 H224" stroke="#5b5866" marker-end="url(#arr)"/>
   <path class="gl" d="M319,194 V212" stroke="#7c74f0" stroke-dasharray="2 6" opacity=".85" marker-end="url(#arrB)"/>
   <text class="lbl" x="328" y="208" fill="#8b84e8">fuels</text>
@@ -32,11 +33,12 @@
   <path class="gl" d="M680,370 C710,348 710,288 740,264" stroke="#5b5866" marker-end="url(#arr)"/>
 
   <!-- delivery rail connectors -->
-  <path class="gl" d="M898,260 H948" stroke="#35c98b" marker-end="url(#arrG)"/>
-  <text class="lbl" x="902" y="250" fill="#35c98b">green</text>
-  <path class="gl" d="M1098,260 H1140" stroke="#5b5866" marker-end="url(#arr)"/>
-  <path class="gl" d="M1290,260 H1332" stroke="#5b5866" marker-end="url(#arr)"/>
-  <path class="gl" d="M1482,260 H1516" stroke="#f2683c" marker-end="url(#arr)"/>
+  <path class="gl" d="M898,260 H940" stroke="#35c98b" marker-end="url(#arrG)"/>
+  <text class="lbl" x="904" y="250" fill="#35c98b">green</text>
+  <path class="gl" d="M1090,260 H1124" stroke="#5b5866" marker-end="url(#arr)"/>
+  <path class="gl" d="M1274,260 H1308" stroke="#5b5866" marker-end="url(#arr)"/>
+  <path class="gl" d="M1458,260 H1492" stroke="#f2683c" marker-end="url(#arrO)"/>
+  <text class="lbl" x="1462" y="250" fill="#c98a5e">promote</text>
 
   <!-- retry -->
   <path class="gl" d="M828,308 C828,468 470,468 319,310" stroke="#caa14e" stroke-dasharray="5 5" opacity=".8" marker-end="url(#arrA)"/>
@@ -100,36 +102,37 @@
   <text class="ttl" x="792" y="244" font-size="14">Verify</text>
   <text class="sub" x="756" y="288">lint · type · test</text>
 
-  <!-- Delivery rail: Open PR -->
-  <rect class="node" x="948" y="212" width="150" height="96" rx="13"/>
-  <circle cx="978" cy="246" r="13" fill="#2a2734"/>
-  <g class="gl" stroke="#b8b5c2"><circle cx="973" cy="241" r="2.4" fill="#b8b5c2" stroke="none"/><circle cx="973" cy="252" r="2.4" fill="#b8b5c2" stroke="none"/><path d="M973,243 v7"/><path d="M973,244 C980,244 984,247 984,252"/><circle cx="984" cy="252" r="2.4" fill="#b8b5c2" stroke="none"/></g>
-  <text class="ttl" x="1000" y="244" font-size="14">Open PR</text>
-  <text class="sub" x="964" y="288">draft the change</text>
+  <!-- Open PR -->
+  <rect class="node" x="940" y="212" width="150" height="96" rx="13"/>
+  <circle cx="970" cy="246" r="13" fill="#2a2734"/>
+  <g class="gl" stroke="#b8b5c2"><circle cx="965" cy="241" r="2.4" fill="#b8b5c2" stroke="none"/><circle cx="965" cy="252" r="2.4" fill="#b8b5c2" stroke="none"/><path d="M965,243 v7"/><path d="M965,244 C972,244 976,247 976,252"/><circle cx="976" cy="252" r="2.4" fill="#b8b5c2" stroke="none"/></g>
+  <text class="ttl" x="992" y="244" font-size="14">Open PR</text>
+  <text class="sub" x="956" y="288">draft the change</text>
 
   <!-- Merge -->
-  <rect class="node" x="1140" y="212" width="150" height="96" rx="13"/>
-  <circle cx="1170" cy="246" r="13" fill="#2a2734"/>
-  <g class="gl" stroke="#b8b5c2"><circle cx="1165" cy="240" r="2.4" fill="#b8b5c2" stroke="none"/><path d="M1165,242 v6 a8,8 0 0 0 8,8"/><circle cx="1165" cy="253" r="2.4" fill="#b8b5c2" stroke="none"/><circle cx="1176" cy="256" r="2.4" fill="#b8b5c2" stroke="none"/></g>
-  <text class="ttl" x="1192" y="244" font-size="14">Merge</text>
-  <text class="sub" x="1156" y="288">into the trunk</text>
+  <rect class="node" x="1124" y="212" width="150" height="96" rx="13"/>
+  <circle cx="1154" cy="246" r="13" fill="#2a2734"/>
+  <g class="gl" stroke="#b8b5c2"><circle cx="1149" cy="240" r="2.4" fill="#b8b5c2" stroke="none"/><path d="M1149,242 v6 a8,8 0 0 0 8,8"/><circle cx="1149" cy="253" r="2.4" fill="#b8b5c2" stroke="none"/><circle cx="1160" cy="256" r="2.4" fill="#b8b5c2" stroke="none"/></g>
+  <text class="ttl" x="1176" y="244" font-size="14">Merge</text>
+  <text class="sub" x="1140" y="288">into the trunk</text>
 
-  <!-- CI / CD -->
-  <rect class="node" x="1332" y="212" width="150" height="96" rx="13"/>
-  <circle cx="1362" cy="246" r="13" fill="#2a2734"/>
-  <g class="gl" stroke="#b8b5c2"><path d="M1356,243 a7,7 0 1 1 -0.6,5"/><path d="M1356,238 v5 h5"/></g>
-  <text class="ttl" x="1384" y="244" font-size="14">CI / CD</text>
-  <text class="sub" x="1348" y="288">pipeline green</text>
+  <!-- Deploy: staging -->
+  <rect class="node" x="1308" y="212" width="150" height="96" rx="13"/>
+  <circle cx="1338" cy="246" r="13" fill="#2a2734"/>
+  <g class="gl" stroke="#b8b5c2"><path d="M1333,251 h10" /><path d="M1338,251 v-9" /><path d="M1334,246 l4,-4 l4,4" /></g>
+  <text class="ttl" x="1360" y="244" font-size="14">Staging</text>
+  <text class="sub" x="1324" y="288">deploy · verify</text>
 
-  <!-- Shipped (outcome) -->
-  <rect x="1516" y="216" width="120" height="88" rx="13" fill="#2a1c18" stroke="#f2683c" stroke-width="1.5"/>
-  <circle cx="1546" cy="250" r="14" fill="#f2683c" opacity="0.9"/>
-  <path class="gl" d="M1540,250 l4,4 l8,-9" stroke="#1a120f" stroke-width="2.1"/>
-  <text x="1568" y="255" fill="#f7b094" font-size="14.5" font-weight="600">Shipped</text>
+  <!-- Deploy: production (outcome) -->
+  <rect x="1492" y="212" width="168" height="96" rx="13" fill="#2a1c18" stroke="#f2683c" stroke-width="1.5"/>
+  <circle cx="1522" cy="246" r="14" fill="#f2683c" opacity="0.9"/>
+  <path class="gl" d="M1516,246 l4,4 l8,-9" stroke="#1a120f" stroke-width="2.1"/>
+  <text x="1546" y="244" fill="#f7b094" font-size="14.5" font-weight="600">Production</text>
+  <text class="sub" x="1508" y="288" fill="#bd8f74">live · shipped</text>
 
   <!-- now / roadmap brackets -->
-  <path class="gl" d="M948,322 v7 M948,329 H1098 M1098,329 v-7" stroke="#3a5a48" stroke-width="1.2" opacity=".8"/>
-  <text class="lbl" x="1023" y="348" fill="#5fbf92" text-anchor="middle">today</text>
-  <path class="gl" d="M1140,322 v7 M1140,329 H1636 M1636,329 v-7" stroke="#7a5a24" stroke-width="1.2" stroke-dasharray="4 4" opacity=".9"/>
-  <text class="lbl" x="1388" y="348" fill="#caa14e" text-anchor="middle">roadmap — auto-merge &amp; CI/CD, the real delivery goal</text>
+  <path class="gl" d="M940,322 v7 M940,329 H1090 M1090,329 v-7" stroke="#3a5a48" stroke-width="1.2" opacity=".8"/>
+  <text class="lbl" x="1015" y="348" fill="#5fbf92" text-anchor="middle">today</text>
+  <path class="gl" d="M1124,322 v7 M1124,329 H1660 M1660,329 v-7" stroke="#7a5a24" stroke-width="1.2" stroke-dasharray="4 4" opacity=".9"/>
+  <text class="lbl" x="1392" y="348" fill="#caa14e" text-anchor="middle">roadmap — auto-merge &amp; deploy across environments (staging → production)</text>
 </svg>
