@@ -45,6 +45,7 @@ pub async fn materialize_direction(
         std::path::Path::new(&repo_ref.local_git_path),
         &dir.branch,
         &path,
+        &repo_ref.base_ref,
     )
     .with_context(|| format!("worktree for repo {}", repo_ref.name))?;
     let rec = repo::record_worktree(
