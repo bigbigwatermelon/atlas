@@ -24,6 +24,11 @@
 It is explicitly *not* a terminal emulator, and not a "watch the agents go"
 dashboard. It is the **workspace-and-automation fabric** the agents deliver inside.
 
+<p align="center">
+  <img src="assets/screenshots/board-workspace.png" alt="Weft workspace board" width="900" />
+  <br><sub><i>The workspace board — every thread is a live card, showing what's running and what needs you.</i></sub>
+</p>
+
 ---
 
 ## The idea in one picture
@@ -72,6 +77,11 @@ split, in this order — and who does what."*
 | **Boundary** | open-ended | **Task → PR** — merge/CI/release stay with your repo's harness |
 | **The agent CLIs** | re-wrapped / proxied | **native CLIs, verbatim** — hooks, skills, permissions intact |
 
+<p align="center">
+  <img src="assets/screenshots/repo-graph.png" alt="Cross-repo dependency map" width="900" />
+  <br><sub><i>The curator's cross-repo dependency map — roles, stacks, and "core · N dependents" — the fuel for scope decomposition.</i></sub>
+</p>
+
 ---
 
 ## The model
@@ -97,6 +107,11 @@ flowchart TD
     TH -.role.- LEAD
     SES -.role.- WORK
 ```
+
+<p align="center">
+  <img src="assets/screenshots/lead.png" alt="Lead conversation — home" width="900" />
+  <br><sub><i>Home is a conversation: the lead plans and drives workers, read-only across the repos — Board / Lead tabs, native tool running live.</i></sub>
+</p>
 
 - **Curator** profiles each repo (one-line role, interfaces, stack) and builds the
   cross-repo dependency graph — the fuel for scope decomposition.
@@ -132,6 +147,11 @@ flowchart LR
     RV -.-> N
     N -.resolved.-> R
 ```
+
+<p align="center">
+  <img src="assets/screenshots/board-thread.png" alt="Weft thread board" width="900" />
+  <br><sub><i>A thread board — directions across the lifecycle, each tagged with its tool (Claude / Codex / OpenCode) and live status; an open ask or failing check overlays a card into <b>Needs you</b>.</i></sub>
+</p>
 
 - **"Needs you" is the exception lane Weft owns.** Whatever a task's stored status,
   an **open permission ask** or a **failing check** overlays it into *Needs you* —

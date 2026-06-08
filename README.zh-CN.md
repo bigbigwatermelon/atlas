@@ -22,6 +22,11 @@
 它明确**不是**终端模拟器,也**不是**"围观 agent 干活"的仪表盘。它是 agent 在其中
 完成交付的**工作区与自动化底座**。
 
+<p align="center">
+  <img src="assets/screenshots/board-workspace.png" alt="Weft workspace 看板" width="900" />
+  <br><sub><i>Workspace 看板 —— 每个 thread 都是一张活的卡片,展示什么在运行、什么在等你。</i></sub>
+</p>
+
 ---
 
 ## 一张图看懂
@@ -68,6 +73,11 @@ flowchart LR
 | **边界** | 无界 | **Task → PR**——merge/CI/release 交给仓库现有 harness |
 | **对 agent CLI** | 重新包装 / 代理 | **原生 CLI 原样驱动**——hooks、skills、权限全保留 |
 
+<p align="center">
+  <img src="assets/screenshots/repo-graph.png" alt="跨仓依赖图" width="900" />
+  <br><sub><i>Curator 构建的跨仓依赖图 —— 角色、技术栈、"core · N dependents" —— 这是 scope 分解的燃料。</i></sub>
+</p>
+
 ---
 
 ## 模型
@@ -92,6 +102,11 @@ flowchart TD
     TH -.role.- LEAD
     SES -.role.- WORK
 ```
+
+<p align="center">
+  <img src="assets/screenshots/lead.png" alt="Lead 对话(家)" width="900" />
+  <br><sub><i>家是一个对话:lead 规划并驱动 worker,对各仓只读 —— Board / Lead 标签,原生工具实时运行中。</i></sub>
+</p>
 
 - **Curator** 为每个仓产出 Profile(一行定位、接口、技术栈),并构建跨仓依赖图——
   这是 scope 分解的燃料。
@@ -123,6 +138,11 @@ flowchart LR
     RV -.-> N
     N -.已解决.-> R
 ```
+
+<p align="center">
+  <img src="assets/screenshots/board-thread.png" alt="Weft thread 看板" width="900" />
+  <br><sub><i>Thread 看板 —— 方向(direction)沿生命周期排布,每张卡标注它的工具(Claude / Codex / OpenCode)与实时状态;一个待答的 ask 或失败的检查会把卡片叠加进 <b>Needs you</b>。</i></sub>
+</p>
 
 - **"Needs you" 是 Weft 拥有的例外车道。** 无论任务存储的状态是什么,一个**待答的
   权限请求**或一个**失败的检查**都会把它叠加进 *Needs you* —— 跨所有 thread 聚合,
