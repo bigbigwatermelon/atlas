@@ -17,10 +17,15 @@ genuinely stuck, not to push every step forward.
 ## Product Purpose
 
 weft is a local-first, no-server **delivery hub** where coding agents drive
-multi-repo work from a **Task to a PR**. The north star is **automation**: you
-state a task; weft plans it, decides which repos to touch, spawns the agents,
-coordinates them, verifies the result, and opens clean PRs. You supervise and
-handle exceptions — you are not a required checkpoint in the loop.
+multi-repo work from a **Task toward shipped code**. The north star is
+**automation**: you state a task; weft plans it, decides which repos to touch,
+spawns the agents, coordinates them, verifies the result, and drives it out the
+door. You supervise and handle exceptions — you are not a required checkpoint in
+the loop.
+
+Delivery is **phased**: today each task lands as clean pull requests; the north
+star is to carry it the rest of the way — **merge, then deploy across environments
+(staging → production)** — so the unit of *done* is shipped code, not an open PR.
 
 The shape of the work:
 
@@ -40,8 +45,9 @@ The shape of the work:
    hands each a structured **brief** (scope + interface-contract + acceptance),
    and drives them to convergence over a per-thread **bus**. Workers' output is
    gated by **executable verification** (lint / type / test / contract /
-   review-agent), not by a human nod. Green flows to a PR; red retries within
-   bounds, then escalates.
+   review-agent), not by a human nod. Green opens a PR today — and, on the
+   roadmap, flows on through **merge and environment-aware deploy (staging →
+   production)**; red retries within bounds, then escalates.
 
 **Home is a conversation, not a terminal grid.** The primary surface is the
 **lead** (your main chat + control tower): read-only across the repos, it plans,
@@ -54,14 +60,18 @@ product's reason for being.
 **The human handles exceptions, not the assembly line.** weft adds **no approval
 gate of its own**. The only blocking interruptions are the tools' own permission
 prompts (passed through verbatim, never overridden) plus a configurable
-irreversible-action boundary (e.g. merging a protected branch). Everything else
-runs; "what's waiting on me" is the rare exception, surfaced at the top of every
-view.
+irreversible-action boundary (e.g. merging a protected branch, or a production
+deploy). Everything else runs; "what's waiting on me" is the rare exception,
+surfaced at the top of every view.
 
-**Delivery boundary = Task → PR.** merge / CI / release stay with the human and
-the repo's existing PR harness — because weft drives the native CLIs (it doesn't
-bypass hooks), opening a PR naturally triggers the repo's own checks. weft does
-light pre-PR verification to avoid opening junk; it does not re-implement CI.
+**Delivery is phased — today Task → PR, the goal Task → shipped.** Today the
+boundary is a PR per repo: weft drives the native CLIs (it doesn't bypass hooks),
+so opening a PR naturally triggers the repo's own checks, and weft does light
+pre-PR verification to avoid opening junk. The north star reaches past the PR —
+weft **drives merge, then deploy across environments (staging → production)** — by
+*orchestrating the repo's existing pipelines*, never re-implementing CI/CD. The
+unit of *done* becomes shipped code; irreversible steps stay gated by the
+configurable boundary above.
 
 It is explicitly **not** a terminal emulator, and not a "watch the agents go"
 dashboard. It is the workspace-and-automation fabric the agents deliver inside.
@@ -90,8 +100,8 @@ designed, system-following + toggleable).
 ## Design Principles
 
 1. **Automation is the north star.** The default path is autonomous: task in,
-   PRs out. Every surface is built for *supervising* that flow, not for driving
-   it step by step. If a screen assumes the human pushes each step forward, it
+   shipped code out. Every surface is built for *supervising* that flow, not for
+   driving it step by step. If a screen assumes the human pushes each step forward, it
    fights the product.
 2. **The human handles exceptions, not the line.** weft adds no gate of its own.
    Surface the rare blocker (a tool's permission prompt, a true agent

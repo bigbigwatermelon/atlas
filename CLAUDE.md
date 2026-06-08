@@ -30,7 +30,7 @@
 6. 层级:Workspace ⊃ Thread(工作线/需求)⊃ Direction(方向)⊃ Session(工具×worktree)。
    会话有 role=curator|lead|worker:curator=workspace 维护仓库地图,lead=主 agent(只读纵览+规划+驱动 worker),worker=方向执行体。
 7. Automation-first:lead 默认自动分解→spawn→派发→驱动到交付,不自加审批关;唯一阻塞来自工具自身权限(透传)。质量靠"可执行验证 + 确定性升级判据 + 跑飞护栏",不是人点头。
-8. 入口抽象 = Task(任意粒度意图:PRD/bug/重构/spike/链接,PRD 只是一种);交付边界 = Task→PR(只到代码交付);merge/CI/release 交人 + 仓库现有 harness,不重造。规划下沉给 plan skill(superpowers 等),编排借 Dynamic Workflows 原理但不重实现。
+8. 入口抽象 = Task(任意粒度意图:PRD/bug/重构/spike/链接,PRD 只是一种);交付是**分阶段**的——当前止于 Task→PR,北极星是 Task→上线(开 PR → 合并 → 跨环境部署 staging→production)。合并/部署**不重造 CI/CD**,而是**编排仓库现有流水线**,并受可配置的不可逆边界(合并受保护分支、生产部署)把关。规划下沉给 plan skill(superpowers 等),编排借 Dynamic Workflows 原理但不重实现。
 
 第一步只做 M1 垂直切片(见下"构建顺序"):单工具在一个 git worktree 里创建可交互会话,
 能打字、能 Ctrl-C、关闭后能 resume 回同一会话。跑通并过验收后再往后做。
@@ -47,11 +47,11 @@
 - 物化:**git worktree**,分支 `ws/<workspace>/<thread>/<direction>`。
 - 三家(Claude Code / Codex / OpenCode)**同为第一批**,统一 `ToolDriver` 抽象。
 - 会话 **role = curator | lead | worker**;主 agent(lead)默认绑 **Claude Code**,thread 可覆盖;curator 默认绑快/省模型。
-- **Automation-first**:lead 默认自动分解→spawn→派发→驱动到交付,**Weft 不自加审批关**。唯一阻塞来自工具自身权限(透传)+ 可配置的不可逆边界(合并受保护分支等)。人随时可介入,非必经 gate。
+- **Automation-first**:lead 默认自动分解→spawn→派发→驱动到交付,**Weft 不自加审批关**。唯一阻塞来自工具自身权限(透传)+ 可配置的不可逆边界(合并受保护分支、生产部署等)。人随时可介入,非必经 gate。
 - surface 与 observation 解耦;**中/英 i18n 两层**(UI 文案 + agent 产出语言)。
 - 本地优先、无服务端、无身份;团队共享走配置下发(git/marketplace),低优先级。
-- **入口 = Task**(PRD/bug/重构/spike,PRD 只是一种);**交付边界 Task→PR**;merge/CI/release 不在范围(交人 + 仓库现有 hooks/CI)。
-- **质量闭环**:Weft 内只做轻量 pre-PR 检查(lint/type/unit/contract);权威 review/CI = 仓库现有 PR harness,不重造。
+- **入口 = Task**(PRD/bug/重构/spike,PRD 只是一种);**交付分阶段:当前 Task→PR,北极星 Task→上线**(开 PR → 合并 → 跨环境部署 staging→production);合并/部署通过**编排仓库现有流水线**达成,不重造 CI/CD,受不可逆边界把关。
+- **质量闭环**:Weft 内只做轻量 pre-PR 检查(lint/type/unit/contract);权威 review/CI = 仓库现有 PR harness,不重造。合并后的部署同样**编排现有 CD 流水线**(预发→生产),Weft 驱动 + 观测,不重写发布系统。
 - 规划下沉给 plan skill(superpowers 等);编排借 Dynamic Workflows 原理(编排即代码+结构化 handoff),不重实现;Claude worker 叶子层可自用 DW。
 
 ---
@@ -75,7 +75,7 @@
 **Out(MVP 不做)**
 - 复杂的全自动跨工具编排引擎做基础版即可(automation-first,但 DAG/重试/契约传播先做够用;不必一步到位)。
 - 团队实时协作 / 团队看板 / 服务端 / 遥测。
-- **PR 之后:权威 review / CI-CD / merge / release**(交人 + 仓库现有 PR harness;Weft 可观测不驱动)。
+- **合并 → 跨环境部署(staging→production)/ release 的全自动驱动**——属北极星路线图,但**不在 MVP**;MVP 仍止于 Task→PR。权威 review/CI 用仓库现有 harness;落地时 Weft **编排**现有 CD 流水线驱动 + 观测,绝不自建发布系统。
 - 远程项目;合并冲突自动解;RTL。
 
 ---
@@ -192,5 +192,5 @@ Workspace 板(cards=thread + 仓争用 + Needs-you 聚合)+ Thread 板(cards=dir
 - **brief 质量 = 产品天花板**:总 plan → 方向 brief 的翻译当一等产物打磨,颗粒度匹配 mandate。
 - i18n 别只做 UI:agent 产出语言是第二层;代码/标识符始终英文。
 - 隐藏机制必须配"失败可读 + 就地逃生舱",否则抽象一漏用户就卡死。
-- 别重造 PR review/CI:worker 开 PR 时仓库现有 hooks/CI 自然触发(Weft 驱动原生 CLI 不绕 hooks),Weft 只做轻量 pre-PR 检查 + 观测 PR/CI 状态。
+- 别重造 PR review/CI/CD:worker 开 PR 时仓库现有 hooks/CI 自然触发(Weft 驱动原生 CLI 不绕 hooks),Weft 只做轻量 pre-PR 检查 + 观测 PR/CI 状态。**北极星的合并 + 跨环境部署同理——编排仓库现有 CD 流水线(预发→生产),绝不自建发布系统。**
 - automation-first 但要有"跑飞护栏":每 thread/direction 预算上限 + 相同失败 loop detection + 不可逆边界可配置,否则全自动会烧钱/失控。
