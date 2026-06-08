@@ -109,6 +109,42 @@ flowchart TD
 
 ---
 
+## The board — a live trust dashboard
+
+Because no human gates the work, the board isn't a to-do list you drag — it's a
+**live projection of agent + git + check state**. Cards move through the lifecycle
+on their own; you act only on the ones that surface.
+
+It's **two levels, zoom-linked**:
+
+- **Workspace board** — one card per **thread**, the whole portfolio at a glance.
+  Each card shows its kind, direction count, what's **live** (running, pulsing),
+  what's **failing**, and a **needs-you** badge.
+- **Thread board** — one card per **direction / task**, drilled into a single work
+  line, with a **Board ↔ Lead** tab to switch between the cards and the lead
+  conversation.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#4F46E5','primaryTextColor':'#fff','primaryBorderColor':'#4F46E5','lineColor':'#888780','secondaryColor':'#F2683C'}}}%%
+flowchart LR
+    Q["📋 Queued"] --> R["⚙️ In progress"] --> RV["👀 Review"] --> D["📦 Done"]
+    R -.open ask / failing check.-> N["⚠️ Needs you"]
+    RV -.-> N
+    N -.resolved.-> R
+```
+
+- **"Needs you" is the exception lane Weft owns.** Whatever a task's stored status,
+  an **open permission ask** or a **failing check** overlays it into *Needs you* —
+  aggregated across every thread and surfaced at the very top of every view. When
+  nothing is waiting, it's quietly empty.
+- **Cards carry their acceptance signals** (running sessions, failing checks) so
+  green you trust and red you open — provenance you can expand, not a bare label.
+- **The human acts, not babysits.** Your verbs are Approve / Answer / Open /
+  Review — plus drag-to-restatus a task between columns when you want to override
+  what the agents inferred.
+
+---
+
 ## Principles (non-negotiable)
 
 1. **Automation is the north star.** Default path is autonomous: task in, PRs out.
