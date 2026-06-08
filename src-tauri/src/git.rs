@@ -241,6 +241,19 @@ pub fn repo_diff(worktree_path: &Path) -> Result<DiffSummary> {
     Ok(DiffSummary { files })
 }
 
+/// Absolute paths of every worktree git has registered for `repo` (including the
+/// main checkout, which is first). Best-effort: empty on error.
+pub fn list_registered_worktrees(repo: &Path) -> Vec<PathBuf> {
+    match git(repo, &["worktree", "list", "--porcelain"]) {
+        Ok(s) => s
+            .lines()
+            .filter_map(|l| l.strip_prefix("worktree "))
+            .map(|p| PathBuf::from(p.trim()))
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// Current branch name of a repo (e.g. "main").
 pub fn current_branch(repo: &Path) -> Result<String> {
     git(repo, &["rev-parse", "--abbrev-ref", "HEAD"])
