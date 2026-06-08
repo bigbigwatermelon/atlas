@@ -15,7 +15,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -187,6 +187,7 @@ fn spawn(
     let mut reader = pair.master.try_clone_reader()?;
     let writer = pair.master.take_writer()?;
     let alive = Arc::new(AtomicBool::new(true));
+    let last_activity = Arc::new(AtomicU64::new(now_secs()));
 
     // --- shared pending buffer drained by the flusher ---
     let pending = Arc::new(Mutex::new(FrameBatcher::new(FRAME_MAX_BYTES)));
@@ -195,6 +196,7 @@ fn spawn(
     {
         let pending = pending.clone();
         let alive_r = alive.clone();
+        let last_activity_r = last_activity.clone();
         let app = app.clone();
         std::thread::spawn(move || {
             let mut buf = [0u8; 8192];
@@ -202,6 +204,7 @@ fn spawn(
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
+                        last_activity_r.store(now_secs(), Ordering::SeqCst);
                         pending.lock().unwrap_or_else(|e| e.into_inner()).push(&buf[..n]);
                     }
                 }
@@ -226,6 +229,39 @@ fn spawn(
                 let frame = pending.lock().unwrap_or_else(|e| e.into_inner()).take_frame();
                 if let Some(frame) = frame {
                     emit_output(&app, session_id, &frame);
+                }
+            }
+        });
+    }
+
+    // watchdog thread: force-stop a runaway/stuck session (wall-clock + idle).
+    {
+        let app = app.clone();
+        let alive_w = alive.clone();
+        let last_activity_w = last_activity.clone();
+        let start = now_secs();
+        let wall_cap = wall_cap_secs();
+        let idle_cap = idle_cap_secs();
+        std::thread::spawn(move || {
+            if wall_cap == 0 && idle_cap == 0 {
+                return;
+            }
+            loop {
+                std::thread::sleep(Duration::from_secs(30));
+                if !alive_w.load(Ordering::SeqCst) {
+                    return;
+                }
+                let now = now_secs();
+                let last = last_activity_w.load(Ordering::SeqCst);
+                let has_open_ask = app
+                    .try_state::<crate::ask::AskRegistry>()
+                    .map(|a| a.open().iter().any(|k| k.dir == direction_id.to_string()))
+                    .unwrap_or(false);
+                if let Some(reason) =
+                    watchdog_verdict(now, start, last, wall_cap, idle_cap, has_open_ask)
+                {
+                    escalate(&app, session_id, direction_id, reason);
+                    return;
                 }
             }
         });
@@ -457,6 +493,42 @@ pub fn resize_pty(
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Force-stop a runaway/stuck session and surface it via Needs-you. Reuses the
+/// kill path, then posts a bus ask from the direction so it appears as a
+/// Needs-you item (no dedicated UI for round 1).
+fn escalate(app: &AppHandle, session_id: i32, direction_id: i32, reason: String) {
+    if let Some(state) = app.try_state::<PtyState>() {
+        if let Some(mut a) = state
+            .sessions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&session_id)
+        {
+            a.alive.store(false, Ordering::SeqCst);
+            let _ = a.child.kill();
+            let _ = a.child.wait();
+        }
+    }
+    let _ = app.emit(EXIT_EVENT, serde_json::json!({ "sessionId": session_id }));
+
+    if let (Some(bus), Some(db)) = (
+        app.try_state::<crate::bus::BusRegistry>(),
+        app.try_state::<crate::store::Db>(),
+    ) {
+        let bus = (*bus).clone();
+        let db = crate::store::Db(db.0.clone());
+        tauri::async_runtime::spawn(async move {
+            if let Ok(Some(d)) = crate::store::repo::get_direction(&db, direction_id).await {
+                bus.ask_human(
+                    d.thread_id,
+                    &direction_id.to_string(),
+                    &format!("⚠️ Worker auto-stopped by the runaway guard: {reason}. Review and resume if it was still needed."),
+                );
+            }
+        });
+    }
 }
 
 /// Terminate one session.
