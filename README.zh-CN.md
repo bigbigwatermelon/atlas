@@ -2,7 +2,9 @@
 
 <img src="public/weft-logo.svg" alt="Weft" width="240" />
 
-### 让 coding agent 把跨仓需求从一个 Task 一路交付到 PR
+### 面向 coding agent 的本地优先指挥中心
+
+丢进一个 Task,收获跨仓 PR —— 编排你自己的 Claude Code、Codex 与 OpenCode,横跨多个仓库。
 
 **本地优先 · 无服务端 · automation-first**
 
@@ -34,27 +36,9 @@
 一个 workspace 是一组仓库引用的逻辑清单。一个 **Task** 扇出为多个并行的**方向
 (direction)**,每个跑在独立的 git worktree 里、由一个 agent 驱动,最终收敛回若干 PR。
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#4F46E5','primaryTextColor':'#fff','primaryBorderColor':'#4F46E5','lineColor':'#888780','secondaryColor':'#F2683C','tertiaryColor':'#F1EFE8'}}}%%
-flowchart LR
-    T["🎯 Task<br/><sub>PRD · bug · 重构 · spike · 链接</sub>"]
-    L["🧭 Lead 主 agent<br/><sub>分类 · 规划 · 推导 scope</sub>"]
-    M[("🗺️ 仓库地图<br/><sub>curator:Profile + 依赖图</sub>")]
-
-    T --> L
-    M -.燃料.-> L
-
-    L --> W1["⚙️ Worker · 仓 A<br/><sub>worktree · brief</sub>"]
-    L --> W2["⚙️ Worker · 仓 B<br/><sub>worktree · brief</sub>"]
-    L --> W3["⚙️ Worker · 仓 C<br/><sub>worktree · brief</sub>"]
-
-    W1 --> V{"✅ 可执行<br/>验证"}
-    W2 --> V
-    W3 --> V
-
-    V -->|绿| PR["📦 Pull Requests"]
-    V -.->|红:有界重试 / 升级| L
-```
+<p align="center">
+  <img src="assets/diagrams/flow-zh.svg" alt="Task 到 PR 的流程" width="880" />
+</p>
 
 ---
 
@@ -84,24 +68,9 @@ flowchart LR
 
 Weft 的结构*本身*就是产品。四个嵌套层级,会话各带一个**角色(role)**:
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#4F46E5','primaryTextColor':'#fff','primaryBorderColor':'#4F46E5','lineColor':'#888780'}}}%%
-flowchart TD
-    WS["🏛️ <b>Workspace</b><br/><sub>一组仓库引用的逻辑清单</sub>"]
-    TH["🧵 <b>Thread 工作线</b><br/><sub>一个需求 / 任务 · 绑一个 lead</sub>"]
-    DIR["➡️ <b>Direction 方向</b><br/><sub>一片工作 · write/read 仓 · 一个工具</sub>"]
-    SES["🖥️ <b>Session 会话</b><br/><sub>工具 × worktree · role + 原生会话 id</sub>"]
-
-    WS --> TH --> DIR --> SES
-
-    CUR(["👤 <b>curator</b> — 维护仓库地图"])
-    LEAD(["🧭 <b>lead</b> — 只读纵览,规划,驱动 worker"])
-    WORK(["⚙️ <b>worker</b> — 执行单个方向"])
-
-    WS -.role.- CUR
-    TH -.role.- LEAD
-    SES -.role.- WORK
-```
+<p align="center">
+  <img src="assets/diagrams/model-zh.svg" alt="Workspace、Thread、Direction、Session 与角色" width="880" />
+</p>
 
 <p align="center">
   <img src="assets/screenshots/lead.png" alt="Lead 对话(家)" width="900" />
@@ -130,14 +99,9 @@ flowchart TD
 - **Thread 板** —— 每个**方向 / 任务**一张卡,钻进单条工作线,并用 **Board ↔ Lead**
   标签在卡片与 lead 对话之间切换。
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#4F46E5','primaryTextColor':'#fff','primaryBorderColor':'#4F46E5','lineColor':'#888780','secondaryColor':'#F2683C'}}}%%
-flowchart LR
-    Q["📋 排队"] --> R["⚙️ 进行中"] --> RV["👀 Review"] --> D["📦 完成"]
-    R -.待答权限 / 检查失败.-> N["⚠️ Needs you"]
-    RV -.-> N
-    N -.已解决.-> R
-```
+<p align="center">
+  <img src="assets/diagrams/board-zh.svg" alt="看板生命周期与 Needs-you 例外车道" width="880" />
+</p>
 
 <p align="center">
   <img src="assets/screenshots/board-thread.png" alt="Weft thread 看板" width="900" />
@@ -175,35 +139,9 @@ flowchart LR
 
 ## 架构
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#4F46E5','primaryTextColor':'#fff','primaryBorderColor':'#4F46E5','lineColor':'#888780'}}}%%
-flowchart TB
-    subgraph FE["🖼️ 前端 · React 19 + TypeScript + Tailwind"]
-        HOME["Lead 对话(家)"]
-        BOARD["两级看板<br/>workspace · thread"]
-        TERM["xterm.js 会话面板"]
-        SCOPE["scope 确认 · 仓库图 · diff"]
-    end
-
-    subgraph BE["🦀 后端 · Rust (Tauri v2)"]
-        DRV["ToolDriver<br/>claude · codex · opencode"]
-        PTYM["PTY 管理<br/>portable-pty + 输入仲裁"]
-        ROLES["角色<br/>curator · lead · worker"]
-        MAT["物化<br/>scope → git worktree"]
-        BUS["Thread bus<br/>本地 MCP / axum + coordinator"]
-        STORE[("SQLite<br/>sea-orm")]
-    end
-
-    AGENTS["原生 agent CLI<br/>+ 各自的 sidecar 会话日志"]
-
-    FE <-->|Tauri IPC| BE
-    DRV --> AGENTS
-    PTYM --> AGENTS
-    DRV -.事件归一化.-> ROLES
-    ROLES --> MAT
-    ROLES --> BUS
-    BE --> STORE
-```
+<p align="center">
+  <img src="assets/diagrams/arch-zh.svg" alt="Weft 架构:前端、Tauri IPC、Rust 后端、原生 CLI" width="900" />
+</p>
 
 **锁定技术栈** —— Tauri v2(Rust + React/TS/Vite)· PTY 用 `portable-pty` +
 `xterm.js` · 状态用 SQLite(sea-orm)· git worktree 直接调用系统 `git` · i18n 用

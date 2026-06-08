@@ -2,9 +2,11 @@
 
 <img src="public/weft-logo.svg" alt="Weft" width="240" />
 
-### Coding agents that carry multi-repo work from a task to a PR
+### Local-first mission control for coding agents
 
-**Local-first · no server · automation-first**
+Drop in a task, get cross-repo pull requests — orchestrating your own Claude Code, Codex & OpenCode across many repos.
+
+**local-first · no server · automation-first**
 
 [简体中文](README.zh-CN.md) · **English**
 
@@ -37,27 +39,9 @@ A single workspace is a logical list of repo references. One **Task** fans out
 into parallel **directions**, each running in its own isolated git worktree, each
 driven by an agent — and converges back into pull requests.
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#4F46E5','primaryTextColor':'#fff','primaryBorderColor':'#4F46E5','lineColor':'#888780','secondaryColor':'#F2683C','tertiaryColor':'#F1EFE8'}}}%%
-flowchart LR
-    T["🎯 Task<br/><sub>PRD · bug · refactor · spike · link</sub>"]
-    L["🧭 Lead agent<br/><sub>classify · plan · derive scope</sub>"]
-    M[("🗺️ Repo map<br/><sub>curator: profiles + dep graph</sub>")]
-
-    T --> L
-    M -.fuels.-> L
-
-    L --> W1["⚙️ Worker · repo A<br/><sub>worktree · brief</sub>"]
-    L --> W2["⚙️ Worker · repo B<br/><sub>worktree · brief</sub>"]
-    L --> W3["⚙️ Worker · repo C<br/><sub>worktree · brief</sub>"]
-
-    W1 --> V{"✅ Executable<br/>verification"}
-    W2 --> V
-    W3 --> V
-
-    V -->|green| PR["📦 Pull requests"]
-    V -.->|red: bounded retry / escalate| L
-```
+<p align="center">
+  <img src="assets/diagrams/flow-en.svg" alt="Task to pull-requests flow" width="880" />
+</p>
 
 ---
 
@@ -89,24 +73,9 @@ split, in this order — and who does what."*
 Weft's structure *is* the product. Four nested layers, with sessions carrying a
 **role**:
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#4F46E5','primaryTextColor':'#fff','primaryBorderColor':'#4F46E5','lineColor':'#888780'}}}%%
-flowchart TD
-    WS["🏛️ <b>Workspace</b><br/><sub>a logical list of repo refs</sub>"]
-    TH["🧵 <b>Thread</b><br/><sub>one task / requirement · has a lead agent</sub>"]
-    DIR["➡️ <b>Direction</b><br/><sub>a slice of the work · write/read repos · a tool</sub>"]
-    SES["🖥️ <b>Session</b><br/><sub>tool × worktree · role + native session id</sub>"]
-
-    WS --> TH --> DIR --> SES
-
-    CUR(["👤 <b>curator</b> — maintains the repo map"])
-    LEAD(["🧭 <b>lead</b> — read-only overview, plans, drives workers"])
-    WORK(["⚙️ <b>worker</b> — executes one direction"])
-
-    WS -.role.- CUR
-    TH -.role.- LEAD
-    SES -.role.- WORK
-```
+<p align="center">
+  <img src="assets/diagrams/model-en.svg" alt="Workspace, Thread, Direction, Session and roles" width="880" />
+</p>
 
 <p align="center">
   <img src="assets/screenshots/lead.png" alt="Lead conversation — home" width="900" />
@@ -139,14 +108,9 @@ It's **two levels, zoom-linked**:
   line, with a **Board ↔ Lead** tab to switch between the cards and the lead
   conversation.
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#4F46E5','primaryTextColor':'#fff','primaryBorderColor':'#4F46E5','lineColor':'#888780','secondaryColor':'#F2683C'}}}%%
-flowchart LR
-    Q["📋 Queued"] --> R["⚙️ In progress"] --> RV["👀 Review"] --> D["📦 Done"]
-    R -.open ask / failing check.-> N["⚠️ Needs you"]
-    RV -.-> N
-    N -.resolved.-> R
-```
+<p align="center">
+  <img src="assets/diagrams/board-en.svg" alt="Board lifecycle with the Needs-you exception lane" width="880" />
+</p>
 
 <p align="center">
   <img src="assets/screenshots/board-thread.png" alt="Weft thread board" width="900" />
@@ -188,35 +152,9 @@ flowchart LR
 
 ## Architecture
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#4F46E5','primaryTextColor':'#fff','primaryBorderColor':'#4F46E5','lineColor':'#888780'}}}%%
-flowchart TB
-    subgraph FE["🖼️ Frontend · React 19 + TypeScript + Tailwind"]
-        HOME["Lead conversation (home)"]
-        BOARD["Two-level kanban<br/>workspace · thread"]
-        TERM["xterm.js session panels"]
-        SCOPE["Scope confirm · repo graph · diff"]
-    end
-
-    subgraph BE["🦀 Backend · Rust (Tauri v2)"]
-        DRV["ToolDriver<br/>claude · codex · opencode"]
-        PTYM["PTY manager<br/>portable-pty + input arbitration"]
-        ROLES["Roles<br/>curator · lead · worker"]
-        MAT["Materialize<br/>scope → git worktree"]
-        BUS["Thread bus<br/>local MCP / axum + coordinator"]
-        STORE[("SQLite<br/>sea-orm")]
-    end
-
-    AGENTS["Native agent CLIs<br/>+ their sidecar session logs"]
-
-    FE <-->|Tauri IPC| BE
-    DRV --> AGENTS
-    PTYM --> AGENTS
-    DRV -.normalize events.-> ROLES
-    ROLES --> MAT
-    ROLES --> BUS
-    BE --> STORE
-```
+<p align="center">
+  <img src="assets/diagrams/arch-en.svg" alt="Weft architecture: frontend, Tauri IPC, Rust backend, native CLIs" width="900" />
+</p>
 
 **Locked stack** — Tauri v2 (Rust + React/TS/Vite) · PTY via `portable-pty` +
 `xterm.js` · state in SQLite (sea-orm) · git worktrees driven by the system `git` ·

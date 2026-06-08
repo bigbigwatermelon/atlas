@@ -1,0 +1,104 @@
+<svg viewBox="0 0 1320 600" xmlns="http://www.w3.org/2000/svg" font-family="'Inter','SF Pro Display',-apple-system,'Segoe UI','PingFang SC','Noto Sans CJK SC',sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#5b5866"/></marker>
+    <marker id="arrB" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#7c74f0"/></marker>
+    <marker id="arrG" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#35c98b"/></marker>
+    <marker id="arrA" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#caa14e"/></marker>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="22" result="b"/><feMerge><feMergeNode in="b"/></feMerge></filter>
+    <style>
+      .ttl{fill:#f3f2f7;font-size:16px;font-weight:600}
+      .sub{fill:#8b8896;font-size:11.5px}
+      .lbl{fill:#75727f;font-size:11px;font-weight:500}
+      .node{fill:#1f1d27;stroke:#36333f;stroke-width:1}
+      .gl{stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1320" height="600" rx="18" fill="#15141a"/>
+  <!-- focal glows -->
+  <circle cx="408" cy="304" r="70" fill="#4f46e5" opacity="0.16" filter="url(#glow)"/>
+  <circle cx="1214" cy="304" r="60" fill="#f2683c" opacity="0.16" filter="url(#glow)"/>
+
+  <!-- connectors -->
+  <path class="gl" d="M224,304 H300" stroke="#5b5866" marker-end="url(#arr)"/>
+  <path class="gl" d="M408,208 V256" stroke="#7c74f0" stroke-dasharray="2 6" opacity="0.85" marker-end="url(#arrB)"/>
+  <text class="lbl" x="420" y="240" fill="#8b84e8">fuels</text>
+
+  <path class="gl" d="M516,290 C560,250 560,200 596,180" stroke="#7c74f0" marker-end="url(#arrB)"/>
+  <path class="gl" d="M516,304 H596" stroke="#7c74f0" marker-end="url(#arrB)"/>
+  <path class="gl" d="M516,318 C560,358 560,408 596,428" stroke="#7c74f0" marker-end="url(#arrB)"/>
+
+  <path class="gl" d="M820,180 C864,200 864,260 900,288" stroke="#5b5866" marker-end="url(#arr)"/>
+  <path class="gl" d="M820,304 H900" stroke="#5b5866" marker-end="url(#arr)"/>
+  <path class="gl" d="M820,428 C864,408 864,348 900,320" stroke="#5b5866" marker-end="url(#arr)"/>
+
+  <path class="gl" d="M1080,304 H1140" stroke="#35c98b" marker-end="url(#arrG)"/>
+  <text class="lbl" x="1086" y="294" fill="#35c98b">green</text>
+
+  <path class="gl" d="M990,352 C990,470 470,470 408,400" stroke="#caa14e" stroke-dasharray="5 5" opacity="0.8" marker-end="url(#arrA)"/>
+  <text class="lbl" x="640" y="488" fill="#caa14e">red · bounded retry / escalate</text>
+
+  <!-- Task -->
+  <rect class="node" x="48" y="259" width="176" height="90" rx="13"/>
+  <circle cx="78" cy="290" r="13" fill="#4f46e5" opacity="0.16"/>
+  <circle cx="78" cy="290" r="6.5" fill="none" stroke="#8b84e8" class="gl"/><circle cx="78" cy="290" r="2.2" fill="#8b84e8"/>
+  <text class="ttl" x="100" y="295">Task</text>
+  <text class="sub" x="64" y="332">PRD · bug · refactor · spike</text>
+
+  <!-- Repo map -->
+  <rect class="node" x="300" y="132" width="216" height="76" rx="13"/>
+  <circle cx="330" cy="160" r="13" fill="#2a2734"/>
+  <g class="gl" stroke="#b8b5c2"><circle cx="325" cy="155" r="2.2" fill="#b8b5c2" stroke="none"/><circle cx="337" cy="152" r="2.2" fill="#b8b5c2" stroke="none"/><circle cx="334" cy="166" r="2.2" fill="#b8b5c2" stroke="none"/><path d="M325,155 L337,152 M337,152 L334,166 M325,155 L334,166"/></g>
+  <text class="ttl" x="352" y="160" font-size="14.5">Repo map</text>
+  <text class="sub" x="316" y="190">curator: profiles + dep graph</text>
+
+  <!-- Lead -->
+  <rect x="300" y="256" width="216" height="96" rx="13" fill="#211f33" stroke="#4f46e5" stroke-width="1.4"/>
+  <circle cx="332" cy="290" r="14" fill="#4f46e5" opacity="0.2"/>
+  <circle cx="332" cy="290" r="8" fill="none" stroke="#9a93f7" class="gl"/>
+  <path d="M332,283 L336,290 L332,297 L328,290 Z" fill="#9a93f7"/>
+  <text class="ttl" x="356" y="288">Lead agent</text>
+  <text class="sub" x="316" y="332">classify · plan · derive scope</text>
+
+  <!-- Workers -->
+  <g>
+    <rect class="node" x="596" y="128" width="224" height="96" rx="13"/>
+    <circle cx="628" cy="162" r="14" fill="#2a2734"/>
+    <g class="gl" stroke="#b8b5c2"><path d="M623,157 l4,5 l-4,5"/><path d="M630,168 h6"/></g>
+    <text class="ttl" x="652" y="160">Worker · repo A</text>
+    <text class="sub" x="612" y="186">worktree · brief</text>
+    <circle cx="800" cy="160" r="4" fill="#35c98b"/>
+    <text x="612" y="208" class="sub" fill="#6f6c79">Claude</text>
+  </g>
+  <g>
+    <rect class="node" x="596" y="256" width="224" height="96" rx="13"/>
+    <circle cx="628" cy="290" r="14" fill="#2a2734"/>
+    <g class="gl" stroke="#b8b5c2"><path d="M623,285 l4,5 l-4,5"/><path d="M630,296 h6"/></g>
+    <text class="ttl" x="652" y="288">Worker · repo B</text>
+    <text class="sub" x="612" y="314">worktree · brief</text>
+    <circle cx="800" cy="288" r="4" fill="#35c98b"/>
+    <text x="612" y="336" class="sub" fill="#6f6c79">Codex</text>
+  </g>
+  <g>
+    <rect class="node" x="596" y="384" width="224" height="96" rx="13"/>
+    <circle cx="628" cy="418" r="14" fill="#2a2734"/>
+    <g class="gl" stroke="#b8b5c2"><path d="M623,413 l4,5 l-4,5"/><path d="M630,424 h6"/></g>
+    <text class="ttl" x="652" y="416">Worker · repo C</text>
+    <text class="sub" x="612" y="442">worktree · brief</text>
+    <circle cx="800" cy="416" r="4" fill="#35c98b"/>
+    <text x="612" y="464" class="sub" fill="#6f6c79">OpenCode</text>
+  </g>
+
+  <!-- Verify -->
+  <rect class="node" x="900" y="256" width="180" height="96" rx="13" stroke="#3a5a48"/>
+  <circle cx="930" cy="290" r="14" fill="#35c98b" opacity="0.16"/>
+  <path class="gl" d="M924,290 l4,4 l8,-9" stroke="#4fd49b"/>
+  <text class="ttl" x="952" y="288" font-size="14.5">Verify</text>
+  <text class="sub" x="916" y="332">lint · type · test · contract</text>
+
+  <!-- PRs -->
+  <rect x="1140" y="259" width="148" height="90" rx="13" fill="#241c20" stroke="#f2683c" stroke-width="1.4"/>
+  <circle cx="1170" cy="290" r="14" fill="#f2683c" opacity="0.18"/>
+  <g class="gl" stroke="#f5895f"><circle cx="1165" cy="285" r="2.6" fill="#f5895f" stroke="none"/><circle cx="1165" cy="297" r="2.6" fill="#f5895f" stroke="none"/><path d="M1165,287 v8"/><path d="M1165,288 C1172,288 1176,292 1176,297"/><circle cx="1176" cy="297" r="2.6" fill="#f5895f" stroke="none"/></g>
+  <text class="ttl" x="1192" y="295">Pull requests</text>
+</svg>
