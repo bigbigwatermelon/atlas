@@ -33,18 +33,57 @@ pub fn is_git_repo(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Create a worktree for `repo` on a fresh `branch` at `worktree_path`.
-/// Idempotent-ish: if the worktree path already exists it is reused.
-pub fn add_worktree(repo: &Path, branch: &str, worktree_path: &Path) -> Result<PathBuf> {
+/// Resolve a usable base commit-ish for a NEW worktree branch: prefer the repo's
+/// recorded base_ref; if it no longer resolves, fall back through origin/HEAD →
+/// main → master → HEAD so worktree creation never silently branches off whatever
+/// happens to be checked out in the canonical repo.
+fn resolve_base_ref(repo: &Path, recorded: &str) -> String {
+    let resolves = |r: &str| {
+        !r.is_empty()
+            && Command::new("git")
+                .args(["rev-parse", "--verify", "--quiet", &format!("{r}^{{commit}}")])
+                .current_dir(repo)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+    };
+    if resolves(recorded) {
+        return recorded.to_string();
+    }
+    if let Ok(out) = Command::new("git")
+        .args(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+        .current_dir(repo)
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if resolves(&s) {
+                return s;
+            }
+        }
+    }
+    for c in ["main", "master", "origin/main", "origin/master"] {
+        if resolves(c) {
+            return c.to_string();
+        }
+    }
+    "HEAD".to_string()
+}
+
+/// Create a worktree for `repo` on a fresh `branch` at `worktree_path`, branched
+/// off `base_ref` (resolved defensively; see resolve_base_ref). Idempotent: an
+/// existing path is reused, and an existing branch is checked out rather than
+/// recreated.
+pub fn add_worktree(repo: &Path, branch: &str, worktree_path: &Path, base_ref: &str) -> Result<PathBuf> {
     if worktree_path.exists() {
         return Ok(worktree_path.to_path_buf());
     }
     if let Some(parent) = worktree_path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    // -b creates the branch; if it already exists, fall back to plain add.
     let path_str = worktree_path.to_string_lossy().to_string();
-    let res = git(repo, &["worktree", "add", "-b", branch, &path_str]);
+    let base = resolve_base_ref(repo, base_ref);
+    let res = git(repo, &["worktree", "add", "-b", branch, &path_str, &base]);
     if res.is_err() {
         git(repo, &["worktree", "add", &path_str, branch])
             .context("worktree add (existing branch)")?;
@@ -210,4 +249,60 @@ pub fn current_branch(repo: &Path) -> Result<String> {
 /// Short HEAD commit sha; used to stamp a repo profile and detect staleness.
 pub fn head_commit(repo: &Path) -> Result<String> {
     git(repo, &["rev-parse", "--short", "HEAD"])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp(name: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!("weft-git-{}-{}", std::process::id(), name));
+        let _ = std::fs::remove_dir_all(&p);
+        p
+    }
+
+    #[test]
+    fn worktree_branches_from_recorded_base_not_current_head() {
+        let repo = tmp("base");
+        init_repo(&repo).unwrap();
+        let base = current_branch(&repo).unwrap();
+        let base_commit = git(&repo, &["rev-parse", &base]).unwrap();
+        git(&repo, &["checkout", "-q", "-b", "other"]).unwrap();
+        git(&repo, &["commit", "-q", "--allow-empty", "-m", "other"]).unwrap();
+        let other_commit = git(&repo, &["rev-parse", "HEAD"]).unwrap();
+        assert_ne!(base_commit, other_commit);
+
+        let wt = tmp("base-wt");
+        add_worktree(&repo, "ws/x/t/d", &wt, &base).unwrap();
+        let wt_head = git(&wt, &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(wt_head, base_commit, "must branch from recorded base, not current HEAD");
+        assert_ne!(wt_head, other_commit);
+
+        let _ = remove_worktree(&repo, &wt);
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&wt);
+    }
+
+    #[test]
+    fn bogus_base_ref_falls_back_and_still_creates() {
+        let repo = tmp("bogus");
+        init_repo(&repo).unwrap();
+        let wt = tmp("bogus-wt");
+        add_worktree(&repo, "ws/x/t/d2", &wt, "no-such-branch-xyz").unwrap();
+        assert!(wt.join(".git").exists());
+        let _ = remove_worktree(&repo, &wt);
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&wt);
+    }
+
+    #[test]
+    fn resolve_prefers_recorded_then_falls_back() {
+        let repo = tmp("resolve");
+        init_repo(&repo).unwrap();
+        let base = current_branch(&repo).unwrap();
+        assert_eq!(resolve_base_ref(&repo, &base), base);
+        let fb = resolve_base_ref(&repo, "nope-xyz");
+        assert!(git(&repo, &["rev-parse", "--verify", &fb]).is_ok());
+        let _ = std::fs::remove_dir_all(&repo);
+    }
 }
