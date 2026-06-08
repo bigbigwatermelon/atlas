@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, MessagesSquare, RotateCcw, Sparkles, Square, SquareTerminal } from "lucide-react";
-import { useStore } from "../state/store";
+import { useStore, type OpenSession } from "../state/store";
 import type { SessionStatus } from "../lib/types";
 import { TerminalPanel } from "../panels/TerminalPanel";
 import { Transcript } from "./Transcript";
@@ -42,18 +42,23 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
   }, [leadSession, activeThreadId, startLead]);
 
   if (!leadSession) {
-    const exited = Object.values(sessions).some(
+    // The lead finished its turn (PTY exited). Keep its transcript readable, with
+    // a Restart to continue the conversation — don't hide the work behind a button.
+    const exitedLead = Object.values(sessions).find(
       (s) => s.kind === "lead" && s.threadId === activeThreadId && s.status === "exited",
     );
-    return (
-      <LeadStarting
-        exited={exited}
-        onRetry={() => {
-          attemptedRef.current = activeThreadId;
-          void startLead();
-        }}
-      />
-    );
+    if (exitedLead) {
+      return (
+        <LeadStopped
+          session={exitedLead}
+          onRestart={() => {
+            attemptedRef.current = activeThreadId;
+            void startLead();
+          }}
+        />
+      );
+    }
+    return <LeadStarting />;
   }
 
   const { info, status, nativeId } = leadSession;
@@ -169,28 +174,45 @@ function ViewTab({
   );
 }
 
-function LeadStarting({ exited, onRetry }: { exited: boolean; onRetry: () => void }) {
+function LeadStarting() {
   const { t } = useTranslation();
-  if (exited) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-        <div className="grid h-11 w-11 place-items-center rounded-[var(--radius-lg)] bg-surface">
-          <Sparkles size={20} className="text-ink-faint" />
-        </div>
-        <p className="mt-3 text-[13px] text-ink-muted">{t("lead.stopped")}</p>
-        <Button variant="primary" className="mt-4" onClick={onRetry}>
-          <RotateCcw size={14} />
-          {t("lead.restart")}
-        </Button>
-      </div>
-    );
-  }
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
       <div className="grid h-11 w-11 place-items-center rounded-[var(--radius-lg)] bg-accent-ghost">
         <Sparkles size={20} className="animate-pulse text-accent" />
       </div>
       <p className="mt-3 text-[13px] text-ink-muted">{t("lead.starting")}</p>
+    </div>
+  );
+}
+
+/** An exited lead: its transcript stays readable; Restart continues the thread. */
+function LeadStopped({
+  session,
+  onRestart,
+}: {
+  session: OpenSession;
+  onRestart: () => void;
+}) {
+  const { t } = useTranslation();
+  const { info, nativeId } = session;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
+        <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sm)] bg-raised px-2 py-0.5 text-[11px] capitalize text-ink-muted">
+          <ToolIcon tool={info.tool} size={12} />
+          {info.tool}
+        </span>
+        <span className="text-[11px] text-ink-faint">{t("lead.stopped")}</span>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Button size="sm" variant="primary" onClick={onRestart}>
+            <RotateCcw size={12} />
+            {t("lead.restart")}
+          </Button>
+          <Inspect path={info.worktree} nativeId={nativeId} tool={info.tool} className="h-7 w-7" />
+        </div>
+      </div>
+      <Transcript cwd={info.worktree} tool={info.tool} running={false} />
     </div>
   );
 }
