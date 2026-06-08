@@ -24,6 +24,9 @@ pub struct ProposedDirection {
     pub repo: String,
     #[serde(default)]
     pub reason: String,
+    /// Human decision on this write declaration: "" (pending) | "approved" | "denied".
+    #[serde(default)]
+    pub decision: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +54,7 @@ pub struct ResolvedDirection {
     /// The one write repo, resolved to a workspace repo.
     pub repo: ScopeEntry,
     pub reason: String,
+    pub decision: String,
 }
 
 /// Resolve one proposed direction's write-repo name to a workspace repo id.
@@ -66,6 +70,7 @@ pub fn resolve(dir: &ProposedDirection, repos: &[(i32, String)]) -> ResolvedDire
             known: id.is_some(),
         },
         reason: dir.reason.clone(),
+        decision: dir.decision.clone(),
     }
 }
 
@@ -122,6 +127,9 @@ pub async fn confirm(db: &Db, thread_id: i32) -> Result<Vec<i32>> {
         if !d.repo.known {
             continue; // unknown repo name never resolved to a worktree-able repo
         }
+        if d.decision == "approved" || d.decision == "denied" {
+            continue; // already handled via per-card approve/deny
+        }
         let dir =
             repo::create_direction(db, thread_id, &d.name, &d.tool, d.repo.repo_id, &d.reason)
                 .await?;
@@ -132,6 +140,97 @@ pub async fn confirm(db: &Db, thread_id: i32) -> Result<Vec<i32>> {
         repo::upsert_plan(db, thread_id, &p.proposal, "confirmed", &p.created_at).await?;
     }
     Ok(created)
+}
+
+/// Approve one proposed direction (by index): mark it approved in the stored
+/// proposal, create the real direction bound to its repo + reason, and
+/// materialize its worktree. Returns the new direction id.
+pub async fn approve_direction(db: &Db, thread_id: i32, index: usize) -> Result<i32> {
+    let plan = repo::get_plan(db, thread_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("no proposal for thread {thread_id}"))?;
+    let mut proposal: Proposal = serde_json::from_str(&plan.proposal).unwrap_or_default();
+    let pd = proposal
+        .directions
+        .get(index)
+        .ok_or_else(|| anyhow::anyhow!("write trigger {index} out of range"))?
+        .clone();
+    let repos = workspace_repos(db, thread_id).await?;
+    let resolved = resolve(&pd, &repos);
+    if !resolved.repo.known {
+        anyhow::bail!("repo {:?} is not a known workspace repo", resolved.repo.repo_name);
+    }
+    let dir = repo::create_direction(
+        db,
+        thread_id,
+        &resolved.name,
+        &resolved.tool,
+        resolved.repo.repo_id,
+        &resolved.reason,
+    )
+    .await?;
+    materialize::materialize_direction(db, dir.id).await?;
+    proposal.directions[index].decision = "approved".to_string();
+    persist_decision(db, thread_id, &proposal, &plan).await?;
+    Ok(dir.id)
+}
+
+/// Deny one proposed direction (by index): mark it denied in the stored
+/// proposal. Returns the denied direction's (name, repo_name) for the caller to
+/// relay to the lead over the bus.
+pub async fn deny_direction(db: &Db, thread_id: i32, index: usize) -> Result<(String, String)> {
+    let plan = repo::get_plan(db, thread_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("no proposal for thread {thread_id}"))?;
+    let mut proposal: Proposal = serde_json::from_str(&plan.proposal).unwrap_or_default();
+    let pd = proposal
+        .directions
+        .get_mut(index)
+        .ok_or_else(|| anyhow::anyhow!("write trigger {index} out of range"))?;
+    pd.decision = "denied".to_string();
+    let info = (pd.name.clone(), pd.repo.clone());
+    persist_decision(db, thread_id, &proposal, &plan).await?;
+    Ok(info)
+}
+
+async fn persist_decision(
+    db: &Db,
+    thread_id: i32,
+    proposal: &Proposal,
+    plan: &crate::store::entities::plan::Model,
+) -> Result<()> {
+    let json = serde_json::to_string(proposal)?;
+    repo::upsert_plan(db, thread_id, &json, &plan.status, &plan.created_at).await?;
+    Ok(())
+}
+
+/// One pending write declaration: its index into the stored proposal plus the
+/// resolved direction fields. Pending = known repo AND decision not yet made.
+#[derive(Clone, Debug, Serialize)]
+pub struct PendingWrite {
+    pub index: usize,
+    pub name: String,
+    pub repo_name: String,
+    pub reason: String,
+}
+
+/// The pending write declarations for a thread (known repo + undecided).
+pub async fn pending_writes(db: &Db, thread_id: i32) -> Result<Vec<PendingWrite>> {
+    let Some(p) = get_resolved(db, thread_id).await? else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    for (i, d) in p.directions.iter().enumerate() {
+        if d.repo.known && d.decision.is_empty() {
+            out.push(PendingWrite {
+                index: i,
+                name: d.name.clone(),
+                repo_name: d.repo.repo_name.clone(),
+                reason: d.reason.clone(),
+            });
+        }
+    }
+    Ok(out)
 }
 
 async fn workspace_repos(db: &Db, thread_id: i32) -> Result<Vec<(i32, String)>> {
@@ -161,6 +260,7 @@ mod tests {
             tool: "claude".into(),
             repo: "api".into(),
             reason: "add the discount endpoint".into(),
+            decision: "".into(),
         };
         let r = resolve(&d, &repos());
         assert_eq!(r.name, "Payments");
@@ -175,6 +275,7 @@ mod tests {
             tool: "codex".into(),
             repo: "ghost-repo".into(),
             reason: "whatever".into(),
+            decision: "".into(),
         };
         let r = resolve(&d, &repos());
         assert!(!r.repo.known);
@@ -191,5 +292,32 @@ mod tests {
         assert_eq!(p.directions.len(), 1);
         assert_eq!(p.directions[0].repo, "");
         assert_eq!(p.directions[0].reason, "");
+    }
+
+    #[test]
+    fn resolve_carries_decision_through() {
+        let d = ProposedDirection {
+            name: "X".into(),
+            tool: "claude".into(),
+            repo: "api".into(),
+            reason: "r".into(),
+            decision: "approved".into(),
+        };
+        let r = resolve(&d, &repos());
+        assert_eq!(r.decision, "approved");
+    }
+
+    #[test]
+    fn pending_filter_skips_decided_and_unknown() {
+        let rs = vec![
+            resolve(&ProposedDirection { name: "a".into(), tool: "claude".into(), repo: "api".into(), reason: "r".into(), decision: "".into() }, &repos()),
+            resolve(&ProposedDirection { name: "b".into(), tool: "claude".into(), repo: "api".into(), reason: "r".into(), decision: "approved".into() }, &repos()),
+            resolve(&ProposedDirection { name: "c".into(), tool: "claude".into(), repo: "ghost".into(), reason: "r".into(), decision: "".into() }, &repos()),
+        ];
+        let pending: Vec<_> = rs.iter().enumerate()
+            .filter(|(_, d)| d.repo.known && d.decision.is_empty())
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(pending, vec![0]);
     }
 }
