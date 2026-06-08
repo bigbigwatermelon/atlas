@@ -251,6 +251,7 @@ export const zh = {
     detecting: "检测中…",
     installed: "已安装",
     installedVersion: "v{{version}}",
+    updateRecommended: "建议升级",
     notInstalled: "未找到",
     dangerTitle: "危险模式",
     dangerDesc: "agent 运行所有工具(改文件、执行命令)都不再询问。快,但它们能在各自的 worktree 里做任何事。",

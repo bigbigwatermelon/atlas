@@ -133,12 +133,19 @@ export function SettingsDialog({
                     <span className="text-[13px] font-medium text-ink">{TOOL_LABEL[tool]}</span>
                     {detected !== null &&
                       (installed ? (
-                        <span className="flex items-center gap-1 text-[11px] text-running">
-                          <span className="h-1.5 w-1.5 rounded-full bg-running" />
-                          {st?.version
-                            ? t("settings.installedVersion", { version: trimVersion(st.version) })
-                            : t("settings.installed")}
-                        </span>
+                        <>
+                          <span className="flex items-center gap-1 text-[11px] text-running">
+                            <span className="h-1.5 w-1.5 rounded-full bg-running" />
+                            {st?.version
+                              ? t("settings.installedVersion", { version: trimVersion(st.version) })
+                              : t("settings.installed")}
+                          </span>
+                          {st?.meets_min === false && (
+                            <span className="text-[11px] text-waiting">
+                              {t("settings.updateRecommended")}
+                            </span>
+                          )}
+                        </>
                       ) : (
                         <span className="text-[11px] text-ink-faint">{t("settings.notInstalled")}</span>
                       ))}
