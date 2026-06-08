@@ -28,6 +28,7 @@ import type {
   Thread,
   Workspace,
   Worktree,
+  WriteTrigger,
 } from "../lib/types";
 
 export interface OpenSession {
@@ -87,6 +88,10 @@ interface Store {
   needs: NeedItem[];
   /** Pending tool permission requests (the Ask Bridge). */
   asks: PermissionAsk[];
+  /** Lead-proposed write declarations awaiting human approve/deny. */
+  writeTriggers: WriteTrigger[];
+  approveWriteTrigger: (item: WriteTrigger) => Promise<void>;
+  denyWriteTrigger: (item: WriteTrigger) => Promise<void>;
   /** Pending needs count per workspace id (for the workspace switcher). */
   needsByWorkspace: Record<number, number>;
   /** Whether the Needs-you view occupies the main region. */
@@ -191,6 +196,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<BusMsg[]>([]);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [asks, setAsks] = useState<PermissionAsk[]>([]);
+  const [writeTriggers, setWriteTriggers] = useState<WriteTrigger[]>([]);
   const [needsByWorkspace, setNeedsByWorkspace] = useState<Record<number, number>>({});
   const [showNeeds, setShowNeeds] = useState(false);
   const [repoProfiles, setRepoProfiles] = useState<RepoProfile[]>([]);
@@ -612,10 +618,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     if (activeWorkspaceId == null) {
       setNeeds([]);
+      setWriteTriggers([]);
       return;
     }
     try {
       setNeeds(await api.needsYou(activeWorkspaceId));
+      setWriteTriggers(await api.writeTriggers(activeWorkspaceId));
     } catch {
       /* bus may not be ready */
     }
@@ -716,6 +724,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // optimistic: drop the answered ask immediately, then reconcile
       setNeeds((cur) => cur.filter((n) => n.ask_id !== item.ask_id));
       await api.answerAsk(item.thread_id, item.ask_id, text.trim());
+      await refreshNeeds();
+    },
+    [refreshNeeds],
+  );
+
+  const approveWriteTrigger = useCallback(
+    async (item: WriteTrigger) => {
+      setWriteTriggers((cur) =>
+        cur.filter((w) => !(w.thread_id === item.thread_id && w.index === item.index)),
+      );
+      const dirId = await api.approveWriteTrigger(item.thread_id, item.index);
+      void dispatchDirection(dirId);
+      await refreshNeeds();
+    },
+    [dispatchDirection, refreshNeeds],
+  );
+
+  const denyWriteTrigger = useCallback(
+    async (item: WriteTrigger) => {
+      setWriteTriggers((cur) =>
+        cur.filter((w) => !(w.thread_id === item.thread_id && w.index === item.index)),
+      );
+      await api.denyWriteTrigger(item.thread_id, item.index);
       await refreshNeeds();
     },
     [refreshNeeds],
@@ -946,6 +977,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setDefaultTool,
     needs,
     asks,
+    writeTriggers,
+    approveWriteTrigger,
+    denyWriteTrigger,
     needsByWorkspace,
     showNeeds,
     openNeeds,
