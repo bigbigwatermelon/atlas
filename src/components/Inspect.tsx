@@ -3,6 +3,7 @@ import * as DM from "@radix-ui/react-dropdown-menu";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, ExternalLink, FolderOpen, MoreHorizontal, Terminal } from "lucide-react";
 import { api } from "../lib/api";
+import { toast } from "./Toast";
 import { appLink, resumeCommand } from "../lib/resume";
 import { ToolIcon } from "./ToolIcon";
 import { cn } from "../lib/cn";
@@ -89,7 +90,10 @@ export function Inspect({
           </Item>
           <Item
             icon={<Copy size={13} />}
-            onSelect={() => void navigator.clipboard?.writeText(path)}
+            onSelect={() => {
+              void navigator.clipboard?.writeText(path);
+              toast(t("resume.copied"));
+            }}
           >
             {t("inspect.copyPath")}
           </Item>
