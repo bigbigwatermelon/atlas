@@ -6,7 +6,7 @@ use super::entities::{
 use super::Db;
 use crate::slug::unique_slug;
 use anyhow::Result;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TryIntoModel};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set, TryIntoModel};
 
 fn now() -> String {
     // RFC3339 without pulling chrono: seconds since epoch is enough for ordering.
@@ -355,6 +355,21 @@ pub async fn get_session(db: &Db, session_id: i32) -> Result<Option<session::Mod
     Ok(session::Entity::find_by_id(session_id).one(&db.0).await?)
 }
 
+/// The most-recent session row for a (direction, repo) slot, by insertion order.
+/// Used to decide resume-vs-fresh when no live PTY is tracked in memory.
+pub async fn latest_session_for(
+    db: &Db,
+    direction_id: i32,
+    repo_id: i32,
+) -> Result<Option<session::Model>> {
+    Ok(session::Entity::find()
+        .filter(session::Column::DirectionId.eq(direction_id))
+        .filter(session::Column::RepoId.eq(repo_id))
+        .order_by_desc(session::Column::Id)
+        .one(&db.0)
+        .await?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,6 +410,28 @@ mod tests {
         assert_eq!(list_workspaces(&db).await.unwrap().len(), 1); // ws survives
         assert_eq!(list_threads(&db, ws.id).await.unwrap().len(), 0);
         assert_eq!(list_worktrees(&db, None).await.unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn latest_session_for_returns_newest_with_native() {
+        let db = mem().await;
+        let ws = create_workspace(&db, "Demo WS").await.unwrap();
+        let repo = add_repo_ref(&db, ws.id, "web-app", "/tmp/x", "main", "claude")
+            .await
+            .unwrap();
+        let thread = create_thread(&db, ws.id, "T", "feature").await.unwrap();
+        let dir = create_direction(&db, thread.id, "D", "claude", repo.id, "r")
+            .await
+            .unwrap();
+        // older session (no native), then newer (native captured)
+        let _s1 = create_session(&db, dir.id, repo.id, "claude", "/tmp/x").await.unwrap();
+        let s2 = create_session(&db, dir.id, repo.id, "claude", "/tmp/x").await.unwrap();
+        set_session_native_id(&db, s2.id, "abc-123").await.unwrap();
+
+        let latest = latest_session_for(&db, dir.id, repo.id).await.unwrap().unwrap();
+        assert_eq!(latest.id, s2.id);
+        assert_eq!(latest.native_session_id.as_deref(), Some("abc-123"));
+        assert!(latest_session_for(&db, dir.id, 99999).await.unwrap().is_none());
     }
 
     #[tokio::test]
