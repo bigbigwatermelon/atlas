@@ -57,6 +57,31 @@ impl PtyState {
     }
 }
 
+/// Runaway-guardrail caps the watchdog reads at spawn (§7 跑飞护栏). Configurable
+/// at runtime from Settings; seeded from the WEFT_* env defaults so an env
+/// override still sets the initial value. 0 on either disables that cap.
+pub struct GuardrailState {
+    inner: Mutex<(u64, u64)>, // (idle_secs, wall_secs)
+}
+
+impl Default for GuardrailState {
+    fn default() -> Self {
+        Self {
+            inner: Mutex::new((idle_cap_secs(), wall_cap_secs())),
+        }
+    }
+}
+
+impl GuardrailState {
+    pub fn set(&self, idle_secs: u64, wall_secs: u64) {
+        *self.inner.lock().unwrap_or_else(|e| e.into_inner()) = (idle_secs, wall_secs);
+    }
+    /// (idle_cap_secs, wall_cap_secs)
+    pub fn get(&self) -> (u64, u64) {
+        *self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 #[derive(Serialize, Clone)]
 pub struct SessionInfo {
     pub session_id: i32,
@@ -339,8 +364,11 @@ fn spawn(
         let alive_w = alive.clone();
         let last_activity_w = last_activity.clone();
         let start = now_secs();
-        let wall_cap = wall_cap_secs();
-        let idle_cap = idle_cap_secs();
+        // Runtime-configurable caps (Settings), falling back to the env defaults.
+        let (idle_cap, wall_cap) = app
+            .try_state::<GuardrailState>()
+            .map(|g| g.get())
+            .unwrap_or_else(|| (idle_cap_secs(), wall_cap_secs()));
         std::thread::spawn(move || {
             if wall_cap == 0 && idle_cap == 0 {
                 return;
@@ -815,5 +843,14 @@ mod watchdog_tests {
         assert_eq!(human_dur(7200), "2h");
         assert_eq!(human_dur(1800), "30min");
         assert_eq!(human_dur(45), "45s");
+    }
+    #[test]
+    fn guardrail_state_overrides_then_reads_back() {
+        let g = GuardrailState::default();
+        g.set(600, 3600);
+        assert_eq!(g.get(), (600, 3600));
+        // 0 disables a cap (the watchdog treats 0 as off)
+        g.set(0, 0);
+        assert_eq!(g.get(), (0, 0));
     }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, FolderOpen, Loader2, Moon, Sun, Zap } from "lucide-react";
+import { Check, FolderOpen, Loader2, Moon, ShieldAlert, Sun, Zap } from "lucide-react";
 import { Dialog, DialogContent } from "../components/ui/Dialog";
 import { Field, Input } from "../components/ui/Input";
 import { ToolIcon } from "../components/ToolIcon";
@@ -24,8 +24,17 @@ export function SettingsDialog({
 }) {
   const { t } = useTranslation();
   const { theme, toggle } = useTheme();
-  const { projectsDir, setProjectsDir, defaultTool, setDefaultTool, dangerousMode, setDangerousMode } =
-    useStore();
+  const {
+    projectsDir,
+    setProjectsDir,
+    defaultTool,
+    setDefaultTool,
+    dangerousMode,
+    setDangerousMode,
+    idleCapMins,
+    wallCapMins,
+    setGuardrails,
+  } = useStore();
   const [lang, setLangState] = useState<Lang>(currentLang());
   const [detected, setDetected] = useState<ToolStatus[] | null>(null);
 
@@ -173,6 +182,45 @@ export function SettingsDialog({
               </p>
             </div>
             <Toggle on={dangerousMode} onChange={setDangerousMode} label={t("settings.dangerTitle")} />
+          </div>
+
+          <div className="h-px bg-border" />
+
+          {/* runaway guardrails (§7): caps the per-session watchdog enforces */}
+          <div className="flex flex-col gap-2.5">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <ShieldAlert size={13} className="text-ink-muted" />
+                <span className="text-[12px] font-medium text-ink">
+                  {t("settings.guardrailsTitle")}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
+                {t("settings.guardrailsDesc")}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <Field label={t("settings.idleCap")} hint={t("settings.minutesZeroOff")}>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={String(idleCapMins)}
+                    onChange={(e) => setGuardrails(Number(e.currentTarget.value || 0), wallCapMins)}
+                  />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field label={t("settings.wallCap")} hint={t("settings.minutesZeroOff")}>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={String(wallCapMins)}
+                    onChange={(e) => setGuardrails(idleCapMins, Number(e.currentTarget.value || 0))}
+                  />
+                </Field>
+              </div>
+            </div>
           </div>
         </div>
       </DialogContent>

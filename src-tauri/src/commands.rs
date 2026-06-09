@@ -474,6 +474,19 @@ pub fn set_dangerous_mode(asks: tauri::State<'_, crate::ask::AskRegistry>, on: b
     Ok(())
 }
 
+/// Runaway guardrails (§7): idle + wall-clock caps the per-session watchdog uses
+/// to force-stop a stuck/runaway agent. Seconds; 0 disables that cap. Applies to
+/// sessions started after the change (the watchdog reads caps at spawn).
+#[tauri::command]
+pub fn set_guardrails(
+    guard: tauri::State<'_, crate::pty::GuardrailState>,
+    idle_secs: u64,
+    wall_secs: u64,
+) -> R<()> {
+    guard.set(idle_secs, wall_secs);
+    Ok(())
+}
+
 /// Pending "needs you" count per workspace (agent questions + tool asks), so the
 /// workspace switcher can flag OTHER workspaces that want attention.
 #[tauri::command]

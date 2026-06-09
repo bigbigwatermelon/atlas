@@ -274,6 +274,12 @@ export const zh = {
     notInstalled: "未找到",
     dangerTitle: "危险模式",
     dangerDesc: "agent 运行所有工具(改文件、执行命令)都不再询问。快,但它们能在各自的 worktree 里做任何事。",
+    guardrailsTitle: "跑飞护栏",
+    guardrailsDesc:
+      "强制停止运行过久或长时间无输出的 agent——自动化的安全网。正在等你回应的会话不算空闲。",
+    idleCap: "空闲上限(分钟)",
+    wallCap: "运行上限(分钟)",
+    minutesZeroOff: "0 = 关闭",
   },
   danger: {
     nudgeTitle: "经常在批准?",

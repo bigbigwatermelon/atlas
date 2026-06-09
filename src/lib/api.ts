@@ -140,6 +140,10 @@ export const api = {
   detectTools: () => invoke<ToolStatus[]>("detect_tools"),
   // Dangerous mode (global): every agent's tool asks auto-allow.
   setDangerousMode: (on: boolean) => invoke<void>("set_dangerous_mode", { on }),
+  // Runaway guardrails: idle + wall-clock caps (seconds; 0 disables) the
+  // per-session watchdog uses to force-stop a stuck/runaway agent.
+  setGuardrails: (idleSecs: number, wallSecs: number) =>
+    invoke<void>("set_guardrails", { idleSecs, wallSecs }),
   // Native folder picker; returns the chosen absolute path, or null if cancelled.
   pickFolder: async (title?: string) => {
     const sel = await openDialog({ directory: true, multiple: false, title });

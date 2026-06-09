@@ -78,6 +78,7 @@ pub fn run() {
     builder
         .manage(db)
         .manage(pty::PtyState::default())
+        .manage(pty::GuardrailState::default())
         .manage(bus)
         .manage(asks)
         .manage(BusBase(bus_base))
@@ -119,6 +120,7 @@ pub fn run() {
             commands::workspace_needs_counts,
             commands::answer_permission,
             commands::set_dangerous_mode,
+            commands::set_guardrails,
             commands::needs_you,
             commands::write_triggers,
             commands::approve_write_trigger,

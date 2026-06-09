@@ -286,6 +286,12 @@ export const en = {
     dangerTitle: "Dangerous mode",
     dangerDesc:
       "Agents run every tool — edits, shell commands — without asking. Fast, but they can do anything inside their worktrees.",
+    guardrailsTitle: "Runaway guardrails",
+    guardrailsDesc:
+      "Force-stop an agent that runs too long or goes silent — the safety net for automation. A session waiting on you isn't counted as idle.",
+    idleCap: "Idle cap (min)",
+    wallCap: "Max runtime (min)",
+    minutesZeroOff: "0 = off",
   },
   danger: {
     nudgeTitle: "Approving a lot?",

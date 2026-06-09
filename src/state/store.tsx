@@ -80,6 +80,10 @@ interface Store {
   /** The per-day "turn on Dangerous mode?" nudge toast state. */
   dangerNudge: "ask" | "enabled" | null;
   setDangerNudge: (v: "ask" | "enabled" | null) => void;
+  /** Runaway guardrails: idle + wall-clock caps in minutes (0 disables). */
+  idleCapMins: number;
+  wallCapMins: number;
+  setGuardrails: (idleMins: number, wallMins: number) => void;
   /** Whether the board canvas is showing the proposal's scope-confirm. */
   reviewingProposal: boolean;
   setReviewingProposal: (v: boolean) => void;
@@ -242,6 +246,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // registry starts fresh each run).
   useEffect(() => {
     void api.setDangerousMode(localStorage.getItem("weft-dangerous") === "1");
+  }, []);
+
+  // Runaway guardrails (§7): idle + wall-clock caps in MINUTES, persisted. The
+  // backend seeds its defaults from the WEFT_* env, so we only push when the user
+  // has an explicit saved value — an env override survives an untouched install.
+  const [idleCapMins, setIdleCapMins] = useState(
+    () => Number(localStorage.getItem("weft-idle-cap-mins") ?? "30"),
+  );
+  const [wallCapMins, setWallCapMins] = useState(
+    () => Number(localStorage.getItem("weft-wall-cap-mins") ?? "120"),
+  );
+  const setGuardrails = useCallback((idleMins: number, wallMins: number) => {
+    const idle = Math.max(0, Math.round(idleMins));
+    const wall = Math.max(0, Math.round(wallMins));
+    localStorage.setItem("weft-idle-cap-mins", String(idle));
+    localStorage.setItem("weft-wall-cap-mins", String(wall));
+    setIdleCapMins(idle);
+    setWallCapMins(wall);
+    void api.setGuardrails(idle * 60, wall * 60);
+  }, []);
+  useEffect(() => {
+    const i = localStorage.getItem("weft-idle-cap-mins");
+    const w = localStorage.getItem("weft-wall-cap-mins");
+    if (i != null && w != null) void api.setGuardrails(Number(i) * 60, Number(w) * 60);
   }, []);
 
   // Auto-collapse the sidebar when the window gets narrow; auto-restore when it
@@ -1040,6 +1068,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setDangerousMode,
     dangerNudge,
     setDangerNudge,
+    idleCapMins,
+    wallCapMins,
+    setGuardrails,
     needs,
     asks,
     writeTriggers,
