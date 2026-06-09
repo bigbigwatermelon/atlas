@@ -27,7 +27,7 @@ sea-orm-migration = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio
 async-trait = "0.1"
 dirs = "5"
 futures = "0.3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync"] }
 axum = "0.7"
 tower = "0.5"
 toml = "0.8"
