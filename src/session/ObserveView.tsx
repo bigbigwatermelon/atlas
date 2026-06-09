@@ -25,6 +25,7 @@ export function ObserveView() {
   } = useStore();
   const { t } = useTranslation();
   const [ref, setRef] = useState<ObserveRef | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [driving, setDriving] = useState(false);
 
@@ -42,9 +43,14 @@ export function ObserveView() {
       api
         .sessionFor(directionId, repoId)
         .then((r) => {
-          if (alive) setRef(r);
+          if (alive) {
+            setRef(r);
+            setLoadError(null);
+          }
         })
-        .catch(() => {});
+        .catch((e: unknown) => {
+          if (alive) setLoadError(String(e));
+        });
     void load();
     const h = setInterval(load, 2000);
     return () => {
@@ -149,7 +155,7 @@ export function ObserveView() {
           <Transcript cwd={ref.worktree} tool={ref.tool} running={!!liveSession} />
         ) : (
           <div className="grid flex-1 place-items-center text-[13px] text-ink-faint">
-            {t("observe.empty")}
+            {loadError ?? t("observe.empty")}
           </div>
         )}
       </section>
@@ -161,7 +167,7 @@ export function ObserveView() {
   );
 }
 
-function AskInline({ text, onAnswer }: { text: string; onAnswer: (t: string) => void }) {
+function AskInline({ text, onAnswer }: { text: string; onAnswer: (answer: string) => void }) {
   const { t } = useTranslation();
   const [val, setVal] = useState("");
   return (
