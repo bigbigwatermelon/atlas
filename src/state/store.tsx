@@ -56,7 +56,6 @@ interface Store {
   activeSessionId: number | null;
   messages: BusMsg[];
   postHuman: (to: string | null, text: string) => Promise<void>;
-  nudgeDirection: (directionId: number) => Promise<void>;
 
   /** The active thread's persistent lead conversation, if one is running. */
   leadSession: OpenSession | null;
@@ -64,9 +63,6 @@ interface Store {
   startLead: () => Promise<void>;
   /** Send a composed message into the lead's PTY (bracketed paste + enter). */
   sendToLead: (text: string) => Promise<void>;
-  /** Per-thread collapse state for the lead dock; default expanded. */
-  leadCollapsed: boolean;
-  toggleLeadCollapsed: () => void;
   /** The thread-bus drawer (demoted from a permanent rail). */
   showBus: boolean;
   setShowBus: (open: boolean) => void;
@@ -124,7 +120,6 @@ interface Store {
   /** The active thread's plan proposal (Task → scope), if any. */
   proposal: ResolvedProposal | null;
   refreshProposal: (threadId: number) => Promise<void>;
-  startDraftPlan: () => Promise<void>;
   saveProposal: (proposal: Proposal) => Promise<void>;
   confirmProposal: () => Promise<void>;
 
@@ -210,10 +205,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [homeTab, setHomeTab] = useState<"board" | "overview" | "repos">("board");
   const [proposal, setProposal] = useState<ResolvedProposal | null>(null);
   const [overview, setOverview] = useState<ThreadOverview[]>([]);
-  // Lead dock: per-thread collapse memory; bus drawer; proposal-review state.
-  const [leadCollapsedByThread, setLeadCollapsedByThread] = useState<
-    Record<number, boolean>
-  >({});
+  // Thread-bus drawer + proposal-review state.
   const [showBus, setShowBus] = useState(false);
   const [reviewingProposal, setReviewingProposal] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(() => window.innerWidth < 820);
@@ -623,12 +615,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await api.writePty(lead.info.session_id, payload);
   }, [activeThreadId]);
 
-  const toggleLeadCollapsed = useCallback(() => {
-    const thread = activeThreadId;
-    if (thread == null) return;
-    setLeadCollapsedByThread((m) => ({ ...m, [thread]: !m[thread] }));
-  }, [activeThreadId]);
-
   const setTaskStatus = useCallback(async (directionId: number, status: string) => {
     // optimistic: flip the card now, then persist
     setDirections((m) => {
@@ -682,20 +668,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await api.busPostHuman(activeThreadId, to, text.trim());
     },
     [activeThreadId],
-  );
-
-  const nudgeDirection = useCallback(
-    async (directionId: number) => {
-      const sess = Object.values(sessions).find(
-        (s) => s.directionId === directionId && s.status === "running",
-      );
-      if (!sess) return;
-      await api.writePty(
-        sess.info.session_id,
-        "You have new messages on the thread bus. Call the bus_inbox tool to read them.\r",
-      );
-    },
-    [sessions],
   );
 
   const refreshNeeds = useCallback(async () => {
@@ -777,17 +749,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setProposal(null);
     }
   }, []);
-
-  const startDraftPlan = useCallback(async () => {
-    if (activeThreadId == null) return;
-    // Seed an empty proposal so the human can draft scope by hand. The agentic
-    // lead will pre-fill this instead, later.
-    await api.saveProposal(activeThreadId, {
-      rationale: "",
-      directions: [{ name: "Direction 1", tool: "claude", writes: [] }],
-    });
-    await refreshProposal(activeThreadId);
-  }, [activeThreadId, refreshProposal]);
 
   const saveProposal = useCallback(
     async (next: Proposal) => {
@@ -1049,8 +1010,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [activeThreadId, directionsByThread, reviveDirection]);
 
   const leadSession = leadForActive ?? null;
-  const leadCollapsed =
-    activeThreadId != null ? !!leadCollapsedByThread[activeThreadId] : false;
 
   const value: Store = {
     workspaces,
@@ -1064,12 +1023,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     activeSessionId,
     messages,
     postHuman,
-    nudgeDirection,
     leadSession,
     startLead,
     sendToLead,
-    leadCollapsed,
-    toggleLeadCollapsed,
     showBus,
     setShowBus,
     navCollapsed,
@@ -1106,7 +1062,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     editRepoProfile,
     proposal,
     refreshProposal,
-    startDraftPlan,
     saveProposal,
     confirmProposal,
     overview,

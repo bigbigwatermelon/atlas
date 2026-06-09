@@ -87,12 +87,6 @@ export const en = {
     tabBoard: "Board",
     newDirection: "New sub-task",
     addDirection: "Add sub-task",
-    planTitle: "Plan this issue",
-    planBody:
-      "Let the lead read the repo map and propose how to split the work across repos — or draft the scope yourself. You review and confirm before any worktree is created.",
-    planWithLead: "Plan with lead",
-    draftManually: "Draft manually",
-    nudge: "Nudge: tell this agent to check the bus",
     runChecks: "Run this sub-task's checks (lint / type / test)",
     noChecks: "no checks inferred",
     acceptPass: "Accepted",
@@ -115,8 +109,6 @@ export const en = {
     startBody:
       "Your main collaborator for this issue: it reads the repo map, plans the work with you, and drives the sub-tasks.",
     start: "Start the lead",
-    collapse: "Collapse lead",
-    expand: "Expand lead",
     compose: "Message the lead…",
     send: "Send",
     proposalReady_one: "Proposed {{count}} sub-task",

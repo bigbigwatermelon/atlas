@@ -82,12 +82,6 @@ export const zh = {
     tabBoard: "看板",
     newDirection: "新建子任务",
     addDirection: "添加子任务",
-    planTitle: "规划这个 issue",
-    planBody:
-      "让 lead 读取仓库地图、提议如何把工作拆到各仓库——或你自己起草范围。创建任何 worktree 前都由你审阅确认。",
-    planWithLead: "用 lead 规划",
-    draftManually: "手动起草",
-    nudge: "提醒:让这个 agent 查看 bus",
     runChecks: "运行该子任务的检查(lint / type / test)",
     noChecks: "未推断出检查项",
     acceptPass: "验收通过",
@@ -110,8 +104,6 @@ export const zh = {
     startBody:
       "这个 issue 的主要协作者:它读取仓库地图、和你一起规划、并驱动各个子任务。",
     start: "启动 lead",
-    collapse: "收起 lead",
-    expand: "展开 lead",
     compose: "给 lead 发消息…",
     send: "发送",
     proposalReady_other: "建议 {{count}} 个子任务",
