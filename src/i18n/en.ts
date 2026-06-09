@@ -144,7 +144,7 @@ export const en = {
     reviewSent: "Sent to agent",
     reviewTip: "Run the global review skill inside this sub-task's session",
     handle: "Handle",
-    reviewPr: "Review PR",
+    viewChanges: "View changes",
     openSession: "Open session",
     noWriteCopy: "No working copy yet",
     testsPending: "checks pending",

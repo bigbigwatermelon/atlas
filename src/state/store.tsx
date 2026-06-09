@@ -183,8 +183,8 @@ interface Store {
   ) => Promise<void>;
   deleteThread: (threadId: number) => Promise<void>;
 
-  viewing: { directionId: number; repoId: number } | null;
-  viewDirection: (directionId: number, repoId: number) => void;
+  viewing: { directionId: number; repoId: number; diff?: boolean } | null;
+  viewDirection: (directionId: number, repoId: number, opts?: { diff?: boolean }) => void;
   driveDirection: (directionId: number, repoId: number, focus: boolean) => Promise<void>;
   reviveDirection: (directionId: number) => Promise<void>;
   closeObserve: () => void;
@@ -236,7 +236,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
-  const [viewing, setViewing] = useState<{ directionId: number; repoId: number } | null>(null);
+  const [viewing, setViewing] = useState<{
+    directionId: number;
+    repoId: number;
+    diff?: boolean;
+  } | null>(null);
   const [messages, setMessages] = useState<BusMsg[]>([]);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [asks, setAsks] = useState<PermissionAsk[]>([]);
@@ -558,12 +562,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [activeThreadId, toolOfDirection],
   );
 
-  const viewDirection = useCallback((directionId: number, repoId: number) => {
-    setViewing({ directionId, repoId });
-    setActiveSessionId(null);
-    setShowNeeds(false);
-    setHomeTab("board");
-  }, []);
+  const viewDirection = useCallback(
+    (directionId: number, repoId: number, opts?: { diff?: boolean }) => {
+      setViewing({ directionId, repoId, diff: opts?.diff });
+      setActiveSessionId(null);
+      setShowNeeds(false);
+      setHomeTab("board");
+    },
+    [],
+  );
 
   const closeObserve = useCallback(() => setViewing(null), []);
 

@@ -5,6 +5,9 @@ import { useStore } from "../state/store";
 import { api } from "../lib/api";
 import type { ObserveRef, SessionStatus } from "../lib/types";
 import { Transcript } from "./Transcript";
+import { ChatTimeline } from "./ChatTimeline";
+import { ChatComposer } from "./ChatComposer";
+import { resumeCommand } from "../lib/resume";
 import { DiffPanel } from "./DiffPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
@@ -18,6 +21,12 @@ export function ObserveView() {
     sessions,
     needs,
     answerAsk,
+    activeThreadId,
+    leadMessages,
+    workerTurn,
+    workerSlash,
+    workerActivity,
+    loadLeadChat,
   } = useStore();
   const { t } = useTranslation();
   const [ref, setRef] = useState<ObserveRef | null>(null);
@@ -30,7 +39,7 @@ export function ObserveView() {
   const repoId = viewing?.repoId ?? null;
 
   useEffect(() => {
-    setShowDiff(false);
+    setShowDiff(viewing?.diff ?? false);
     if (directionId == null || repoId == null) {
       setRef(null);
       return;
@@ -56,12 +65,33 @@ export function ObserveView() {
     };
   }, [directionId, repoId]);
 
+  // Chat-mode sessions render the weft-owned timeline; keep it hydrated.
+  useEffect(() => {
+    if (activeThreadId != null) void loadLeadChat(activeThreadId);
+  }, [activeThreadId, loadLeadChat]);
+
   if (viewing == null) return null;
 
   const liveSession = Object.values(sessions).find(
     (s) => s.directionId === directionId && s.repoId === repoId && s.status !== "exited",
   );
   const openAsks = needs.filter((n) => n.direction_id === directionId);
+
+  // A claude worker driven by the chat engine shows its REAL conversation, not
+  // the jsonl projection: live chat session, or persisted chat rows after a
+  // restart (chat_send rebuilds the engine on demand).
+  const chatSessionId =
+    liveSession?.mode === "chat"
+      ? liveSession.info.session_id
+      : ref?.tool === "claude" && ref.session_id != null
+        ? ref.session_id
+        : null;
+  const chatMsgs =
+    chatSessionId != null && activeThreadId != null
+      ? (leadMessages[activeThreadId] ?? []).filter((m) => m.session_id === chatSessionId)
+      : [];
+  const chatMode =
+    chatSessionId != null && (liveSession?.mode === "chat" || chatMsgs.length > 0);
 
   // Label: attach (live) → continue (has native id) → start (never dispatched).
   const driveLabel = liveSession
@@ -136,7 +166,35 @@ export function ObserveView() {
           </div>
         )}
 
-        {ref ? (
+        {chatMode && chatSessionId != null ? (
+          <>
+            <ChatTimeline
+              messages={chatMsgs}
+              busy={(workerTurn[chatSessionId]?.state ?? "stopped") === "busy"}
+              activity={workerActivity[chatSessionId]}
+              onReviewProposal={() => {}}
+            />
+            <ChatComposer
+              slashCommands={workerSlash[chatSessionId] ?? []}
+              busy={(workerTurn[chatSessionId]?.state ?? "stopped") === "busy"}
+              stopped={(workerTurn[chatSessionId]?.state ?? "stopped") === "stopped"}
+              queued={workerTurn[chatSessionId]?.queued ?? 0}
+              stoppedHint={t("session.chatStopped")}
+              onSend={(v, images, files) =>
+                void api.chatSend(chatSessionId, v, images, files)
+              }
+              onStop={() => void api.chatInterrupt(chatSessionId)}
+              onTakeOver={async () => {
+                if (!ref?.native_id) return false;
+                await api.chatStop(chatSessionId);
+                await navigator.clipboard.writeText(
+                  resumeCommand(ref.tool, ref.worktree, ref.native_id),
+                );
+                return true;
+              }}
+            />
+          </>
+        ) : ref ? (
           <Transcript cwd={ref.worktree} tool={ref.tool} running={!!liveSession} />
         ) : (
           <div className="grid flex-1 place-items-center text-[13px] text-ink-faint">

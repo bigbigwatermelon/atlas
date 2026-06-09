@@ -141,7 +141,7 @@ export const zh = {
     reviewSent: "已派给 agent",
     reviewTip: "在该子任务的会话里运行全局 review skill",
     handle: "处理",
-    reviewPr: "评审 PR",
+    viewChanges: "查看改动",
     openSession: "打开会话",
     noWriteCopy: "尚未建副本",
     testsPending: "检查待跑",

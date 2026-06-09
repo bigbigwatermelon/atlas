@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Copy,
   GitBranch,
+  GitCompare,
   Layers,
   MessagesSquare,
   ScanEye,
@@ -171,11 +172,13 @@ function DirectionCard({ direction }: { direction: Direction }) {
 
   const testsKind =
     failed > 0 ? "fail" : allChecks.length > 0 && passed === allChecks.length ? "pass" : "pend";
+  // The review-column primary action is honest: open the actual diff for human
+  // eyes (Task→PR is the delivery boundary; weft does not fake a PR step).
   const action = hasNeed
-    ? { label: t("thread.handle"), variant: "primary" as const }
+    ? { label: t("thread.handle"), variant: "primary" as const, diff: false }
     : direction.status === "review"
-      ? { label: t("thread.reviewPr"), variant: "primary" as const }
-      : { label: t("thread.openSession"), variant: "default" as const };
+      ? { label: t("thread.viewChanges"), variant: "primary" as const, diff: true }
+      : { label: t("thread.openSession"), variant: "default" as const, diff: false };
 
   return (
     <motion.div
@@ -273,9 +276,12 @@ function DirectionCard({ direction }: { direction: Direction }) {
             size="sm"
             variant={action.variant}
             disabled={!firstWrite}
-            onClick={() => firstWrite && viewDirection(direction.id, firstWrite.repo_id)}
+            onClick={() =>
+              firstWrite &&
+              viewDirection(direction.id, firstWrite.repo_id, { diff: action.diff })
+            }
           >
-            <TerminalSquare size={13} />
+            {action.diff ? <GitCompare size={13} /> : <TerminalSquare size={13} />}
             {action.label}
           </Button>
         </div>

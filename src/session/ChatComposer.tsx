@@ -39,6 +39,7 @@ export function ChatComposer({
   onSend,
   onStop,
   onTakeOver,
+  onNeedSlashCommands,
 }: {
   slashCommands: string[];
   busy: boolean;
@@ -50,6 +51,8 @@ export function ChatComposer({
   onStop: () => void;
   /** Stop the engine + copy the terminal resume command; false = unavailable. */
   onTakeOver?: () => Promise<boolean>;
+  /** Called when "/" is typed but the command list is empty — refresh it. */
+  onNeedSlashCommands?: () => void;
 }) {
   const { t } = useTranslation();
   const [text, setText] = useState("");
@@ -85,6 +88,20 @@ export function ChatComposer({
   const paletteOpen = slashMatches.length > 0;
 
   useEffect(() => setSlashIdx(0), [slashQuery]);
+
+  // Typing "/" before the engine reported its command list: ask for a refresh
+  // (once per palette attempt) so the palette appears as soon as data exists.
+  const askedSlashRef = useRef(false);
+  useEffect(() => {
+    if (slashQuery == null) {
+      askedSlashRef.current = false;
+      return;
+    }
+    if (slashCommands.length === 0 && !askedSlashRef.current) {
+      askedSlashRef.current = true;
+      onNeedSlashCommands?.();
+    }
+  }, [slashQuery, slashCommands.length, onNeedSlashCommands]);
 
   const send = () => {
     const v = text.trim();
@@ -217,9 +234,20 @@ export function ChatComposer({
                 setSlashIdx((i) => (i - 1 + slashMatches.length) % slashMatches.length);
                 return;
               }
-              if (e.key === "Tab" || e.key === "Enter") {
+              if (e.key === "Tab") {
                 e.preventDefault();
                 complete(slashMatches[slashIdx]);
+                return;
+              }
+              if (e.key === "Enter") {
+                e.preventDefault();
+                // Enter SENDS when you've typed the command in full; it only
+                // completes when the highlighted entry still differs.
+                if (slashQuery === slashMatches[slashIdx]) {
+                  send();
+                } else {
+                  complete(slashMatches[slashIdx]);
+                }
                 return;
               }
               if (e.key === "Escape") {

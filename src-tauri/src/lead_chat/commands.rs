@@ -307,6 +307,48 @@ async fn chat_open_worker_impl(
     })
 }
 
+/// Get-or-rebuild a worker's engine from its session row — so a chat worker
+/// survives app restarts the same way the lead does: sending resumes it.
+async fn worker_engine(app: &AppHandle, db: &Db, session_id: i32) -> anyhow::Result<EngineRef> {
+    let state = app.state::<LeadChatState>();
+    if let Some(e) = state.get(session_id as i64) {
+        return Ok(e);
+    }
+    use sea_orm::EntityTrait;
+    let sess = repo::get_session(db, session_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("no such session"))?;
+    let dir = crate::store::entities::direction::Entity::find_by_id(sess.direction_id)
+        .one(&db.0)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("direction not found"))?;
+    let cwd = std::path::PathBuf::from(&sess.cwd);
+    let base = app.state::<crate::BusBase>().0.clone();
+    let inj = crate::bus::inject::inject(&base, dir.thread_id, &sess.direction_id.to_string(), &sess.tool, &cwd);
+    let ask = crate::bus::inject::inject_ask_hook(&base, dir.thread_id, &sess.direction_id.to_string(), &sess.tool, &cwd);
+    let mut extra = ask.args;
+    extra.extend(inj.args);
+    let inner = engine::EngineInner {
+        thread_id: dir.thread_id,
+        session_id: Some(sess.id),
+        cwd,
+        extra_args: extra,
+        system_prompt: String::new(),
+        native_id: sess.native_session_id.clone(),
+        slash_commands: vec![],
+        turn: Default::default(),
+        turn_id: repo::next_turn_id(db, dir.thread_id).await.unwrap_or(1) - 1,
+        child: None,
+        stdin: None,
+        current: None,
+        interrupting: false,
+        generation: 0,
+    };
+    let e: EngineRef = std::sync::Arc::new(tokio::sync::Mutex::new(inner));
+    state.insert(session_id as i64, e.clone());
+    Ok(e)
+}
+
 #[tauri::command]
 pub async fn chat_send(
     app: AppHandle,
@@ -316,10 +358,7 @@ pub async fn chat_send(
     images: Option<Vec<ImageIn>>,
     files: Option<Vec<String>>,
 ) -> Result<(), String> {
-    let eng = app
-        .state::<LeadChatState>()
-        .get(session_id as i64)
-        .ok_or_else(|| "no chat engine for that session".to_string())?;
+    let eng = worker_engine(&app, &db, session_id).await.map_err(|e| e.to_string())?;
     engine::send(&app, &db, &eng, &text, to_pairs(images), files.unwrap_or_default())
         .await
         .map_err(|e| e.to_string())

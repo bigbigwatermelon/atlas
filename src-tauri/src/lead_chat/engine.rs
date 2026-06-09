@@ -396,19 +396,29 @@ fn spawn_reader(
                 }
                 super::proto::ChatEvent::Assistant { texts, tools } => {
                     // A finished text block: finalize the streaming row with the
-                    // authoritative full text (deltas can drop on the floor).
+                    // authoritative full text. Some turns have NO deltas at all —
+                    // built-in slash commands reply via a synthetic assistant
+                    // message — so a missing streaming row means insert, not drop.
                     if !texts.is_empty() {
-                        if let Some((id, _, _)) = inner.current.take() {
-                            let full = texts.join("\n\n");
-                            let _ = repo::update_lead_message(
-                                &db, id,
-                                &serde_json::json!({ "text": full }).to_string(),
-                                "complete",
-                            )
-                            .await;
-                            let _ = app.emit(EVENT, Push::Finalize {
-                                thread_id, message_id: id, status: "complete".into(),
-                            });
+                        let full = texts.join("\n\n");
+                        let content = serde_json::json!({ "text": full }).to_string();
+                        match inner.current.take() {
+                            Some((id, _, _)) => {
+                                let _ = repo::update_lead_message(&db, id, &content, "complete").await;
+                                let _ = app.emit(EVENT, Push::Finalize {
+                                    thread_id, message_id: id, status: "complete".into(),
+                                });
+                            }
+                            None => {
+                                let (sid, turn) = (inner.session_id, inner.turn_id);
+                                if let Ok(m) = repo::insert_lead_message(
+                                    &db, thread_id, sid, turn, "assistant", "text", &content, "complete",
+                                )
+                                .await
+                                {
+                                    let _ = app.emit(EVENT, Push::Message { thread_id, message: m });
+                                }
+                            }
                         }
                     }
                     // Tool calls are transient activity, not timeline rows:

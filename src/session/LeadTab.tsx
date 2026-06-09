@@ -56,6 +56,7 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
           void sendLeadChat(activeThreadId, text, images, files)
         }
         onStop={() => void interruptLead(activeThreadId)}
+        onNeedSlashCommands={() => void loadLeadChat(activeThreadId)}
         onTakeOver={async () => {
           const st = await api.leadState(activeThreadId);
           if (!st.native_id) return false;
