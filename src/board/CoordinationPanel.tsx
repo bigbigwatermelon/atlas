@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useTranslation } from "react-i18next";
-import { Megaphone, Radio, Send, X } from "lucide-react";
+import { Megaphone, Radio, X } from "lucide-react";
 import { useStore } from "../state/store";
 import type { Direction } from "../lib/types";
-import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
+import { Composer } from "../components/Composer";
 import { Select } from "../components/ui/Select";
 import { cn } from "../lib/cn";
 
@@ -20,7 +19,6 @@ export function CoordinationPanel({
   const { messages, postHuman } = useStore();
   const { t } = useTranslation();
   const [to, setTo] = useState<string>("*");
-  const [text, setText] = useState("");
 
   const nameOf = useMemo(() => {
     const m: Record<string, string> = { you: "you", "*": "all" };
@@ -35,12 +33,6 @@ export function CoordinationPanel({
     ],
     [directions, t],
   );
-
-  async function send() {
-    if (!text.trim()) return;
-    await postHuman(to === "*" ? null : to, text);
-    setText("");
-  }
 
   return (
     <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-surface">
@@ -98,25 +90,13 @@ export function CoordinationPanel({
         </div>
       </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
-        className="flex flex-col gap-2 border-t border-border p-3"
-      >
+      <div className="flex flex-col gap-2 border-t border-border p-3">
         <Select value={to} onValueChange={setTo} ariaLabel="Recipient" options={options} />
-        <div className="flex gap-2">
-          <Input
-            placeholder={t("bus.compose")}
-            value={text}
-            onChange={(e) => setText(e.currentTarget.value)}
-          />
-          <Button type="submit" variant="primary" size="icon" disabled={!text.trim()}>
-            <Send size={14} />
-          </Button>
-        </div>
-      </form>
+        <Composer
+          placeholder={t("bus.compose")}
+          onSend={(v) => void postHuman(to === "*" ? null : to, v)}
+        />
+      </div>
     </aside>
   );
 }
