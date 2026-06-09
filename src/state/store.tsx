@@ -155,6 +155,11 @@ interface Store {
   deleteThread: (threadId: number) => Promise<void>;
 
   openSession: (directionId: number, repoId: number) => Promise<void>;
+  viewing: { directionId: number; repoId: number } | null;
+  viewDirection: (directionId: number, repoId: number) => void;
+  driveDirection: (directionId: number, repoId: number, focus: boolean) => Promise<void>;
+  reviveDirection: (directionId: number) => Promise<void>;
+  closeObserve: () => void;
   /** Set a task's lifecycle status (human override). */
   setTaskStatus: (directionId: number, status: string) => Promise<void>;
   /** Quality loop: executable-check results + in-flight set, per direction. */
@@ -194,6 +199,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [viewing, setViewing] = useState<{ directionId: number; repoId: number } | null>(null);
   const [messages, setMessages] = useState<BusMsg[]>([]);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [asks, setAsks] = useState<PermissionAsk[]>([]);
@@ -462,6 +468,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [spawnWorker],
   );
 
+  const viewDirection = useCallback((directionId: number, repoId: number) => {
+    setViewing({ directionId, repoId });
+    setActiveSessionId(null);
+    setShowNeeds(false);
+    setHomeTab("board");
+  }, []);
+
+  const closeObserve = useCallback(() => setViewing(null), []);
+
+  // Explicit "continue/attach": attach to a live session if one exists, else ask
+  // the backend to resume the same native conversation (or fresh-dispatch only
+  // when no native id was ever captured). Never re-seeds a live/finished task.
+  const driveDirection = useCallback(
+    async (directionId: number, repoId: number, focus: boolean) => {
+      const existing = Object.values(sessionsRef.current).find(
+        (s) =>
+          s.directionId === directionId &&
+          s.repoId === repoId &&
+          s.status !== "exited",
+      );
+      if (existing) {
+        if (focus) setActiveSessionId(existing.info.session_id);
+        return;
+      }
+      const info = await api.driveSession(directionId, repoId, currentLang());
+      lastOutputRef.current[info.session_id] = Date.now();
+      autoCheckedRef.current.delete(directionId);
+      setSessions((m) => ({
+        ...m,
+        [info.session_id]: {
+          info,
+          status: info.resumed ? "running" : "starting",
+          directionId,
+          repoId,
+          threadId: activeThreadId ?? -1,
+          nativeId: info.native_id,
+          kind: "worker",
+        },
+      }));
+      if (focus) setActiveSessionId(info.session_id);
+    },
+    [activeThreadId],
+  );
+
   // Automation-first (§4 principle 7): once a task is materialized, dispatch its
   // worker(s) right away — every write worktree gets an agent, no human click.
   const dispatchDirection = useCallback(
@@ -477,6 +527,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     },
     [spawnWorker],
+  );
+
+  // Restart continuity (§4 principle 7): bring a working task's worker back by
+  // RESUME (not a fresh re-run) once per repo. Reuses driveDirection's
+  // resume-or-fresh + dedupe-by-live logic.
+  const reviveDirection = useCallback(
+    async (directionId: number) => {
+      let wts;
+      try {
+        wts = await api.listWorktrees(directionId);
+      } catch {
+        return;
+      }
+      for (const w of wts) {
+        await driveDirection(directionId, w.repo_id, false);
+      }
+    },
+    [driveDirection],
   );
 
   const createDirection = useCallback(
@@ -512,6 +580,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       branch: "",
       tool: lead.tool,
       resumed: false,
+      native_id: null,
     };
     lastOutputRef.current[lead.session_id] = Date.now();
     setSessions((m) => ({
@@ -1041,6 +1110,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createDirection,
     deleteThread,
     openSession,
+    viewing,
+    viewDirection,
+    driveDirection,
+    reviveDirection,
+    closeObserve,
     setTaskStatus,
     checksByDirection,
     checkingDirections,
