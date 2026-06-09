@@ -31,6 +31,8 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
   } = useStore();
   const { t } = useTranslation();
   const [view, setView] = useState<"chat" | "terminal">("chat");
+  // Bumped on each send so the transcript refreshes + snaps to bottom at once.
+  const [sentNonce, setSentNonce] = useState(0);
   // Auto-start at most ONCE per thread. Keying off leadSession alone loops if the
   // lead exits right after spawning (null → start → exit → null → start …).
   const attemptedRef = useRef<number | null>(null);
@@ -133,8 +135,13 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
 
       {view === "chat" ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <Transcript cwd={info.worktree} tool={info.tool} running={running} />
-          {running && <LeadComposer />}
+          <Transcript
+            cwd={info.worktree}
+            tool={info.tool}
+            running={running}
+            refreshSignal={sentNonce}
+          />
+          {running && <LeadComposer onSent={() => setSentNonce((n) => n + 1)} />}
         </div>
       ) : (
         <motion.div
@@ -158,7 +165,7 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
  * path so multi-line prompts land intact in the TUI. Shares the one Composer
  * affordance with the bus (Enter sends; Shift+Enter adds a line).
  */
-function LeadComposer() {
+function LeadComposer({ onSent }: { onSent?: () => void }) {
   const { sendToLead } = useStore();
   const { t } = useTranslation();
   return (
@@ -167,7 +174,10 @@ function LeadComposer() {
         multiline
         autoFocus
         placeholder={t("lead.compose")}
-        onSend={(v) => void sendToLead(v)}
+        onSend={(v) => {
+          void sendToLead(v);
+          onSent?.();
+        }}
       />
     </div>
   );

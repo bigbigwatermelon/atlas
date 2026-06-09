@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -38,10 +38,13 @@ export function Transcript({
   cwd,
   tool,
   running,
+  refreshSignal,
 }: {
   cwd: string;
   tool: string;
   running?: boolean;
+  /** Bump to force an immediate re-read + snap-to-bottom (e.g. after you send). */
+  refreshSignal?: number;
 }) {
   const { t } = useTranslation();
   const [events, setEvents] = useState<NormEvent[]>([]);
@@ -50,32 +53,43 @@ export function Transcript({
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
 
+  const load = useCallback(async () => {
+    try {
+      const ev = await api.readTranscript(cwd, tool);
+      // A transient empty read (file mid-write / rotated) must not blank an
+      // already-populated transcript — keep the last good content.
+      setEvents((prev) => (ev.length === 0 && prev.length > 0 ? prev : ev));
+      setLoaded(true);
+    } catch {
+      /* not ready */
+    }
+  }, [cwd, tool]);
+
   useEffect(() => {
-    // New session (cwd/tool changed): clear so the transient-empty guard below
+    // New session (cwd/tool changed): clear so the transient-empty guard above
     // doesn't carry the previous session's transcript over.
     setEvents([]);
     setLoaded(false);
     let alive = true;
-    const tick = async () => {
-      try {
-        const ev = await api.readTranscript(cwd, tool);
-        if (alive) {
-          // A transient empty read (file mid-write / rotated) must not blank an
-          // already-populated transcript — keep the last good content.
-          setEvents((prev) => (ev.length === 0 && prev.length > 0 ? prev : ev));
-          setLoaded(true);
-        }
-      } catch {
-        /* not ready */
-      }
+    const tick = () => {
+      if (alive) void load();
     };
-    void tick();
+    tick();
     const h = setInterval(tick, 1500);
     return () => {
       alive = false;
       clearInterval(h);
     };
-  }, [cwd, tool]);
+  }, [cwd, tool, load]);
+
+  // A send bumps refreshSignal: re-read now (don't wait up to 1.5s) and snap to
+  // the bottom so the human sees their own message land.
+  useEffect(() => {
+    if (refreshSignal == null) return;
+    atBottomRef.current = true;
+    void load();
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [refreshSignal, load]);
 
   // Only auto-scroll when the user is already near the bottom — don't yank them
   // up to the latest when they've scrolled back to read history.
