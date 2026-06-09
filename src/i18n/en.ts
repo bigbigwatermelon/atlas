@@ -78,6 +78,8 @@ export const en = {
     nudge: "Nudge: tell this agent to check the bus",
     runChecks: "Run this sub-task's checks (lint / type / test)",
     noChecks: "no checks inferred",
+    acceptPass: "Accepted",
+    acceptFail: "{{count}} failing",
     colQueued: "Queued",
     colRunning: "In progress",
     colNeeds: "Needs you",

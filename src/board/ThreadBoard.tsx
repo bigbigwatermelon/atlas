@@ -269,8 +269,14 @@ function EmptyDiscuss({ onTalk }: { onTalk: () => void }) {
 
 function DirectionCard({ direction }: { direction: Direction }) {
   const { worktreesByDirection, repos, sessions, viewDirection, checksByDirection } = useStore();
+  const { t } = useTranslation();
   const writes = worktreesByDirection[direction.id] ?? [];
   const checks = checksByDirection[direction.id];
+
+  // Trust at a glance (§4.6): roll the acceptance rungs up to one card-level
+  // signal — green when all pass, red (count) when any fail, nothing when none.
+  const allChecks = (checks ?? []).flatMap((rc) => rc.checks);
+  const failed = allChecks.filter((c) => c.status === "fail").length;
 
   return (
     <motion.div
@@ -278,14 +284,28 @@ function DirectionCard({ direction }: { direction: Direction }) {
       className="flex flex-col rounded-[var(--radius-lg)] border border-border bg-surface"
     >
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
-        <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
-          <Layers size={13} className="text-ink-faint" />
-          {direction.name}
+        <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-ink">
+          <Layers size={13} className="shrink-0 text-ink-faint" />
+          <span className="truncate">{direction.name}</span>
         </span>
-        <span className="ml-auto flex items-center gap-1.5 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
-          <ToolIcon tool={direction.tool} size={12} />
-          {TOOL_LABEL[direction.tool] ?? direction.tool}
-        </span>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {allChecks.length > 0 &&
+            (failed > 0 ? (
+              <span className="flex items-center gap-1 rounded-full bg-danger/15 px-1.5 py-0.5 text-[11px] font-medium text-danger">
+                <X size={10} />
+                {t("thread.acceptFail", { count: failed })}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 rounded-full bg-running/15 px-1.5 py-0.5 text-[11px] font-medium text-running">
+                <Check size={10} />
+                {t("thread.acceptPass")}
+              </span>
+            ))}
+          <span className="flex items-center gap-1.5 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
+            <ToolIcon tool={direction.tool} size={12} />
+            {TOOL_LABEL[direction.tool] ?? direction.tool}
+          </span>
+        </div>
       </div>
 
       {/* write repos — openable session slots. Each is an isolated working copy;

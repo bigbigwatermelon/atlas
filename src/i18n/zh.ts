@@ -73,6 +73,8 @@ export const zh = {
     nudge: "提醒:让这个 agent 查看 bus",
     runChecks: "运行该子任务的检查(lint / type / test)",
     noChecks: "未推断出检查项",
+    acceptPass: "验收通过",
+    acceptFail: "{{count}} 项未过",
     colQueued: "排队中",
     colRunning: "进行中",
     colNeeds: "待你处理",
