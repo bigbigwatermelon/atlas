@@ -6,7 +6,7 @@ import { api } from "../lib/api";
 import type { NormEvent } from "../lib/types";
 import { Markdown } from "../components/Markdown";
 import { cn } from "../lib/cn";
-import { compactToolTarget, toolIcon, toolLabel } from "./transcriptBits";
+import { compactToolTarget, toolIcon, toolLabelKey } from "./transcriptBits";
 
 /**
  * Observe-mode chat for any agent (lead or worker): renders the session's
@@ -157,6 +157,7 @@ function TranscriptEvent({
   event: NormEvent;
   variant: "default" | "console";
 }) {
+  const { t } = useTranslation();
   if (variant !== "console") {
     if (event.kind === "tool") {
       const Icon = toolIcon(event.name);
@@ -192,7 +193,7 @@ function TranscriptEvent({
     return (
       <div className="flex max-w-full items-center gap-2 px-1.5 py-1 text-[13px] text-ink-faint">
         <Icon size={15} className="shrink-0 text-ink-faint" />
-        <span className="shrink-0 font-medium text-ink-muted">{toolLabel(event.name)}</span>
+        <span className="shrink-0 font-medium text-ink-muted">{t(toolLabelKey(event.name))}</span>
         <span className="min-w-0 truncate font-mono text-brand">{target}</span>
         {added && <span className="shrink-0 font-mono text-running">+{added}</span>}
         {removed && <span className="shrink-0 font-mono text-danger">-{removed}</span>}

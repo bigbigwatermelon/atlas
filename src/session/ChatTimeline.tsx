@@ -4,7 +4,7 @@ import { ArrowRight, ChevronRight, Slash, Sparkles } from "lucide-react";
 import type { LeadMessage } from "../lib/types";
 import { Markdown } from "../components/Markdown";
 import { cn } from "../lib/cn";
-import { compactToolTarget, toolIcon, toolLabel } from "./transcriptBits";
+import { compactToolTarget, toolIcon, toolLabelKey } from "./transcriptBits";
 
 /**
  * The chat-engine timeline: renders weft-owned LeadMessage rows (no polling,
@@ -98,7 +98,7 @@ function TimelineRow({
     return (
       <div className="flex max-w-full items-center gap-2 px-1.5 py-1 text-[13px] text-ink-faint">
         <Icon size={15} className="shrink-0 text-ink-faint" />
-        <span className="shrink-0 font-medium text-ink-muted">{toolLabel(name)}</span>
+        <span className="shrink-0 font-medium text-ink-muted">{t(toolLabelKey(name))}</span>
         <span className="min-w-0 truncate font-mono text-brand">{target}</span>
         {added && <span className="shrink-0 font-mono text-running">+{added}</span>}
         {removed && <span className="shrink-0 font-mono text-danger">-{removed}</span>}

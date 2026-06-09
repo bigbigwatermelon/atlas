@@ -25,15 +25,16 @@ export function toolIcon(name: string): ComponentType<LucideProps> {
   return Wrench;
 }
 
-export function toolLabel(name: string) {
+/** i18n key for the tool's activity label — call t() on the result. */
+export function toolLabelKey(name: string) {
   const n = name.toLowerCase();
-  if (/(write|edit|apply_patch|patch)/.test(n)) return "正在编辑";
-  if (/(read|view|cat)/.test(n)) return "正在读取";
-  if (/(grep|glob|rg|ripgrep|ls|find|list|search)/.test(n)) return "正在搜索";
-  if (/(bash|exec_command|shell|run)/.test(n)) return "正在运行";
-  if (/(bus_|broadcast|ask_human|announce|interface|inbox|status)/.test(n)) return "正在同步";
-  if (/todo/.test(n)) return "正在整理";
-  return "正在调用";
+  if (/(write|edit|apply_patch|patch)/.test(n)) return "session.toolEditing";
+  if (/(read|view|cat)/.test(n)) return "session.toolReading";
+  if (/(grep|glob|rg|ripgrep|ls|find|list|search)/.test(n)) return "session.toolSearching";
+  if (/(bash|exec_command|shell|run)/.test(n)) return "session.toolRunning";
+  if (/(bus_|broadcast|ask_human|announce|interface|inbox|status)/.test(n)) return "session.toolSyncing";
+  if (/todo/.test(n)) return "session.toolOrganizing";
+  return "session.toolCalling";
 }
 
 /** Squeeze a tool call's target into a compact, scannable fragment. */
