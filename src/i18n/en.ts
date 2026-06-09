@@ -22,7 +22,7 @@ export const en = {
     deleteThread: "Delete issue",
     collapseSidebar: "Collapse sidebar",
     expandSidebar: "Show sidebar",
-    noIssues: "No issues yet. Create one to start.",
+    noThreads: "No issues yet. Create one to start.",
     createWorkspaceFirst: "Create a workspace to begin.",
     repoMap: "Repo map",
     needsYou: "Needs you",
