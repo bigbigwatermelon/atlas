@@ -25,6 +25,7 @@ mod detect;
 mod drivers;
 mod gc;
 mod inspect;
+pub mod lead_chat;
 mod planner;
 pub mod profile;
 mod pty;
