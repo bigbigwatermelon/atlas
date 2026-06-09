@@ -41,19 +41,29 @@ pub fn infer_checks(dir: &Path) -> Vec<Check> {
         let json: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
         let scripts = json.get("scripts").and_then(|v| v.as_object());
         let has = |k: &str| scripts.map(|s| s.contains_key(k)).unwrap_or(false);
+        // Honor the repo's package manager (from its lockfile) — running `npm` in
+        // a pnpm/yarn repo misfires. `<pm> run <script>` is uniform across all
+        // three, and `<pm> test -- --run` forwards the flag to the test runner.
+        let pm = if dir.join("pnpm-lock.yaml").exists() {
+            "pnpm"
+        } else if dir.join("yarn.lock").exists() {
+            "yarn"
+        } else {
+            "npm"
+        };
         let mut out = Vec::new();
         // cheap → expensive
         if has("typecheck") {
-            out.push(check("typecheck", "npm", &["run", "typecheck"]));
+            out.push(check("typecheck", pm, &["run", "typecheck"]));
         }
         if has("lint") {
-            out.push(check("lint", "npm", &["run", "lint"]));
+            out.push(check("lint", pm, &["run", "lint"]));
         }
         if has("build") {
-            out.push(check("build", "npm", &["run", "build"]));
+            out.push(check("build", pm, &["run", "build"]));
         }
         if has("test") {
-            out.push(check("test", "npm", &["test", "--", "--run"]));
+            out.push(check("test", pm, &["test", "--", "--run"]));
         }
         return out;
     }
@@ -142,6 +152,25 @@ mod tests {
         let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
         // typecheck before build before test; lint absent (not defined)
         assert_eq!(names, vec!["typecheck", "build", "test"]);
+    }
+
+    #[test]
+    fn node_honors_package_manager_from_lockfile() {
+        let pnpm = tmp(&[
+            ("package.json", r#"{ "scripts": { "lint": "eslint", "test": "vitest" } }"#),
+            ("pnpm-lock.yaml", ""),
+        ]);
+        assert!(infer_checks(&pnpm).iter().all(|c| c.program == "pnpm"));
+
+        let yarn = tmp(&[
+            ("package.json", r#"{ "scripts": { "lint": "eslint" } }"#),
+            ("yarn.lock", ""),
+        ]);
+        assert_eq!(infer_checks(&yarn)[0].program, "yarn");
+
+        // no lockfile → npm
+        let npm = tmp(&[("package.json", r#"{ "scripts": { "lint": "eslint" } }"#)]);
+        assert_eq!(infer_checks(&npm)[0].program, "npm");
     }
 
     #[test]
