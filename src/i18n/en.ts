@@ -154,6 +154,14 @@ export const en = {
     filesChanged_other: "{{count}} files",
     untrackedOnly: "Only new (untracked) files so far.",
   },
+  observe: {
+    attach: "Attach",
+    continue: "Continue",
+    start: "Start",
+    empty: "Not materialized yet.",
+    answerPlaceholder: "Type a reply, press Enter",
+    driveFailed: "Couldn't continue this session",
+  },
   bus: {
     title: "Thread bus",
     activity: "Activity",

@@ -65,6 +65,7 @@ pub struct SessionInfo {
     pub branch: String,
     pub tool: String,
     pub resumed: bool,
+    pub native_id: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -102,6 +103,104 @@ fn human_dur(secs: u64) -> String {
         format!("{}min", secs / 60)
     } else {
         format!("{}s", secs)
+    }
+}
+
+/// Resume the same native conversation when one was ever captured; otherwise a
+/// fresh dispatch is the only way to (re)start the task. Pure so it's unit-tested
+/// without a DB or live PTY.
+#[derive(Debug)]
+pub(crate) enum DriveChoice {
+    Resume(i32),
+    Fresh,
+}
+
+pub(crate) fn drive_choice(latest: Option<(i32, Option<&str>)>) -> DriveChoice {
+    match latest {
+        Some((session_id, Some(_native))) => DriveChoice::Resume(session_id),
+        _ => DriveChoice::Fresh,
+    }
+}
+
+/// Read-only snapshot backing the observe surface: the worktree to read
+/// transcript/diff from, plus the latest session's identity/status if any.
+/// `None` only when the (direction, repo) has no materialized worktree.
+#[derive(Serialize, Clone)]
+pub struct ObserveRef {
+    pub worktree: String,
+    pub branch: String,
+    pub tool: String,
+    pub session_id: Option<i32>,
+    pub native_id: Option<String>,
+    pub status: Option<String>,
+}
+
+#[tauri::command]
+pub async fn session_for(
+    db: State<'_, Db>,
+    direction_id: i32,
+    repo_id: i32,
+) -> Result<Option<ObserveRef>, String> {
+    session_for_impl(&db, direction_id, repo_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn session_for_impl(
+    db: &Db,
+    direction_id: i32,
+    repo_id: i32,
+) -> Result<Option<ObserveRef>> {
+    let wt = match repo::worktree_for(db, direction_id, repo_id).await? {
+        Some(w) => w,
+        None => return Ok(None),
+    };
+    let dir = match repo::get_direction(db, direction_id).await? {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+    let latest = repo::latest_session_for(db, direction_id, repo_id).await?;
+    Ok(Some(ObserveRef {
+        worktree: wt.path,
+        branch: wt.branch,
+        tool: dir.tool,
+        session_id: latest.as_ref().map(|s| s.id),
+        native_id: latest.as_ref().and_then(|s| s.native_session_id.clone()),
+        status: latest.as_ref().map(|s| s.status.clone()),
+    }))
+}
+
+/// The ONLY process-touching open path a human/click takes. Resume the same
+/// native conversation when one exists; only fall back to a fresh dispatch
+/// (which re-seeds the brief + flips status→working) when no native id was ever
+/// captured. Never re-runs a finished task from scratch on a plain open.
+#[tauri::command]
+pub async fn drive_session(
+    app: AppHandle,
+    db: State<'_, Db>,
+    state: State<'_, PtyState>,
+    direction_id: i32,
+    repo_id: i32,
+    lang: Option<String>,
+) -> Result<SessionInfo, String> {
+    drive_session_impl(app, &db, &state, direction_id, repo_id, lang.as_deref().unwrap_or("en"))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn drive_session_impl(
+    app: AppHandle,
+    db: &Db,
+    state: &PtyState,
+    direction_id: i32,
+    repo_id: i32,
+    lang: &str,
+) -> Result<SessionInfo> {
+    let latest = repo::latest_session_for(db, direction_id, repo_id).await?;
+    match drive_choice(latest.as_ref().map(|s| (s.id, s.native_session_id.as_deref()))) {
+        // lang is not re-applied on resume: the original brief already carries the language directive.
+        DriveChoice::Resume(session_id) => resume_impl(app, db, state, session_id).await,
+        DriveChoice::Fresh => open_session_impl(app, db, state, direction_id, repo_id, lang).await,
     }
 }
 
@@ -410,6 +509,7 @@ async fn open_session_impl(
         branch: wt.branch,
         tool: dir.tool,
         resumed: false,
+        native_id: None,
     })
 }
 
@@ -459,7 +559,17 @@ async fn resume_impl(
     };
     let base = app.state::<crate::BusBase>().0.clone();
     let inj = crate::bus::inject::inject(&base, tid, &s.direction_id.to_string(), &s.tool, &cwd);
-    let active = spawn(&app, &s.tool, s.direction_id, &inj.args, &cwd, Some(&native), session_id, db.clone())
+    let ask = crate::bus::inject::inject_ask_hook(
+        &base,
+        tid,
+        &s.direction_id.to_string(),
+        &s.tool,
+        &cwd,
+    );
+    let mut args: Vec<String> = Vec::new();
+    args.extend(ask.args);
+    args.extend(inj.args);
+    let active = spawn(&app, &s.tool, s.direction_id, &args, &cwd, Some(&native), session_id, db.clone())
         .context("spawn agent --resume")?;
     state.sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id, active);
     Ok(SessionInfo {
@@ -469,6 +579,7 @@ async fn resume_impl(
         branch: wt.branch,
         tool: s.tool,
         resumed: true,
+        native_id: Some(native),
     })
 }
 
@@ -654,6 +765,27 @@ async fn plan_with_lead_impl(
 #[cfg(test)]
 mod watchdog_tests {
     use super::*;
+    #[test]
+    fn drive_choice_resumes_when_native_present() {
+        assert!(matches!(
+            super::drive_choice(Some((7, Some("abc")))),
+            super::DriveChoice::Resume(7)
+        ));
+    }
+
+    #[test]
+    fn drive_choice_fresh_when_no_session() {
+        assert!(matches!(super::drive_choice(None), super::DriveChoice::Fresh));
+    }
+
+    #[test]
+    fn drive_choice_fresh_when_native_missing() {
+        assert!(matches!(
+            super::drive_choice(Some((7, None))),
+            super::DriveChoice::Fresh
+        ));
+    }
+
     #[test]
     fn wall_cap_fires_regardless_of_activity() {
         assert!(watchdog_verdict(10_000, 0, 9_999, 7200, 1800, false)

@@ -154,7 +154,11 @@ interface Store {
   ) => Promise<void>;
   deleteThread: (threadId: number) => Promise<void>;
 
-  openSession: (directionId: number, repoId: number) => Promise<void>;
+  viewing: { directionId: number; repoId: number } | null;
+  viewDirection: (directionId: number, repoId: number) => void;
+  driveDirection: (directionId: number, repoId: number, focus: boolean) => Promise<void>;
+  reviveDirection: (directionId: number) => Promise<void>;
+  closeObserve: () => void;
   /** Set a task's lifecycle status (human override). */
   setTaskStatus: (directionId: number, status: string) => Promise<void>;
   /** Quality loop: executable-check results + in-flight set, per direction. */
@@ -194,6 +198,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [viewing, setViewing] = useState<{ directionId: number; repoId: number } | null>(null);
   const [messages, setMessages] = useState<BusMsg[]>([]);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [asks, setAsks] = useState<PermissionAsk[]>([]);
@@ -278,6 +283,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setWorktrees({});
     setActiveThreadId(null);
     setActiveSessionId(null);
+    setViewing(null);
     setShowNeeds(false);
     setHomeTab("board");
     setRepoProfiles([]);
@@ -303,6 +309,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (threadId: number) => {
       setActiveThreadId(threadId);
       setActiveSessionId(null);
+      setViewing(null);
       setShowNeeds(false);
       setHomeTab("board");
       setShowBus(false);
@@ -334,6 +341,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const backToWorkspace = useCallback(() => {
     setActiveThreadId(null);
     setActiveSessionId(null);
+    setViewing(null);
     setShowNeeds(false);
     setHomeTab("board");
   }, []);
@@ -457,9 +465,63 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [activeThreadId],
   );
 
-  const openSession = useCallback(
-    (directionId: number, repoId: number) => spawnWorker(directionId, repoId, true),
-    [spawnWorker],
+  const viewDirection = useCallback((directionId: number, repoId: number) => {
+    setViewing({ directionId, repoId });
+    setActiveSessionId(null);
+    setShowNeeds(false);
+    setHomeTab("board");
+  }, []);
+
+  const closeObserve = useCallback(() => setViewing(null), []);
+
+  // Explicit "continue/attach": attach to a live session if one exists, else ask
+  // the backend to resume the same native conversation (or fresh-dispatch only
+  // when no native id was ever captured). Never re-seeds a live/finished task.
+  const driveDirection = useCallback(
+    async (directionId: number, repoId: number, focus: boolean) => {
+      const existing = Object.values(sessionsRef.current).find(
+        (s) =>
+          s.directionId === directionId &&
+          s.repoId === repoId &&
+          s.status !== "exited",
+      );
+      if (existing) {
+        if (focus) {
+          setActiveSessionId(existing.info.session_id);
+          setShowNeeds(false);
+          setHomeTab("board");
+        }
+        return;
+      }
+      const info = await api.driveSession(directionId, repoId, currentLang());
+      lastOutputRef.current[info.session_id] = Date.now();
+      autoCheckedRef.current.delete(directionId);
+      setSessions((m) => {
+        const pruned = Object.fromEntries(
+          Object.entries(m).filter(
+            ([, s]) => !(s.directionId === directionId && s.repoId === repoId && s.status === "exited"),
+          ),
+        );
+        return {
+          ...pruned,
+          [info.session_id]: {
+            info,
+            status: info.resumed ? "running" : "starting",
+            directionId,
+            repoId,
+            threadId: activeThreadId ?? -1,
+            nativeId: info.native_id,
+            kind: "worker",
+          },
+        };
+      });
+      if (focus) {
+        setActiveSessionId(info.session_id);
+        setShowNeeds(false);
+        setHomeTab("board");
+      }
+    },
+    [activeThreadId],
   );
 
   // Automation-first (§4 principle 7): once a task is materialized, dispatch its
@@ -477,6 +539,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     },
     [spawnWorker],
+  );
+
+  // Restart continuity (§4 principle 7): bring a working task's worker back by
+  // RESUME (not a fresh re-run) once per repo. Reuses driveDirection's
+  // resume-or-fresh + dedupe-by-live logic.
+  const reviveDirection = useCallback(
+    async (directionId: number) => {
+      let wts;
+      try {
+        wts = await api.listWorktrees(directionId);
+      } catch {
+        return;
+      }
+      for (const w of wts) {
+        await driveDirection(directionId, w.repo_id, false);
+      }
+    },
+    [driveDirection],
   );
 
   const createDirection = useCallback(
@@ -505,6 +585,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     );
     if (live) return; // already running — the dock shows it
     const lead = await api.planWithLead(thread, currentLang());
+    // Hand-built SessionInfo (lead has no backend SessionInfo); keep fields in sync with the type.
     const info: SessionInfo = {
       session_id: lead.session_id,
       repo: "",
@@ -512,6 +593,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       branch: "",
       tool: lead.tool,
       resumed: false,
+      native_id: null,
     };
     lastOutputRef.current[lead.session_id] = Date.now();
     setSessions((m) => ({
@@ -790,6 +872,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const goToAsk = useCallback(
     async (item: NeedItem) => {
       setShowNeeds(false);
+      setViewing(null);
       const live = Object.values(sessions).find(
         (s) => s.directionId === item.direction_id,
       );
@@ -960,9 +1043,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
       if (hasLive || dispatchingRef.current.has(d.id)) continue;
       dispatchingRef.current.add(d.id);
-      void dispatchDirection(d.id).finally(() => dispatchingRef.current.delete(d.id));
+      void reviveDirection(d.id).finally(() => dispatchingRef.current.delete(d.id));
     }
-  }, [activeThreadId, directionsByThread, dispatchDirection]);
+  }, [activeThreadId, directionsByThread, reviveDirection]);
 
   const leadSession = leadForActive ?? null;
   const leadCollapsed =
@@ -1040,7 +1123,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createThread,
     createDirection,
     deleteThread,
-    openSession,
+    viewing,
+    viewDirection,
+    driveDirection,
+    reviveDirection,
+    closeObserve,
     setTaskStatus,
     checksByDirection,
     checkingDirections,
