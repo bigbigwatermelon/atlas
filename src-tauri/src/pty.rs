@@ -122,6 +122,86 @@ pub(crate) fn drive_choice(latest: Option<(i32, Option<&str>)>) -> DriveChoice {
     }
 }
 
+/// Read-only snapshot backing the observe surface: the worktree to read
+/// transcript/diff from, plus the latest session's identity/status if any.
+/// `None` only when the (direction, repo) has no materialized worktree.
+#[derive(Serialize, Clone)]
+pub struct ObserveRef {
+    pub worktree: String,
+    pub branch: String,
+    pub tool: String,
+    pub session_id: Option<i32>,
+    pub native_id: Option<String>,
+    pub status: Option<String>,
+}
+
+#[tauri::command]
+pub async fn session_for(
+    db: State<'_, Db>,
+    direction_id: i32,
+    repo_id: i32,
+) -> Result<Option<ObserveRef>, String> {
+    session_for_impl(&db, direction_id, repo_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn session_for_impl(
+    db: &Db,
+    direction_id: i32,
+    repo_id: i32,
+) -> Result<Option<ObserveRef>> {
+    let wt = match repo::worktree_for(db, direction_id, repo_id).await? {
+        Some(w) => w,
+        None => return Ok(None),
+    };
+    let dir = repo::get_direction(db, direction_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("direction not found"))?;
+    let latest = repo::latest_session_for(db, direction_id, repo_id).await?;
+    Ok(Some(ObserveRef {
+        worktree: wt.path,
+        branch: wt.branch,
+        tool: dir.tool,
+        session_id: latest.as_ref().map(|s| s.id),
+        native_id: latest.as_ref().and_then(|s| s.native_session_id.clone()),
+        status: latest.as_ref().map(|s| s.status.clone()),
+    }))
+}
+
+/// The ONLY process-touching open path a human/click takes. Resume the same
+/// native conversation when one exists; only fall back to a fresh dispatch
+/// (which re-seeds the brief + flips status→working) when no native id was ever
+/// captured. Never re-runs a finished task from scratch on a plain open.
+#[tauri::command]
+pub async fn drive_session(
+    app: AppHandle,
+    db: State<'_, Db>,
+    state: State<'_, PtyState>,
+    direction_id: i32,
+    repo_id: i32,
+    lang: Option<String>,
+) -> Result<SessionInfo, String> {
+    drive_session_impl(app, &db, &state, direction_id, repo_id, lang.as_deref().unwrap_or("en"))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn drive_session_impl(
+    app: AppHandle,
+    db: &Db,
+    state: &PtyState,
+    direction_id: i32,
+    repo_id: i32,
+    lang: &str,
+) -> Result<SessionInfo> {
+    let latest = repo::latest_session_for(db, direction_id, repo_id).await?;
+    match drive_choice(latest.as_ref().map(|s| (s.id, s.native_session_id.as_deref()))) {
+        DriveChoice::Resume(session_id) => resume_impl(app, db, state, session_id).await,
+        DriveChoice::Fresh => open_session_impl(app, db, state, direction_id, repo_id, lang).await,
+    }
+}
+
 /// Decide whether a session should be force-stopped. Pure → unit-tested.
 /// `has_open_ask` = the session is legitimately blocked on the human, so its
 /// silence is expected → never idle-kill. Wall-clock always applies.

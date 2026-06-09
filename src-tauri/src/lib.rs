@@ -127,6 +127,8 @@ pub fn run() {
             pty::open_session,
             pty::plan_with_lead,
             pty::resume_session,
+            pty::session_for,
+            pty::drive_session,
             pty::write_pty,
             pty::resize_pty,
             pty::kill_session,
