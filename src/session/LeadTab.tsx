@@ -183,6 +183,7 @@ function LeadComposer() {
       <div className="flex items-end gap-2 rounded-[var(--radius-md)] border border-border bg-bg px-2.5 py-1.5 transition-colors focus-within:border-brand/50">
         <textarea
           ref={ref}
+          autoFocus
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
