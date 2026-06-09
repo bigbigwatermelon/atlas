@@ -21,6 +21,7 @@ import type {
   RepoProfile,
   RepoRef,
   ResolvedProposal,
+  ReviewVerdict,
   ThreadOverview,
   SessionInfo,
   SessionStatus,
@@ -164,6 +165,10 @@ interface Store {
   checksByDirection: Record<number, RepoChecks[]>;
   checkingDirections: Record<number, boolean>;
   verifyDirection: (directionId: number) => Promise<void>;
+  /** Review-agent rung: on-demand pre-PR self-review verdict + in-flight set. */
+  reviewsByDirection: Record<number, ReviewVerdict>;
+  reviewingDirections: Record<number, boolean>;
+  reviewDirection: (directionId: number) => Promise<void>;
   focusSession: (sessionId: number) => void;
   resumeSession: (sessionId: number) => Promise<void>;
   killSession: (sessionId: number) => Promise<void>;
@@ -187,6 +192,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Record<number, OpenSession>>({});
   const [checksByDirection, setChecksByDirection] = useState<Record<number, RepoChecks[]>>({});
   const [checkingDirections, setCheckingDirections] = useState<Record<number, boolean>>({});
+  const [reviewsByDirection, setReviewsByDirection] = useState<Record<number, ReviewVerdict>>({});
+  const [reviewingDirections, setReviewingDirections] = useState<Record<number, boolean>>({});
   // Idle tracking for the auto-verify loop: last PTY-output time per session,
   // and which directions we've already auto-checked this idle episode.
   const lastOutputRef = useRef<Record<number, number>>({});
@@ -673,6 +680,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Review-agent rung (§4.13): on-demand only (it costs tokens), so it's a
+  // human-pressed action, never part of the idle auto-verify loop.
+  const reviewDirection = useCallback(async (directionId: number) => {
+    setReviewingDirections((m) => ({ ...m, [directionId]: true }));
+    try {
+      const v = await api.reviewDirection(directionId);
+      setReviewsByDirection((m) => ({ ...m, [directionId]: v }));
+    } catch {
+      /* leave prior verdict */
+    } finally {
+      setReviewingDirections((m) => ({ ...m, [directionId]: false }));
+    }
+  }, []);
+
   const focusSession = useCallback((id: number) => setActiveSessionId(id), []);
 
   const resumeSession = useCallback(async (sessionId: number) => {
@@ -1119,6 +1140,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     checksByDirection,
     checkingDirections,
     verifyDirection,
+    reviewsByDirection,
+    reviewingDirections,
+    reviewDirection,
     focusSession,
     resumeSession,
     killSession,

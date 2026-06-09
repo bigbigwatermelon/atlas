@@ -7,9 +7,11 @@ import {
   ChevronDown,
   Layers,
   LayoutGrid,
+  Loader2,
   MessagesSquare,
   Plus,
   Radio,
+  ScanEye,
   TerminalSquare,
   X,
 } from "lucide-react";
@@ -278,10 +280,21 @@ function EmptyDiscuss({ onTalk }: { onTalk: () => void }) {
 }
 
 function DirectionCard({ direction }: { direction: Direction }) {
-  const { worktreesByDirection, repos, sessions, viewDirection, checksByDirection } = useStore();
+  const {
+    worktreesByDirection,
+    repos,
+    sessions,
+    viewDirection,
+    checksByDirection,
+    reviewsByDirection,
+    reviewingDirections,
+    reviewDirection,
+  } = useStore();
   const { t } = useTranslation();
   const writes = worktreesByDirection[direction.id] ?? [];
   const checks = checksByDirection[direction.id];
+  const review = reviewsByDirection[direction.id];
+  const reviewing = !!reviewingDirections[direction.id];
 
   // Trust at a glance (§4.6): roll the acceptance rungs up to one card-level
   // signal — green when all pass, red (count) when any fail, nothing when none.
@@ -368,6 +381,44 @@ function DirectionCard({ direction }: { direction: Direction }) {
           ))}
         </div>
       )}
+
+      {/* review-agent rung (§4.13): on-demand pre-PR self-review, never auto */}
+      <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
+        <button
+          onClick={() => void reviewDirection(direction.id)}
+          disabled={reviewing || writes.length === 0}
+          className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 text-[11px] text-ink-muted outline-none transition-colors hover:bg-brand-ghost hover:text-ink disabled:opacity-40"
+        >
+          {reviewing ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <ScanEye size={12} className="text-brand" />
+          )}
+          {reviewing ? t("thread.reviewing") : t("thread.review")}
+        </button>
+        {review && !reviewing && (
+          <span
+            title={review.summary}
+            className={cn(
+              "flex min-w-0 items-center gap-1 truncate text-[11px]",
+              review.status === "pass"
+                ? "text-running"
+                : review.status === "fail"
+                  ? "text-danger"
+                  : "text-ink-faint",
+            )}
+          >
+            {review.status === "pass" ? (
+              <Check size={11} className="shrink-0" />
+            ) : review.status === "fail" ? (
+              <X size={11} className="shrink-0" />
+            ) : null}
+            <span className="truncate">
+              {review.status === "skipped" ? t("thread.reviewSkipped") : review.summary}
+            </span>
+          </span>
+        )}
+      </div>
     </motion.div>
   );
 }
