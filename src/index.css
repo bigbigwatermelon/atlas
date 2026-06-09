@@ -162,6 +162,29 @@
   animation: weft-pulse 1.8s var(--ease-out-quint) infinite;
 }
 
+/* 丝滑: subtle screen-enter when the route changes (keyed wrapper remounts) */
+@keyframes weft-screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.weft-screen-in {
+  animation: weft-screen-in 0.24s var(--ease-out-expo) both;
+}
+
+/* motion only when something changed; honor reduced-motion everywhere */
+@media (prefers-reduced-motion: reduce) {
+  .weft-pulse,
+  .weft-screen-in {
+    animation: none;
+  }
+}
+
 /* markdown rendering for agent output (scoped + sized to the transcript) */
 .weft-md > :first-child {
   margin-top: 0;

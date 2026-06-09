@@ -23,7 +23,9 @@ function Shell() {
     <div className="flex h-screen w-screen overflow-hidden bg-bg text-ink">
       {!navCollapsed && <WorkspaceNav />}
       <ErrorBoundary key={routeKey}>
-        <Main />
+        <div className="flex min-w-0 flex-1 flex-col weft-screen-in">
+          <Main />
+        </div>
       </ErrorBoundary>
       <DangerToast />
     </div>
