@@ -5,7 +5,8 @@ import * as DM from "@radix-ui/react-dropdown-menu";
 import {
   Check,
   ChevronDown,
-  ChevronRight,
+  Copy,
+  GitBranch,
   Layers,
   MessagesSquare,
   ScanEye,
@@ -16,7 +17,7 @@ import { useStore } from "../state/store";
 import type { Direction, RepoChecks, SessionStatus } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { StatusDot } from "../components/ui/StatusChip";
-import { Inspect } from "../components/Inspect";
+import { Tooltip } from "../components/ui/Tooltip";
 import { ToolIcon, toolFullName } from "../components/ToolIcon";
 import { ScopeReview } from "./ScopeReview";
 import { LeadTab } from "../session/LeadTab";
@@ -158,7 +159,6 @@ function DirectionCard({ direction }: { direction: Direction }) {
   const { t } = useTranslation();
   const writes = worktreesByDirection[direction.id] ?? [];
   const checks = checksByDirection[direction.id];
-  const [showProvenance, setShowProvenance] = useState(false);
   const [reviewSent, setReviewSent] = useState(false);
 
   const allChecks = (checks ?? []).flatMap((rc) => rc.checks);
@@ -187,18 +187,8 @@ function DirectionCard({ direction }: { direction: Direction }) {
     >
       <div className="flex items-start gap-2 px-3 py-2.5">
         <ToolIcon tool={direction.tool} size={15} className="mt-0.5" />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold leading-snug text-ink">
-            {direction.name}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="rounded-full border border-border bg-bg px-1.5 py-0.5 text-[10.5px] text-ink-faint">
-              {toolFullName(direction.tool)}
-            </span>
-            <span className="rounded-full border border-border bg-bg px-1.5 py-0.5 text-[10.5px] text-ink-faint">
-              {taskStatusLabel(t, direction.status)}
-            </span>
-          </div>
+        <div className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-snug text-ink">
+          {direction.name}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {hasNeed && (
@@ -210,7 +200,14 @@ function DirectionCard({ direction }: { direction: Direction }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+      {/* One left-aligned chips row: tool, status, then the write copies. */}
+      <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
+        <span className="rounded-full border border-border bg-bg px-1.5 py-0.5 text-[10.5px] text-ink-faint">
+          {toolFullName(direction.tool)}
+        </span>
+        <span className="rounded-full border border-border bg-bg px-1.5 py-0.5 text-[10.5px] text-ink-faint">
+          {taskStatusLabel(t, direction.status)}
+        </span>
         {writes.length === 0 ? (
           <span className="rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-ink-faint">
             {t("thread.noWriteCopy")}
@@ -253,22 +250,7 @@ function DirectionCard({ direction }: { direction: Direction }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2">
-        <button
-          type="button"
-          onClick={() => setShowProvenance((open) => !open)}
-          className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] px-1 py-0.5 text-[11px] text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
-        >
-          <ChevronRight
-            size={13}
-            className={cn("transition-transform", showProvenance && "rotate-90")}
-          />
-          {t("thread.provenance")}
-          {writes.length > 0 && (
-            <span className="text-ink-faint/70">
-              · {t("thread.copiesCount", { count: writes.length })}
-            </span>
-          )}
-        </button>
+        <ProvenanceMenu writes={writes} checks={checks} />
         <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5">
           <button
             onClick={() => {
@@ -299,34 +281,80 @@ function DirectionCard({ direction }: { direction: Direction }) {
         </div>
       </div>
 
-      {showProvenance && (
-        <div className="flex flex-col gap-1.5 border-t border-border bg-bg/35 px-3 py-2">
-          {checks && checks.length > 0 ? (
-            checks.map((rc) => <ChecksRow key={rc.repo} rc={rc} />)
-          ) : (
-            <div className="text-[11px] text-ink-faint">{t("thread.noChecks")}</div>
-          )}
-          {writes.map((w) => {
-            const sess = Object.values(sessions).find(
-              (s) => s.directionId === direction.id && s.repoId === w.repo_id,
-            );
-            return (
-              <div key={w.id} className="flex items-center gap-2 text-[11px] text-ink-faint">
-                <span className="min-w-0 flex-1 truncate font-mono">{w.branch}</span>
-                <Inspect
-                  path={w.path}
-                  branch={w.branch}
-                  nativeId={sess?.nativeId}
-                  tool={sess?.info.tool ?? direction.tool}
-                  size={13}
-                  className="h-6 w-6 shrink-0"
-                />
-              </div>
-            );
-          })}
-        </div>
-      )}
     </motion.div>
+  );
+}
+
+/**
+ * Provenance, demoted to one icon: a dropdown with the per-repo check results
+ * and the work branches — click a branch to copy it. The full escape hatch
+ * (worktree path, terminal) stays in the session view's Inspect.
+ */
+function ProvenanceMenu({
+  writes,
+  checks,
+}: {
+  writes: { id: number; repo_id: number; branch: string; path: string }[];
+  checks?: RepoChecks[];
+}) {
+  const { t } = useTranslation();
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  return (
+    <DM.Root>
+      <Tooltip label={t("thread.provenanceTip")}>
+        <DM.Trigger
+          aria-label={t("thread.provenance")}
+          onClick={(e) => e.stopPropagation()}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-sm)] text-ink-faint outline-none transition-colors hover:bg-brand-ghost hover:text-ink data-[state=open]:bg-brand-ghost data-[state=open]:text-ink"
+        >
+          <GitBranch size={13} />
+        </DM.Trigger>
+      </Tooltip>
+      <DM.Portal>
+        <DM.Content
+          align="start"
+          sideOffset={4}
+          onClick={(e) => e.stopPropagation()}
+          className="weft-pop z-[60] w-72 rounded-[var(--radius-md)] border border-border bg-raised p-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]"
+        >
+          {checks && checks.length > 0 && (
+            <>
+              <div className="flex flex-col gap-1 px-2 py-1.5">
+                {checks.map((rc) => (
+                  <ChecksRow key={rc.repo} rc={rc} />
+                ))}
+              </div>
+              <DM.Separator className="my-1 h-px bg-border" />
+            </>
+          )}
+          {writes.length === 0 ? (
+            <div className="px-2 py-1.5 text-[11px] text-ink-faint">
+              {t("thread.noWriteCopy")}
+            </div>
+          ) : (
+            writes.map((w) => (
+              <DM.Item
+                key={w.id}
+                onSelect={(e) => {
+                  e.preventDefault(); // stay open: copying is not a navigation
+                  void navigator.clipboard.writeText(w.branch);
+                  setCopiedId(w.id);
+                  window.setTimeout(() => setCopiedId(null), 1800);
+                }}
+                className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[11.5px] text-ink-muted outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink"
+              >
+                <span className="min-w-0 flex-1 truncate font-mono">{w.branch}</span>
+                {copiedId === w.id ? (
+                  <Check size={12} className="shrink-0 text-running" />
+                ) : (
+                  <Copy size={12} className="shrink-0 text-ink-faint" />
+                )}
+              </DM.Item>
+            ))
+          )}
+        </DM.Content>
+      </DM.Portal>
+    </DM.Root>
   );
 }
 

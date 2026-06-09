@@ -200,6 +200,9 @@ interface Store {
   /** The configured review skill ("" = auto-detect superpowers'). */
   reviewSkill: string;
   setReviewSkill: (s: string) => void;
+  /** Auto-run the review skill when a task flows into the review column. */
+  autoReview: boolean;
+  setAutoReview: (on: boolean) => void;
   focusSession: (sessionId: number) => void;
   resumeSession: (sessionId: number) => Promise<void>;
   killSession: (sessionId: number) => Promise<void>;
@@ -273,6 +276,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setReviewSkill = useCallback((s: string) => {
     localStorage.setItem("weft-review-skill", s);
     setReviewSkillState(s);
+  }, []);
+  // Auto-review: entering the review column runs the review skill (with a
+  // self-repair directive) in the sub-task's own session. Default ON.
+  const [autoReview, setAutoReviewState] = useState(
+    () => localStorage.getItem("weft-auto-review") !== "0",
+  );
+  const setAutoReview = useCallback((on: boolean) => {
+    localStorage.setItem("weft-auto-review", on ? "1" : "0");
+    setAutoReviewState(on);
   }, []);
   const [dangerousMode, setDangerousModeState] = useState(
     () => localStorage.getItem("weft-dangerous") === "1",
@@ -864,7 +876,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
       }
       if (!sess) return;
-      const cmd = `/${resolveReviewSkill()}`;
+      // Review-then-repair: the skill reviews, the same agent fixes what it
+      // found and re-verifies — the human only sees the post-fix state.
+      const directive =
+        currentLang() === "zh"
+          ? "review 结束后，直接修复发现的问题并重新跑检查自验，然后简要汇报。"
+          : "After the review, fix the findings directly, re-run the checks to verify, then report briefly.";
+      const cmd = `/${resolveReviewSkill()} ${directive}`;
       if (sess.mode === "chat") {
         await api.chatSend(sess.info.session_id, cmd);
       } else {
@@ -873,6 +891,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [driveDirection, resolveReviewSkill, sendToSession],
   );
+
+  // Automation-first: a task flowing into "review" triggers the review skill
+  // by itself (once per entry; the setting turns this off).
+  const autoReviewedRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const all = Object.values(directionsByThread).flat();
+    for (const d of all) {
+      if (d.status !== "review") {
+        autoReviewedRef.current.delete(d.id);
+        continue;
+      }
+      if (!autoReview || autoReviewedRef.current.has(d.id)) continue;
+      autoReviewedRef.current.add(d.id);
+      void requestSkillReview(d.id);
+    }
+  }, [directionsByThread, autoReview, requestSkillReview]);
 
   const focusSession = useCallback((id: number) => setActiveSessionId(id), []);
 
@@ -1321,6 +1355,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     requestSkillReview,
     reviewSkill,
     setReviewSkill,
+    autoReview,
+    setAutoReview,
     focusSession,
     resumeSession,
     killSession,

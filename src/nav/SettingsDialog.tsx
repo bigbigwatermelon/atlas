@@ -151,8 +151,16 @@ function SettingsNavButton({
 
 function GeneralSettings() {
   const { t } = useTranslation();
-  const { projectsDir, setProjectsDir, defaultTool, setDefaultTool, reviewSkill, setReviewSkill } =
-    useStore();
+  const {
+    projectsDir,
+    setProjectsDir,
+    defaultTool,
+    setDefaultTool,
+    reviewSkill,
+    setReviewSkill,
+    autoReview,
+    setAutoReview,
+  } = useStore();
   const [lang, setLangState] = useState<Lang>(currentLang());
 
   useEffect(() => {
@@ -199,6 +207,9 @@ function GeneralSettings() {
             onChange={(e) => setReviewSkill(e.currentTarget.value)}
             className="h-8 w-[360px] max-w-[42vw] bg-bg/80 font-mono text-[12px]"
           />
+        </SettingRow>
+        <SettingRow label={t("settings.autoReview")} hint={t("settings.autoReviewHint")}>
+          <Toggle on={autoReview} onChange={setAutoReview} label={t("settings.autoReview")} />
         </SettingRow>
         <SettingRow label={t("settings.agentLanguage")} hint={t("settings.agentLanguageHint")}>
           <Segmented
