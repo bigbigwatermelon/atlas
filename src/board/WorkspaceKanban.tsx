@@ -5,6 +5,7 @@ import { Columns3, FolderGit2, Layers, Plus, Rows3, SquarePen, X } from "lucide-
 import { useStore } from "../state/store";
 import type { ThreadOverview } from "../lib/types";
 import { Button } from "../components/ui/Button";
+import { RailToggle } from "../components/RailToggle";
 import { CreateThreadDialog, CreateWorkspaceDialog } from "../nav/dialogs";
 import { cn } from "../lib/cn";
 
@@ -77,6 +78,7 @@ export function WorkspaceKanban() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-5 py-2">
+        <RailToggle />
         <div className="ml-auto flex items-center rounded-[var(--radius-md)] bg-surface p-0.5">
           <ViewToggle active={view === "phase"} onClick={() => setView("phase")} label={t("wsboard.byPhase")}>
             <Columns3 size={13} />
@@ -269,27 +271,32 @@ function EmptyBoard() {
   const hasWs = activeWorkspaceId != null;
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-      <div className="grid h-11 w-11 place-items-center rounded-[var(--radius-lg)] border border-border bg-surface">
-        <Layers size={20} className="text-ink-faint" />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center border-b border-transparent px-5 py-2">
+        <RailToggle />
       </div>
-      <h2 className="mt-3 text-[14px] font-semibold text-ink">
-        {hasWs ? t("workspace.emptyTitleHas") : t("workspace.emptyTitleNoWs")}
-      </h2>
-      <p className="mt-1.5 max-w-sm text-[12px] leading-relaxed text-ink-faint">
-        {hasWs ? t("workspace.emptyBodyHas") : t("workspace.emptyBodyNoWs")}
-      </p>
-      <Button
-        variant="primary"
-        className="mt-4"
-        onClick={() => setDlg(hasWs ? "thread" : "ws")}
-      >
-        {hasWs ? <SquarePen size={14} /> : <Plus size={14} />}
-        {hasWs ? t("nav.newThread") : t("nav.newWorkspace")}
-      </Button>
+      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+        <div className="grid h-11 w-11 place-items-center rounded-[var(--radius-lg)] border border-border bg-surface">
+          <Layers size={20} className="text-ink-faint" />
+        </div>
+        <h2 className="mt-3 text-[14px] font-semibold text-ink">
+          {hasWs ? t("workspace.emptyTitleHas") : t("workspace.emptyTitleNoWs")}
+        </h2>
+        <p className="mt-1.5 max-w-sm text-[12px] leading-relaxed text-ink-faint">
+          {hasWs ? t("workspace.emptyBodyHas") : t("workspace.emptyBodyNoWs")}
+        </p>
+        <Button
+          variant="primary"
+          className="mt-4"
+          onClick={() => setDlg(hasWs ? "thread" : "ws")}
+        >
+          {hasWs ? <SquarePen size={14} /> : <Plus size={14} />}
+          {hasWs ? t("nav.newThread") : t("nav.newWorkspace")}
+        </Button>
 
-      <CreateWorkspaceDialog open={dlg === "ws"} onOpenChange={(o) => !o && setDlg(null)} />
-      <CreateThreadDialog open={dlg === "thread"} onOpenChange={(o) => !o && setDlg(null)} />
+        <CreateWorkspaceDialog open={dlg === "ws"} onOpenChange={(o) => !o && setDlg(null)} />
+        <CreateThreadDialog open={dlg === "thread"} onOpenChange={(o) => !o && setDlg(null)} />
+      </div>
     </div>
   );
 }

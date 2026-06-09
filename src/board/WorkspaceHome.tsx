@@ -25,7 +25,10 @@ export function WorkspaceHome() {
   // is collapsed, a minimal bar holds just the expand toggle.
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
-      {navCollapsed && (
+      {/* Board carries its own RailToggle in the kanban toolbar / empty state, so
+          only Activity + Repos (which have no header of their own) need this bar
+          — avoids a redundant double bar on the board when the rail is collapsed. */}
+      {navCollapsed && homeTab !== "board" && (
         <div className="flex items-center border-b border-border px-3 py-2">
           <RailToggle />
         </div>
