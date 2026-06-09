@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
+import * as DM from "@radix-ui/react-dropdown-menu";
 import {
   Check,
+  ChevronDown,
   Layers,
   LayoutGrid,
   MessagesSquare,
@@ -313,6 +315,7 @@ function DirectionCard({ direction }: { direction: Direction }) {
             <ToolIcon tool={direction.tool} size={12} />
             {TOOL_LABEL[direction.tool] ?? direction.tool}
           </span>
+          <StatusMenu direction={direction} />
         </div>
       </div>
 
@@ -366,6 +369,49 @@ function DirectionCard({ direction }: { direction: Direction }) {
         </div>
       )}
     </motion.div>
+  );
+}
+
+/** Keyboard/click path to restatus a task (the drag handles mouse only). Sets
+ *  the stored status (§4.6); "needs" is weft-derived, so it isn't offered. Wires
+ *  the long-orphaned thread.setStatus affordance and makes the board a11y-complete. */
+function StatusMenu({ direction }: { direction: Direction }) {
+  const { setTaskStatus } = useStore();
+  const { t } = useTranslation();
+  const settable = COLUMNS.filter((c) => c.key !== "needs");
+  const current = settable.find((c) => c.key === direction.status) ?? settable[0];
+  return (
+    <DM.Root>
+      <DM.Trigger
+        title={t("thread.setStatus")}
+        aria-label={t("thread.setStatus")}
+        onClick={(e) => e.stopPropagation()}
+        className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-ink-faint outline-none transition-colors hover:bg-brand-ghost hover:text-ink data-[state=open]:bg-brand-ghost data-[state=open]:text-ink"
+      >
+        <span className={cn("h-2 w-2 rounded-full", current.dot)} />
+        <ChevronDown size={11} />
+      </DM.Trigger>
+      <DM.Portal>
+        <DM.Content
+          align="end"
+          sideOffset={4}
+          onClick={(e) => e.stopPropagation()}
+          className="weft-pop z-[60] w-40 rounded-[var(--radius-md)] border border-border bg-raised p-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]"
+        >
+          {settable.map((c) => (
+            <DM.Item
+              key={c.key}
+              onSelect={() => void setTaskStatus(direction.id, c.key)}
+              className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[12px] text-ink-muted outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink"
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", c.dot)} />
+              {t(c.label)}
+              {c.key === current.key && <Check size={12} className="ml-auto text-brand" />}
+            </DM.Item>
+          ))}
+        </DM.Content>
+      </DM.Portal>
+    </DM.Root>
   );
 }
 
