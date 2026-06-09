@@ -58,6 +58,7 @@ export function CommandPalette() {
   // unmounts when collapsed), so actions work regardless of sidebar state.
   const [dialog, setDialog] = useState<null | "ws" | "thread" | "settings">(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
 
   // Global hotkey in capture phase so it fires before a focused terminal grabs
   // the key. ⌘/Ctrl+K toggles; we own the ⌘ prefix (§4.3 key ownership).
@@ -189,6 +190,11 @@ export function CommandPalette() {
   // Keep the highlighted index inside the filtered range.
   const active = filtered.length ? Math.min(selected, filtered.length - 1) : 0;
 
+  // Scroll the highlighted command into view when arrowing past the fold.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest" });
+  }, [active, open]);
+
   function close() {
     setOpen(false);
   }
@@ -267,6 +273,7 @@ export function CommandPalette() {
                     )}
                     <button
                       type="button"
+                      ref={i === active ? activeRef : undefined}
                       onClick={() => runAt(i)}
                       onMouseMove={() => setSelected(i)}
                       className={cn(
