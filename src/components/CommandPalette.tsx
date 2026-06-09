@@ -28,6 +28,8 @@ type Command = {
   label: string;
   icon: React.ReactNode;
   run: () => void;
+  /** Keyboard shortcut hint (e.g. "⌘1"), shown right-aligned for discovery. */
+  hint?: string;
 };
 
 /** Open the palette from anywhere (e.g. the rail's search trigger). */
@@ -114,6 +116,7 @@ export function CommandPalette() {
         group: t("palette.go"),
         label: t("palette.board"),
         icon: <LayoutDashboard size={14} />,
+        hint: "⌘1",
         run: () => {
           backToWorkspace();
           setHomeTab("board");
@@ -124,6 +127,7 @@ export function CommandPalette() {
         group: t("palette.go"),
         label: t("palette.activity"),
         icon: <Activity size={14} />,
+        hint: "⌘2",
         run: () => {
           backToWorkspace();
           setHomeTab("overview");
@@ -134,6 +138,7 @@ export function CommandPalette() {
         group: t("palette.go"),
         label: t("palette.repos"),
         icon: <Network size={14} />,
+        hint: "⌘3",
         run: () => openRepoMap(),
       },
       {
@@ -141,6 +146,7 @@ export function CommandPalette() {
         group: t("palette.go"),
         label: t("palette.toggleSidebar"),
         icon: <PanelLeft size={14} />,
+        hint: "⌘\\",
         run: () => setNavCollapsed(!navCollapsed),
       },
     ];
@@ -304,6 +310,11 @@ export function CommandPalette() {
                     >
                       <span className="text-ink-faint">{c.icon}</span>
                       <span className="min-w-0 flex-1 truncate">{c.label}</span>
+                      {c.hint && (
+                        <kbd className="shrink-0 rounded border border-border bg-surface px-1.5 py-px font-mono text-[10px] text-ink-faint">
+                          {c.hint}
+                        </kbd>
+                      )}
                       {i === active && (
                         <CornerDownLeft size={12} className="shrink-0 text-ink-faint" />
                       )}

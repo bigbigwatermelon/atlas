@@ -9,6 +9,7 @@ import { DangerToast } from "./components/DangerToast";
 import { Toasts } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { useAppShortcuts } from "./state/shortcuts";
 
 function Main() {
   const { activeSessionId, viewing, activeThreadId, showNeeds } = useStore();
@@ -23,6 +24,7 @@ function Main() {
 
 function Shell() {
   const { navCollapsed, activeSessionId, viewing, activeThreadId, showNeeds } = useStore();
+  useAppShortcuts();
   // Key the boundary by route so navigating away from a crashed screen clears it.
   const routeKey = `${showNeeds ? "needs" : ""}|${activeSessionId ?? ""}|${viewing ?? ""}|${activeThreadId ?? ""}`;
   return (
