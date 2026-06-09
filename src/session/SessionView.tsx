@@ -10,6 +10,7 @@ import { Transcript } from "./Transcript";
 import { DiffPanel } from "./DiffPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
+import { Composer } from "../components/Composer";
 import { Inspect } from "../components/Inspect";
 import { RailToggle } from "../components/RailToggle";
 import { ToolIcon } from "../components/ToolIcon";
@@ -23,6 +24,7 @@ export function SessionView() {
     backToBoard,
     repos,
     directionsByThread,
+    sendToSession,
   } = useStore();
   const { t } = useTranslation();
   const active = activeSessionId != null ? sessions[activeSessionId] : null;
@@ -33,6 +35,8 @@ export function SessionView() {
     transcripted ? "chat" : "terminal",
   );
   const [showDiff, setShowDiff] = useState(false);
+  // Bumped on each send so the transcript refreshes + snaps to bottom at once.
+  const [sentNonce, setSentNonce] = useState(0);
   useEffect(() => {
     setView(transcripted ? "chat" : "terminal");
     setShowDiff(false);
@@ -140,7 +144,26 @@ export function SessionView() {
       )}
 
       {view === "chat" ? (
-        <Transcript cwd={info.worktree} tool={info.tool} running={running} />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <Transcript
+            cwd={info.worktree}
+            tool={info.tool}
+            running={running}
+            refreshSignal={sentNonce}
+          />
+          {running && (
+            <div className="border-t border-border bg-surface px-2.5 py-2">
+              <Composer
+                multiline
+                placeholder={isLead ? t("lead.compose") : t("session.message")}
+                onSend={(v) => {
+                  void sendToSession(info.session_id, v);
+                  setSentNonce((n) => n + 1);
+                }}
+              />
+            </div>
+          )}
+        </div>
       ) : (
         /* embedded native TUI — keyed so each session gets a fresh terminal */
         <motion.div

@@ -166,6 +166,7 @@ export const zh = {
     starting: "启动中…",
     kill: "终止",
     clickToInteract: "点击进入交互",
+    message: "给这个 agent 发消息…",
     resumeMenu: "恢复…",
     interacting: "交互中",
     backToReadonly: "返回只读",

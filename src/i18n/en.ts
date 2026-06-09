@@ -173,6 +173,7 @@ export const en = {
     starting: "Starting…",
     kill: "Kill",
     clickToInteract: "Click to interact",
+    message: "Message this agent…",
     resumeMenu: "Resume…",
     interacting: "Interacting",
     backToReadonly: "Back to read-only",

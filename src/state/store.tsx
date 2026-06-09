@@ -64,6 +64,8 @@ interface Store {
   startLead: () => Promise<void>;
   /** Send a composed message into the lead's PTY (bracketed paste + enter). */
   sendToLead: (text: string) => Promise<void>;
+  /** Send a composed message into any session's PTY (bracketed paste + enter). */
+  sendToSession: (sessionId: number, text: string) => Promise<void>;
   /** The thread-bus drawer (demoted from a permanent rail). */
   showBus: boolean;
   setShowBus: (open: boolean) => void;
@@ -637,18 +639,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   }, [activeThreadId]);
 
-  const sendToLead = useCallback(async (text: string) => {
+  // Inject a composed human message into any session's PTY. Bracketed paste keeps
+  // multi-line prompts intact in the TUI, then Enter submits.
+  const sendToSession = useCallback(async (sessionId: number, text: string) => {
     const body = text.trimEnd();
     if (!body) return;
-    const thread = activeThreadId;
-    const lead = Object.values(sessionsRef.current).find(
-      (s) => s.kind === "lead" && s.threadId === thread && s.status !== "exited",
-    );
-    if (!lead) return;
-    // Bracketed paste keeps multi-line prompts intact in the TUI, then Enter submits.
-    const payload = `\x1b[200~${body}\x1b[201~\r`;
-    await api.writePty(lead.info.session_id, payload);
-  }, [activeThreadId]);
+    await api.writePty(sessionId, `\x1b[200~${body}\x1b[201~\r`);
+  }, []);
+
+  const sendToLead = useCallback(
+    async (text: string) => {
+      const thread = activeThreadId;
+      const lead = Object.values(sessionsRef.current).find(
+        (s) => s.kind === "lead" && s.threadId === thread && s.status !== "exited",
+      );
+      if (!lead) return;
+      await sendToSession(lead.info.session_id, text);
+    },
+    [activeThreadId, sendToSession],
+  );
 
   const setTaskStatus = useCallback(async (directionId: number, status: string) => {
     // optimistic: flip the card now, then persist
@@ -1075,6 +1084,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     leadSession,
     startLead,
     sendToLead,
+    sendToSession,
     showBus,
     setShowBus,
     navCollapsed,
