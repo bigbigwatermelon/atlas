@@ -65,6 +65,7 @@ pub struct SessionInfo {
     pub branch: String,
     pub tool: String,
     pub resumed: bool,
+    pub native_id: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -426,6 +427,7 @@ async fn open_session_impl(
         branch: wt.branch,
         tool: dir.tool,
         resumed: false,
+        native_id: None,
     })
 }
 
@@ -485,6 +487,7 @@ async fn resume_impl(
         branch: wt.branch,
         tool: s.tool,
         resumed: true,
+        native_id: Some(native.clone()),
     })
 }
 
