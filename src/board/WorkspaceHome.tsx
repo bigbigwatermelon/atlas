@@ -29,7 +29,7 @@ export function WorkspaceHome() {
           only Activity + Repos (which have no header of their own) need this bar
           — avoids a redundant double bar on the board when the rail is collapsed. */}
       {navCollapsed && homeTab !== "board" && (
-        <div className="flex items-center border-b border-border px-3 py-2">
+        <div className="flex items-center border-b border-border px-5 py-2.5">
           <RailToggle />
         </div>
       )}
