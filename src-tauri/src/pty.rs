@@ -105,6 +105,22 @@ fn human_dur(secs: u64) -> String {
     }
 }
 
+/// Resume the same native conversation when one was ever captured; otherwise a
+/// fresh dispatch is the only way to (re)start the task. Pure so it's unit-tested
+/// without a DB or live PTY.
+#[derive(Debug)]
+pub(crate) enum DriveChoice {
+    Resume(i32),
+    Fresh,
+}
+
+pub(crate) fn drive_choice(latest: Option<(i32, Option<&str>)>) -> DriveChoice {
+    match latest {
+        Some((session_id, Some(_native))) => DriveChoice::Resume(session_id),
+        _ => DriveChoice::Fresh,
+    }
+}
+
 /// Decide whether a session should be force-stopped. Pure → unit-tested.
 /// `has_open_ask` = the session is legitimately blocked on the human, so its
 /// silence is expected → never idle-kill. Wall-clock always applies.
@@ -649,6 +665,30 @@ async fn plan_with_lead_impl(
         cwd: cwd.to_string_lossy().to_string(),
         tool,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn drive_choice_resumes_when_native_present() {
+        assert!(matches!(
+            super::drive_choice(Some((7, Some("abc")))),
+            super::DriveChoice::Resume(7)
+        ));
+    }
+
+    #[test]
+    fn drive_choice_fresh_when_no_session() {
+        assert!(matches!(super::drive_choice(None), super::DriveChoice::Fresh));
+    }
+
+    #[test]
+    fn drive_choice_fresh_when_native_missing() {
+        assert!(matches!(
+            super::drive_choice(Some((7, None))),
+            super::DriveChoice::Fresh
+        ));
+    }
 }
 
 #[cfg(test)]
