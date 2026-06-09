@@ -61,12 +61,14 @@ export function ThreadBoard() {
   const { t } = useTranslation();
   const thread = threads.find((th) => th.id === activeThreadId);
   const [newDir, setNewDir] = useState(false);
-  const [tab, setTab] = useState<"board" | "lead">("board");
+  // 以对话为家 (M-C): an issue opens on the Lead conversation, not the board.
+  // The board is the companion view, one click away.
+  const [tab, setTab] = useState<"board" | "lead">("lead");
   // drag-to-restatus a task between columns
   const [dragId, setDragId] = useState<number | null>(null);
   const [overCol, setOverCol] = useState<TaskState | null>(null);
   useEffect(() => {
-    setTab("board");
+    setTab("lead");
     setReviewingProposal(false);
   }, [activeThreadId, setReviewingProposal]);
   if (!thread) return null;
