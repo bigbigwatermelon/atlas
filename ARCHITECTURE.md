@@ -1,6 +1,6 @@
 # 多仓 · 多工具 · 会话编排器 —— 架构设计与可行性评估
 
-> 一句话定位:一个**本地优先、无服务端**的桌面端(Tauri / 本地 Web)产品,把分散的代码仓库按**逻辑工作区**组织起来,用 **git worktree** 做物化与隔离,在每个仓/每个执行方向上调用**原生的 Claude Code / Codex / OpenCode**(允许异构),把它们各自的**原生 TUI 直接嵌进终端面板**给人实时观看,而不自己重绘 agent 输出;团队共享通过**配置下发**(git / plugin marketplace)实现。
+> 一句话定位:一个**本地优先、无服务端**的桌面端(Tauri / 本地 Web)产品,把分散的代码仓库按**逻辑工作区**组织起来,用 **git worktree** 做物化与隔离,在每个仓/每个执行方向上 **headless 驱动原生的 Claude Code / Codex / OpenCode**(允许异构),以**产品自有的会话界面**实时呈现;任何会话都可随时在用户自己的终端接管;团队共享通过**配置下发**(git / plugin marketplace)实现。
 
 本文档整合了多轮讨论的全部结论,并对关键技术假设做了可行性核验(见第 7 节)。
 
@@ -10,12 +10,12 @@
 
 1. **本地优先、无服务端、无用户身份**。每个人跑自己的本地实例,本地状态库(SQLite/JSON)保存工作区、worktree、会话映射。没有中心账号/同步服务。
 2. **原生驱动,保全能力**。直接跑各 CLI 本体(而非走 ACP 统一层),从而保留 hooks / skills / subagents / 审批等全部原生能力。
-3. **不重绘 agent UI**。把各工具的原生 TUI 托管在嵌入式终端里供人观看;产品只做"工作区外壳 + 编排 + 跨切面视图"。
+3. **headless 驱动,产品自有会话 UI**。经各工具官方的结构化流接口驱动(claude stream-json;codex `exec --json`;opencode `run --format json`),产品渲染自己的会话时间线——不内嵌终端、不重绘 TUI。原生 TUI 体验经"在终端接管"逃生舱保留(停引擎 + 复制 resume 命令到用户自己的终端)。
 4. **分组是逻辑的,不是物理的**。工作区是一份引用清单,不是一个 git 父仓 / submodule 集合;仓可被多个工作区重叠引用。
 5. **共享靠下发,不靠后端**。团队基线(skills/rules/清单)作为版本化产物经 git 或 plugin marketplace 分发;个人配置留在本机。
 6. **异构可接受**。不强求"单会话内多工具";不同仓/不同方向用不同工具,靠共享文件系统协同。
 7. **接线只活在物化层,绝不写进 canonical 仓**(见 2.1)。工作区的跨仓挂载与会话配置只通过临时参数/一次性 worktree 注入,保证单仓独立、工作区互不污染、零累积。
-8. **产品化:屏蔽机制,呈现决策与结果**(见 4.7)。隐藏 plumbing(worktree/PTY/MCP/add-dir/旁路),用产品词表达;但用户负责的"决策与结果"(scope、分支/PR/diff、工具选择)留在台前。隐藏三件套:抽象 + 逃生舱(真路径/开终端)+ 失败可读。
+8. **产品化:屏蔽机制,呈现决策与结果**(见 4.7)。隐藏 plumbing(worktree/headless 进程/MCP/add-dir/旁路),用产品词表达;但用户负责的"决策与结果"(scope、分支/PR/diff、工具选择)留在台前。隐藏三件套:抽象 + 逃生舱(真路径/开终端)+ 失败可读。
 9. **多语言(中/英)从第一天就内建**(见 4.8)。UI 文案外置 + agent 产出语言两层都要,绝不硬编码字符串。
 10. **Automation-first,Weft 不自加审批关**。产品北极星是自动化:lead 默认自动分解→spawn→派发→驱动到交付。**唯一的阻塞性人工来自工具自身的权限/审批习惯**(Codex/Claude 按用户自己的配置弹出),Weft 只透传(见 4.3),不新增 gate。人是监督/随时介入/异常处理,不是必经关卡。仅"不可逆/爆炸半径大"的动作(合并受保护分支、破坏性/资金操作)留**可配置**边界,默认由用户定;git/CI/工具权限已是安全网。
 11. **交付边界 = Task → PR(当前阶段只到代码交付;入口是 Task,PRD 只是一种)**。merge / CI-CD / release 交给人 + 仓里现有 harness。因 Weft 驱动原生 CLI(不绕 hooks),worker 开/更新 PR 时**仓库自身的 PR 触发 hooks/CI 自然触发**——交付即自动接上现有 PR harness,接缝在 PR,无需 Weft 协调。CI/CD 反应式、更高维 harness 为**未来维度**(架构经 git/forge+bus 已可容纳),当前 out of scope。
@@ -67,10 +67,10 @@ Session (会话叶子: 工具 × worktree)
 ├── id (本地)
 ├── workspaceId / threadId / directionId
 ├── role (curator | lead | worker)      # curator=维护地图; lead=规划+驱动; worker=可写 worktree(见 4.4/4.11)
-├── surface (embedded-pty | external-app | external-web)  # 交互界面在哪(见 4.5)
+├── surface (chat | external-app | external-terminal)  # 交互界面在哪(见 4.5)
 ├── tool  +  cwd(= 某 worktree, 稳定唯一)
 ├── nativeSessionId                     # 各工具自己的会话 id(回流 CLI + 深链)
-├── pty (终端面板)  +  sidecar(旁路结构化通道)
+├── engine (chat 引擎回合态)  +  sidecar(旁路结构化通道)
 └── status / 关联的 worktree 分支
 ```
 
@@ -113,7 +113,7 @@ Session (会话叶子: 工具 × worktree)
 | 物化机制 | **git worktree** | 共享对象库零拷贝、分支隔离并行安全、每 worktree 稳定唯一 cwd(利于 resume) |
 | 分组单位 | **逻辑清单引用,非 submodule** | 解决"仓重叠被迫再建大仓";worktree+submodule 组合本就难受 |
 | 多工具 | **异构,每方向一个工具** | 单原生会话无法跨引擎;协同改走共享文件系统 + 黑板 |
-| UI | **嵌入式原生 TUI(PTY)+ 旁路结构化通道** | 不重绘 agent;同时拿到结构化数据做聚合 |
+| UI | **headless 驱动 + 产品自有会话 UI;sidecar 旁路观测** | 三家都有官方结构化流;审批/排队/i18n 可做一等公民;原生 TUI 体验经终端接管保留 |
 | 共享上下文 | **文件系统 + 黑板文件 + 分层 skills** | 跨异构引擎无法共享上下文窗口,只能共享磁盘产物 |
 | 团队共享 | **配置下发(git / plugin marketplace)** | 无服务端、带版本与治理 |
 

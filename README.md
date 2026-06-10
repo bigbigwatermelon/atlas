@@ -10,7 +10,7 @@ Give Weft one task. It coordinates your own Claude Code, Codex, and OpenCode acr
 
 [简体中文](README.zh-CN.md) · **English**
 
-<sub>Tauri v2 · React 19 · Rust · SQLite · xterm.js</sub>
+<sub>Tauri v2 · React 19 · Rust · SQLite</sub>
 
 </div>
 
@@ -145,16 +145,18 @@ The board has two levels:
    gate of its own. Blocking prompts come from the native tools or from a
    configurable irreversible-action boundary such as protected-branch merge or
    production deployment.
-3. **Run native CLIs, do not redraw them.** Weft starts `claude`, `codex`, and
-   `opencode` as normal binaries under the user's own configuration, preserving
-   hooks, skills, and permissions. Native TUIs run in a PTY; Weft hosts and
-   coordinates them.
+3. **Run native CLIs, render the conversation yourself.** Weft starts `claude`,
+   `codex`, and `opencode` as normal binaries under the user's own
+   configuration, preserving hooks, skills, and permissions. Each CLI is driven
+   headless through its structured JSON stream, and Weft renders its own
+   conversation UI; any session can be taken over in your own terminal at any
+   time.
 4. **Keep cross-repo wiring temporary.** Sibling repositories are mounted
    read-only through launch arguments such as `--add-dir`; Weft does not write
    that wiring into a canonical repository's config.
-5. **Hide mechanisms, show decisions.** Worktrees, PTYs, the MCP bus, and
-   sidecars live under **Inspect**. Task, scope, branch, PR, diff, tool choice,
-   and brief stay first-class.
+5. **Hide mechanisms, show decisions.** Worktrees, headless agent processes,
+   the MCP bus, and sidecars live under **Inspect**. Task, scope, branch, PR,
+   diff, tool choice, and brief stay first-class.
 6. **Bilingual from the start.** UI text and agent-output language are both
    language-aware. Internal state enums stay English; code and identifiers stay
    English.
@@ -167,9 +169,9 @@ The board has two levels:
   <img src="assets/readme/generated/architecture.png" alt="Conceptual local-first architecture for Weft" width="900" />
 </p>
 
-**Locked stack**: Tauri v2 (Rust + React / TypeScript / Vite) ·
-`portable-pty` + `xterm.js` · SQLite (sea-orm) · system `git worktree` ·
-`react-i18next`.
+**Locked stack**: Tauri v2 (Rust + React / TypeScript / Vite) · headless chat
+engine over the CLIs' native JSON streams · SQLite (sea-orm) · system
+`git worktree` · `react-i18next`.
 
 ---
 
@@ -213,15 +215,16 @@ cd src-tauri && cargo test
 ```text
 src/                  React frontend
   board/              two-level board, repo graph, scope confirm, Needs you, bus
-  session/            Lead tab, transcript, diff views
-  panels/             xterm.js terminal panels
+  session/            chat timeline, composer, observe and diff views
   nav/  components/    workspace nav, dialogs, UI primitives, Inspect
   i18n/               en / zh resources and runtime switching
 src-tauri/src/        Rust backend
-  drivers/            ToolDriver: claude · codex · opencode + sidecar parsing
-  pty.rs              PTY sessions and input arbitration
-  roles/curator/lead  survey · scope · brief · dispatch · worker mandate
-  bus/                thread bus (MCP / axum server) + coordinator injection
+  lead_chat/          headless chat engine: claude stream-json (resident),
+                      codex exec --json · opencode run --format json (per turn)
+  sidecar.rs          native transcript readers → normalized observe events
+  ask.rs              Ask Bridge: permission asks → Needs-you cards → decisions back
+  planner / curator / coordinator / brief   survey · scope · brief · dispatch
+  bus/                thread bus (MCP / axum server) + coordinator nudges
   materialize.rs      scope → worktree + add-dir wiring
   store/              SQLite schema and repositories
 ARCHITECTURE.md       full design and feasibility study
