@@ -45,6 +45,7 @@ async fn lead_engine(
     );
     let inner = engine::EngineInner {
         thread_id,
+        tool: "claude".into(),
         session_id: None,
         cwd,
         extra_args: extra,
@@ -236,9 +237,6 @@ async fn chat_open_worker_impl(
         .one(&db.0)
         .await?
         .ok_or_else(|| anyhow::anyhow!("direction not found"))?;
-    if dir.tool != "claude" {
-        anyhow::bail!("chat mode is claude-only; use the PTY path for {}", dir.tool);
-    }
     let cwd = std::path::PathBuf::from(&wt.path);
 
     // Resume an earlier conversation when this slot already captured one.
@@ -263,6 +261,7 @@ async fn chat_open_worker_impl(
         None => {
             let inner = engine::EngineInner {
                 thread_id: dir.thread_id,
+                tool: dir.tool.clone(),
                 session_id: Some(sess.id),
                 cwd,
                 extra_args: extra,
@@ -328,6 +327,7 @@ async fn worker_engine(app: &AppHandle, db: &Db, session_id: i32) -> anyhow::Res
     extra.extend(inj.args);
     let inner = engine::EngineInner {
         thread_id: dir.thread_id,
+        tool: sess.tool.clone(),
         session_id: Some(sess.id),
         cwd,
         extra_args: extra,

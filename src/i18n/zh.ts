@@ -199,6 +199,7 @@ export const zh = {
     slashHint: "输入 / 调用命令或 skill · 可直接粘贴图片",
     busyHint: "正在回复 · 此时发送会排队，回合结束自动送出",
     attachFiles: "添加文件",
+    openInApp: "在原生 App 中打开",
     takeOverTerminal: "在终端接管",
     takeOverTip: "停下引擎并复制接管命令，在你自己的终端继续这段会话",
     takeOverCopied: "接管命令已复制，去你的终端粘贴运行",

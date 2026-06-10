@@ -7,7 +7,7 @@ import type { ObserveRef, SessionStatus } from "../lib/types";
 import { Transcript } from "./Transcript";
 import { ChatTimeline } from "./ChatTimeline";
 import { ChatComposer } from "./ChatComposer";
-import { resumeCommand } from "../lib/resume";
+import { appLink, resumeCommand } from "../lib/resume";
 import { DiffPanel } from "./DiffPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
@@ -78,13 +78,13 @@ export function ObserveView() {
   );
   const openAsks = needs.filter((n) => n.direction_id === directionId);
 
-  // A claude worker driven by the chat engine shows its REAL conversation, not
-  // the jsonl projection: live chat session, or persisted chat rows after a
+  // A chat-engine worker (any vendor) shows its REAL conversation, not the
+  // jsonl projection: live chat session, or persisted chat rows after a
   // restart (chat_send rebuilds the engine on demand).
   const chatSessionId =
     liveSession?.mode === "chat"
       ? liveSession.info.session_id
-      : ref?.tool === "claude" && ref.session_id != null
+      : ref?.session_id != null
         ? ref.session_id
         : null;
   const chatMsgs =
@@ -193,6 +193,11 @@ export function ObserveView() {
                 );
                 return true;
               }}
+              onOpenApp={
+                ref?.native_id && appLink(ref.tool, ref.native_id)
+                  ? () => void api.openUrl(appLink(ref.tool, ref.native_id!)!)
+                  : undefined
+              }
             />
           </>
         ) : ref ? (

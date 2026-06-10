@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Check,
+  ExternalLink,
   FileText,
   Paperclip,
   Send,
@@ -39,6 +40,7 @@ export function ChatComposer({
   onSend,
   onStop,
   onTakeOver,
+  onOpenApp,
   onNeedSlashCommands,
 }: {
   slashCommands: string[];
@@ -51,6 +53,8 @@ export function ChatComposer({
   onStop: () => void;
   /** Stop the engine + copy the terminal resume command; false = unavailable. */
   onTakeOver?: () => Promise<boolean>;
+  /** Open the vendor's own app on this session (codex deep link). */
+  onOpenApp?: () => void;
   /** Called when "/" is typed but the command list is empty — refresh it. */
   onNeedSlashCommands?: () => void;
 }) {
@@ -284,6 +288,17 @@ export function ChatComposer({
             <span className="rounded-full bg-bg px-2 py-0.5 text-[10.5px] text-ink-faint">
               {t("lead.queuedN", { count: queued })}
             </span>
+          )}
+          {onOpenApp && (
+            <Tooltip label={t("lead.openInApp")}>
+              <button
+                onClick={onOpenApp}
+                aria-label={t("lead.openInApp")}
+                className="grid h-7 w-7 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
+              >
+                <ExternalLink size={13} />
+              </button>
+            </Tooltip>
           )}
           {onTakeOver && (
             <Tooltip label={copied ? t("lead.takeOverCopied") : t("lead.takeOverTip")}>

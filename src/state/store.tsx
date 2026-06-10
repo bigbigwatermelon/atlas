@@ -511,15 +511,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  // claude workers run on the chat engine (chat-first); codex/opencode keep the
-  // PTY+TUI path untouched — fast codex spawn and deep links stay as they were.
-  const toolOfDirection = useCallback(
-    (directionId: number) =>
-      Object.values(directionsByThread)
-        .flat()
-        .find((d) => d.id === directionId)?.tool,
-    [directionsByThread],
-  );
+  // ALL workers run on the chat engine — one product-native conversation UI
+  // per vendor dialect (claude stream-json, codex exec --json, opencode run
+  // --format json). Escape hatches per tool: codex app deep link, terminal
+  // takeover command for all three. The PTY path remains only for legacy
+  // sessions still alive in this app run.
 
   // Spawn (or focus) a worker for a (direction, repo) slot. focus=true opens it
   // full-screen (a click); focus=false dispatches it in the background.
@@ -536,23 +532,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
-      const chat = toolOfDirection(directionId) === "claude";
-      const info = chat
-        ? await api.chatOpenWorker(directionId, repoId, currentLang())
-        : await api.openSession(directionId, repoId, currentLang());
+      const info = await api.chatOpenWorker(directionId, repoId, currentLang());
       lastOutputRef.current[info.session_id] = Date.now();
       autoCheckedRef.current.delete(directionId);
       setSessions((m) => ({
         ...m,
         [info.session_id]: {
           info,
-          status: chat ? "running" : "starting",
+          status: "running",
           directionId,
           repoId,
           threadId: activeThreadId ?? -1,
           nativeId: info.native_id,
           kind: "worker",
-          mode: chat ? "chat" : "pty",
+          mode: "chat",
         },
       }));
       if (focus) {
@@ -561,7 +554,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setHomeTab("board");
       }
     },
-    [activeThreadId, toolOfDirection],
+    [activeThreadId],
   );
 
   const viewDirection = useCallback(
@@ -595,10 +588,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
-      const chat = toolOfDirection(directionId) === "claude";
-      const info = chat
-        ? await api.chatOpenWorker(directionId, repoId, currentLang())
-        : await api.driveSession(directionId, repoId, currentLang());
+      const info = await api.chatOpenWorker(directionId, repoId, currentLang());
       lastOutputRef.current[info.session_id] = Date.now();
       autoCheckedRef.current.delete(directionId);
       setSessions((m) => {
@@ -611,13 +601,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...pruned,
           [info.session_id]: {
             info,
-            status: chat || info.resumed ? "running" : "starting",
+            status: "running",
             directionId,
             repoId,
             threadId: activeThreadId ?? -1,
             nativeId: info.native_id,
             kind: "worker",
-            mode: chat ? "chat" : "pty",
+            mode: "chat",
           },
         };
       });
@@ -627,7 +617,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setHomeTab("board");
       }
     },
-    [activeThreadId, toolOfDirection],
+    [activeThreadId],
   );
 
   // Automation-first (§4 principle 7): once a task is materialized, dispatch its

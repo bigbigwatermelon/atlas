@@ -16,7 +16,7 @@ import { TerminalPanel } from "../panels/TerminalPanel";
 import { Transcript } from "./Transcript";
 import { ChatTimeline } from "./ChatTimeline";
 import { ChatComposer } from "./ChatComposer";
-import { resumeCommand } from "../lib/resume";
+import { appLink, resumeCommand } from "../lib/resume";
 import { DiffPanel } from "./DiffPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
@@ -182,6 +182,11 @@ export function SessionView() {
                 );
                 return true;
               }}
+              onOpenApp={
+                nativeId && appLink(info.tool, nativeId)
+                  ? () => void api.openUrl(appLink(info.tool, nativeId)!)
+                  : undefined
+              }
             />
           </div>
         ) : isLead || view === "chat" ? (

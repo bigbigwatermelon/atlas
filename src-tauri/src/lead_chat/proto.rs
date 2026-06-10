@@ -1,7 +1,9 @@
-//! Parse one stdout line of `claude -p --output-format stream-json` into the
-//! few shapes the chat engine cares about. Unknown lines (hooks, rate-limit
-//! events, thinking/signature deltas …) are Other and ignored. Shapes verified
-//! against a live CLI (2.1.x) spike — see the design spec §1.
+//! Parse one stdout line of a headless agent CLI into the few shapes the chat
+//! engine cares about. Three dialects, all spike-verified live:
+//! - claude: `-p --output-format stream-json` (long-lived, deltas + result)
+//! - codex: `exec --json` (per-turn; thread.started / item.* / turn.completed)
+//! - opencode: `run --format json` (per-turn; text / tool_use, EOF ends turn)
+//! Unknown lines are Other and ignored.
 
 use serde_json::Value;
 
@@ -30,6 +32,89 @@ pub enum ChatEvent {
         commands: Vec<String>,
     },
     Other,
+}
+
+/// Dialect dispatch: per-tool line parser.
+pub fn parse_line_for(tool: &str, line: &str) -> ChatEvent {
+    match tool {
+        "codex" => parse_codex(line),
+        "opencode" => parse_opencode(line),
+        _ => parse_line(line),
+    }
+}
+
+/// Best-effort native session id from a line (per-turn dialects carry it on
+/// their events; claude's comes via the init/system path instead).
+pub fn extract_native(tool: &str, line: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(line).ok()?;
+    match tool {
+        "codex" => v
+            .get("thread_id")
+            .and_then(|t| t.as_str())
+            .map(String::from),
+        "opencode" => v
+            .get("sessionID")
+            .and_then(|s| s.as_str())
+            .map(String::from),
+        _ => None,
+    }
+}
+
+fn parse_codex(line: &str) -> ChatEvent {
+    let Ok(v) = serde_json::from_str::<Value>(line) else {
+        return ChatEvent::Other;
+    };
+    match v["type"].as_str() {
+        Some("item.completed") | Some("item.started") => {
+            let item = &v["item"];
+            match item["type"].as_str() {
+                Some("agent_message") if v["type"] == "item.completed" => ChatEvent::Assistant {
+                    texts: item["text"].as_str().map(|t| vec![t.to_string()]).unwrap_or_default(),
+                    tools: vec![],
+                },
+                Some("agent_message") => ChatEvent::Other,
+                Some(other) => {
+                    // command_execution / file_change / mcp_tool_call / reasoning…
+                    if other == "reasoning" {
+                        return ChatEvent::Other;
+                    }
+                    let summary = ["command", "text", "name", "path"]
+                        .iter()
+                        .find_map(|k| item[k].as_str())
+                        .unwrap_or_default();
+                    ChatEvent::Assistant {
+                        texts: vec![],
+                        tools: vec![(other.to_string(), summary.chars().take(120).collect())],
+                    }
+                }
+                None => ChatEvent::Other,
+            }
+        }
+        Some("turn.completed") => ChatEvent::TurnEnd { is_error: false },
+        Some("turn.failed") | Some("error") => ChatEvent::TurnEnd { is_error: true },
+        _ => ChatEvent::Other,
+    }
+}
+
+fn parse_opencode(line: &str) -> ChatEvent {
+    let Ok(v) = serde_json::from_str::<Value>(line) else {
+        return ChatEvent::Other;
+    };
+    let part = &v["part"];
+    match v["type"].as_str() {
+        Some("text") => ChatEvent::Assistant {
+            texts: part["text"].as_str().map(|t| vec![t.to_string()]).unwrap_or_default(),
+            tools: vec![],
+        },
+        Some("tool_use") => ChatEvent::Assistant {
+            texts: vec![],
+            tools: vec![(
+                part["tool"].as_str().unwrap_or("tool").to_string(),
+                compact_input(&part["state"]["input"]),
+            )],
+        },
+        _ => ChatEvent::Other,
+    }
 }
 
 pub fn parse_line(line: &str) -> ChatEvent {
@@ -177,6 +262,44 @@ mod tests {
             }
             e => panic!("{e:?}"),
         }
+    }
+
+    #[test]
+    fn parses_codex_dialect() {
+        assert_eq!(
+            extract_native("codex", r#"{"type":"thread.started","thread_id":"abc-1"}"#).as_deref(),
+            Some("abc-1")
+        );
+        match parse_line_for("codex", r#"{"type":"item.completed","item":{"id":"i0","type":"agent_message","text":"ok"}}"#) {
+            ChatEvent::Assistant { texts, .. } => assert_eq!(texts, vec!["ok"]),
+            e => panic!("{e:?}"),
+        }
+        match parse_line_for("codex", r#"{"type":"item.started","item":{"type":"command_execution","command":"npm test"}}"#) {
+            ChatEvent::Assistant { tools, .. } => assert_eq!(tools[0], ("command_execution".into(), "npm test".into())),
+            e => panic!("{e:?}"),
+        }
+        assert!(matches!(
+            parse_line_for("codex", r#"{"type":"turn.completed","usage":{}}"#),
+            ChatEvent::TurnEnd { is_error: false }
+        ));
+    }
+
+    #[test]
+    fn parses_opencode_dialect() {
+        let txt = r#"{"type":"text","sessionID":"ses_1","part":{"type":"text","text":"done"}}"#;
+        assert_eq!(extract_native("opencode", txt).as_deref(), Some("ses_1"));
+        match parse_line_for("opencode", txt) {
+            ChatEvent::Assistant { texts, .. } => assert_eq!(texts, vec!["done"]),
+            e => panic!("{e:?}"),
+        }
+        match parse_line_for("opencode", r#"{"type":"tool_use","sessionID":"ses_1","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"echo hi"}}}}"#) {
+            ChatEvent::Assistant { tools, .. } => assert_eq!(tools[0], ("bash".into(), "echo hi".into())),
+            e => panic!("{e:?}"),
+        }
+        assert!(matches!(
+            parse_line_for("opencode", r#"{"type":"step_start","part":{}}"#),
+            ChatEvent::Other
+        ));
     }
 
     #[test]

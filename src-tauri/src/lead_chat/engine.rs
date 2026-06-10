@@ -94,8 +94,16 @@ impl TurnState {
     }
 }
 
+/// Per-turn dialects (codex `exec --json`, opencode `run --format json`) spawn
+/// one process per human turn; only claude keeps a long-lived stream process.
+pub fn per_turn(tool: &str) -> bool {
+    tool != "claude"
+}
+
 pub struct EngineInner {
     pub thread_id: i32,
+    /// claude | codex | opencode — selects the wire dialect + process model.
+    pub tool: String,
     /// Chat-mode worker session; None for the lead.
     pub session_id: Option<i32>,
     pub cwd: std::path::PathBuf,
@@ -164,8 +172,12 @@ fn build_args(inner: &EngineInner) -> Vec<String> {
 }
 
 /// Spawn the process if it isn't alive (fresh or `--resume`), wiring the reader.
+/// Per-turn dialects have no resident process — sending spawns one per turn.
 pub async fn ensure_running(app: &AppHandle, db: &Db, eng: &EngineRef) -> anyhow::Result<()> {
     let mut inner = eng.lock().await;
+    if per_turn(&inner.tool) {
+        return Ok(());
+    }
     if let Some(c) = inner.child.as_mut() {
         if c.try_wait().ok().flatten().is_none() {
             return Ok(()); // alive
@@ -273,10 +285,11 @@ pub async fn send(
         }
     }
     let out = Outgoing { text: outbound, images };
-    if direct {
+    let spawn_now = direct && per_turn(&inner.tool);
+    if direct && !spawn_now {
         write_user(&mut inner, &out).await;
-    } else {
-        inner.turn.queue.push_back(out);
+    } else if !direct {
+        inner.turn.queue.push_back(out.clone());
     }
     let _ = app.emit(
         EVENT,
@@ -287,6 +300,62 @@ pub async fn send(
             queued: inner.turn.queue.len(),
         },
     );
+    drop(inner);
+    if spawn_now {
+        spawn_turn(app.clone(), db.clone(), eng.clone(), out).await?;
+    }
+    Ok(())
+}
+
+/// One per-turn process (codex/opencode): the message rides the argv, events
+/// stream from stdout, EOF ends the turn (the reader then flushes the queue).
+async fn spawn_turn(app: AppHandle, db: Db, eng: EngineRef, out: Outgoing) -> anyhow::Result<()> {
+    let mut inner = eng.lock().await;
+    let (program, mut args): (String, Vec<String>) = match inner.tool.as_str() {
+        "codex" => {
+            crate::codex::ensure_codex_trusted(&inner.cwd);
+            let mut a: Vec<String> = vec!["exec".into()];
+            a.extend(inner.extra_args.iter().cloned());
+            a.push("--json".into());
+            a.push("--cd".into());
+            a.push(inner.cwd.to_string_lossy().into_owned());
+            if let Some(id) = &inner.native_id {
+                a.push("resume".into());
+                a.push(id.clone());
+            }
+            ("codex".into(), a)
+        }
+        _ => {
+            // opencode: cwd is the project; injections live in its merged config.
+            let mut a: Vec<String> = vec!["run".into(), "--format".into(), "json".into()];
+            if let Some(id) = &inner.native_id {
+                a.push("--session".into());
+                a.push(id.clone());
+            }
+            ("opencode".into(), a)
+        }
+    };
+    args.push(out.text.clone());
+    let mut child = Command::new(&program)
+        .args(&args)
+        .current_dir(&inner.cwd)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        // stderr → app log: a per-turn CLI that dies prints its reason there.
+        .stderr(std::process::Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("child stdout not piped"))?;
+    inner.stdin = None;
+    inner.child = Some(child);
+    inner.generation += 1;
+    inner.current = None;
+    let generation = inner.generation;
+    drop(inner);
+    spawn_reader(app, db, eng, stdout, generation);
     Ok(())
 }
 
@@ -299,6 +368,14 @@ pub async fn interrupt(app: &AppHandle, eng: &EngineRef) -> anyhow::Result<()> {
         return Ok(());
     }
     inner.interrupting = true;
+    // Per-turn dialects have no interrupt protocol: kill ends the turn (EOF
+    // path finalizes as interrupted) and resume picks the session back up.
+    if per_turn(&inner.tool) {
+        if let Some(c) = inner.child.as_mut() {
+            let _ = c.kill().await;
+        }
+        return Ok(());
+    }
     let request_id = format!("weft-int-{}", inner.generation);
     if let Some(stdin) = inner.stdin.as_mut() {
         let req = serde_json::json!({
@@ -358,13 +435,34 @@ fn spawn_reader(
 ) {
     tauri::async_runtime::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
+        let mut saw_event = false;
         while let Ok(Some(line)) = lines.next_line().await {
             let mut inner = eng.lock().await;
             if inner.generation != generation {
                 return; // superseded by a respawn/stop
             }
             let thread_id = inner.thread_id;
-            match super::proto::parse_line(&line) {
+            // Per-turn dialects carry the native session id on their events.
+            if inner.native_id.is_none() {
+                if let Some(native) = super::proto::extract_native(&inner.tool, &line) {
+                    inner.native_id = Some(native.clone());
+                    if let Some(sid) = inner.session_id {
+                        let _ = repo::set_session_native_id(&db, sid, &native).await;
+                    } else {
+                        let _ = repo::set_lead_native_id(&db, thread_id, &native).await;
+                    }
+                    let _ = app.emit(EVENT, Push::Init {
+                        thread_id,
+                        session_id: inner.session_id,
+                        native_id: native,
+                        slash_commands: inner.slash_commands.clone(),
+                    });
+                }
+            }
+            if !matches!(super::proto::parse_line_for(&inner.tool, &line), super::proto::ChatEvent::Other) {
+                saw_event = true;
+            }
+            match super::proto::parse_line_for(&inner.tool, &line) {
                 super::proto::ChatEvent::Init { session_id, slash_commands } => {
                     inner.native_id = Some(session_id.clone());
                     inner.slash_commands = slash_commands.clone();
@@ -482,8 +580,15 @@ fn spawn_reader(
                     }
                     if let Some(next) = inner.turn.on_turn_end() {
                         inner.turn_id += 1;
-                        write_user(&mut inner, &next).await;
                         let _ = repo::complete_queued(&db, thread_id, &next.text).await;
+                        if per_turn(&inner.tool) {
+                            let (a, d, e) = (app.clone(), db.clone(), eng.clone());
+                            tauri::async_runtime::spawn(async move {
+                                let _ = spawn_turn(a, d, e, next).await;
+                            });
+                        } else {
+                            write_user(&mut inner, &next).await;
+                        }
                     }
                     let state = if inner.turn.busy { "busy" } else { "idle" };
                     let _ = app.emit(EVENT, Push::Turn {
@@ -496,9 +601,60 @@ fn spawn_reader(
                 _ => {}
             }
         }
-        // EOF: the process died (or was killed). Leave history intact; the next
-        // send resumes via --resume.
+        // EOF. Per-turn dialects end every turn this way (clean exit); for the
+        // long-lived claude process it means a crash/kill — history stays, the
+        // next send resumes.
         let mut inner = eng.lock().await;
+        if inner.generation == generation && per_turn(&inner.tool) {
+            let status = if inner.interrupting { "interrupted" } else { "complete" };
+            inner.interrupting = false;
+            // A turn that produced ZERO events died on startup (auth, bad args,
+            // session lock …) — surface it instead of completing silently.
+            if !saw_event && status == "complete" {
+                if let Ok(m) = repo::insert_lead_message(
+                    &db,
+                    inner.thread_id,
+                    inner.session_id,
+                    inner.turn_id,
+                    "assistant",
+                    "text",
+                    r#"{"text":"(the agent process exited without producing any output — check the app log)"}"#,
+                    "error",
+                )
+                .await
+                {
+                    let _ = app.emit(EVENT, Push::Message { thread_id: inner.thread_id, message: m });
+                }
+            }
+            if let Some((id, text, _)) = inner.current.take() {
+                let _ = repo::update_lead_message(
+                    &db, id,
+                    &serde_json::json!({ "text": text }).to_string(),
+                    status,
+                )
+                .await;
+                let _ = app.emit(EVENT, Push::Finalize {
+                    thread_id: inner.thread_id, message_id: id, status: status.into(),
+                });
+            }
+            inner.child = None;
+            if let Some(next) = inner.turn.on_turn_end() {
+                inner.turn_id += 1;
+                let _ = repo::complete_queued(&db, inner.thread_id, &next.text).await;
+                let (a, d, e) = (app.clone(), db.clone(), eng.clone());
+                tauri::async_runtime::spawn(async move {
+                    let _ = spawn_turn(a, d, e, next).await;
+                });
+            }
+            let state = if inner.turn.busy { "busy" } else { "idle" };
+            let _ = app.emit(EVENT, Push::Turn {
+                thread_id: inner.thread_id,
+                session_id: inner.session_id,
+                state: state.into(),
+                queued: inner.turn.queue.len(),
+            });
+            return;
+        }
         if inner.generation == generation {
             // A row still streaming at death closes as interrupted/error.
             let status = if inner.interrupting { "interrupted" } else { "error" };
@@ -548,6 +704,7 @@ mod tests {
     fn build_args_fresh_vs_resume() {
         let mut inner = EngineInner {
             thread_id: 1,
+            tool: "claude".into(),
             session_id: None,
             cwd: "/tmp".into(),
             extra_args: vec!["--mcp-config".into(), "x".into()],

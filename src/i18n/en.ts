@@ -204,6 +204,7 @@ export const en = {
     slashHint: "Type / for commands & skills · paste images directly",
     busyHint: "Replying — messages sent now queue and go out when the turn ends",
     attachFiles: "Attach files",
+    openInApp: "Open in the vendor app",
     takeOverTerminal: "Take over in terminal",
     takeOverTip: "Stop the engine and copy the command to continue this session in your own terminal",
     takeOverCopied: "Takeover command copied — paste it in your terminal",
