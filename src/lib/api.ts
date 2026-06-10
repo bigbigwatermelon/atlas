@@ -3,6 +3,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type {
   BusMsg,
   ConfigItem,
+  DefaultToolInfo,
   Direction,
   ImageAttachment,
   LeadMessage,
@@ -145,8 +146,8 @@ export const api = {
   // Write triggers: lead-proposed repo writes awaiting human approve/deny.
   writeTriggers: (workspaceId: number) =>
     invoke<WriteTrigger[]>("write_triggers", { workspaceId }),
-  approveWriteTrigger: (threadId: number, index: number) =>
-    invoke<number>("approve_write_trigger", { threadId, index }),
+  approveWriteTrigger: (threadId: number, index: number, tool: string) =>
+    invoke<number>("approve_write_trigger", { threadId, index, tool }),
   denyWriteTrigger: (threadId: number, index: number) =>
     invoke<void>("deny_write_trigger", { threadId, index }),
 
@@ -157,6 +158,8 @@ export const api = {
 
   // Which coding-agent CLIs are installed locally (for Settings).
   detectTools: () => invoke<ToolStatus[]>("detect_tools"),
+  getDefaultTool: () => invoke<DefaultToolInfo>("get_default_tool"),
+  setDefaultTool: (tool: string) => invoke<void>("set_default_tool", { tool }),
   // Dangerous mode (global): every agent's tool asks auto-allow.
   setDangerousMode: (on: boolean) => invoke<void>("set_dangerous_mode", { on }),
   // Runaway guardrails: idle + wall-clock caps (seconds; 0 disables) for

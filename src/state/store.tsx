@@ -28,6 +28,7 @@ import type {
   SessionInfo,
   SessionStatus,
   Thread,
+  ToolStatus,
   Workspace,
   Worktree,
   WriteTrigger,
@@ -95,6 +96,10 @@ interface Store {
   setProjectsDir: (p: string) => void;
   defaultTool: string;
   setDefaultTool: (t: string) => void;
+  /** The user's explicit Settings choice; null = auto-detected. */
+  configuredTool: string | null;
+  /** detect_tools result, loaded once at startup (for tool pickers). */
+  installedTools: ToolStatus[];
   /** Dangerous mode: agents skip all permission prompts (global). */
   dangerousMode: boolean;
   setDangerousMode: (on: boolean) => void;
@@ -118,7 +123,7 @@ interface Store {
   asks: PermissionAsk[];
   /** Lead-proposed write declarations awaiting human approve/deny. */
   writeTriggers: WriteTrigger[];
-  approveWriteTrigger: (item: WriteTrigger) => Promise<void>;
+  approveWriteTrigger: (item: WriteTrigger, tool?: string) => Promise<void>;
   denyWriteTrigger: (item: WriteTrigger) => Promise<void>;
   /** Pending needs count per workspace id (for the workspace switcher). */
   needsByWorkspace: Record<number, number>;
@@ -259,12 +264,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("weft-projects-dir", p);
     setProjectsDirState(p);
   }, []);
-  const [defaultTool, setDefaultToolState] = useState(
-    () => localStorage.getItem("weft-default-tool") ?? "claude",
-  );
+  const [defaultTool, setDefaultToolState] = useState("codex");
+  const [configuredTool, setConfiguredTool] = useState<string | null>(null);
+  const [installedTools, setInstalledTools] = useState<ToolStatus[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [info, tools] = await Promise.all([api.getDefaultTool(), api.detectTools()]);
+        setDefaultToolState(info.tool);
+        setConfiguredTool(info.configured);
+        setInstalledTools(tools);
+      } catch {
+        // Pure-vite dev without the Tauri backend: keep the static defaults.
+      }
+    })();
+  }, []);
   const setDefaultTool = useCallback((tl: string) => {
-    localStorage.setItem("weft-default-tool", tl);
     setDefaultToolState(tl);
+    setConfiguredTool(tl);
+    void api.setDefaultTool(tl);
   }, []);
   // The global review skill: "" = auto-detect from the agent's own slash list.
   const [reviewSkill, setReviewSkillState] = useState(
@@ -1026,18 +1044,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const approveWriteTrigger = useCallback(
-    async (item: WriteTrigger) => {
+    async (item: WriteTrigger, tool?: string) => {
       setWriteTriggers((cur) =>
         cur.filter((w) => !(w.thread_id === item.thread_id && w.index === item.index)),
       );
       try {
-        const dirId = await api.approveWriteTrigger(item.thread_id, item.index);
+        const dirId = await api.approveWriteTrigger(item.thread_id, item.index, tool ?? defaultTool);
         void dispatchDirection(dirId);
       } finally {
         await refreshNeeds();
       }
     },
-    [dispatchDirection, refreshNeeds],
+    [dispatchDirection, refreshNeeds, defaultTool],
   );
 
   const denyWriteTrigger = useCallback(
@@ -1259,6 +1277,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setProjectsDir,
     defaultTool,
     setDefaultTool,
+    configuredTool,
+    installedTools,
     dangerousMode,
     setDangerousMode,
     dangerNudge,

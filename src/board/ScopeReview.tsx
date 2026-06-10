@@ -156,6 +156,7 @@ export function ScopeReview({ onBack }: { onBack: () => void }) {
 
 function ScopeLaneRow({ lane, index }: { lane: ScopeLane; index: number }) {
   const { t } = useTranslation();
+  const { defaultTool } = useStore();
   const write = lane.role === "write";
   return (
     <motion.div
@@ -219,8 +220,8 @@ function ScopeLaneRow({ lane, index }: { lane: ScopeLane; index: number }) {
             )}
           </div>
           <span className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] bg-bg px-2 py-0.5 text-[11px] text-ink-muted">
-            <ToolIcon tool={lane.direction.tool} size={12} />
-            {toolFullName(lane.direction.tool)}
+            <ToolIcon tool={defaultTool} size={12} />
+            {toolFullName(defaultTool)}
           </span>
           <span className="hidden shrink-0 rounded-full border border-border bg-bg px-2 py-0.5 text-[10.5px] text-ink-faint sm:inline">
             {lane.direction.mandate === "impl-only"

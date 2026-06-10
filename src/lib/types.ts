@@ -238,7 +238,6 @@ export interface ScopeEntry {
 }
 export interface ResolvedDirection {
   name: string;
-  tool: string;
   repo: ScopeEntry;
   reason: string;
   /** "plan+impl" | "impl-only" */
@@ -260,6 +259,12 @@ export interface ToolStatus {
   version: string | null;
   path: string | null;
   meets_min: boolean;
+}
+
+/** The resolved default coding tool plus the user's explicit choice (if any). */
+export interface DefaultToolInfo {
+  tool: string;
+  configured: string | null;
 }
 
 export interface ThreadOverview {
