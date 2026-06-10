@@ -117,7 +117,7 @@ function OnboardScreen({ onEnter }) {
   return (
     <div className="onb">
       <div className="onb-top">
-        <div className="row gap2"><WeaveMark size={18} /><span className="t-label" style={{ fontWeight: 600 }}>Weft</span><span className="t-meta">首用引导</span></div>
+        <div className="row gap2"><WeaveMark size={18} /><span className="t-label" style={{ fontWeight: 600 }}>Weft</span><span className="t-meta">新人引导</span></div>
         <div className="onb-steps">
           {ONB_STEPS.map((s, i) => (
             <span key={i} className={"onb-step" + (i === step ? " on" : "") + (i < step ? " done" : "")}>
