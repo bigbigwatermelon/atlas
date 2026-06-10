@@ -47,7 +47,7 @@ export function SessionView() {
   if (!active) return null;
 
   const { info, status, nativeId } = active;
-  const running = status === "running" || status === "starting";
+  const running = status === "running";
   // Product words, not plumbing: "<repo> · <direction>". The real worktree
   // path / branch / native id live in Inspect (§4.7).
   return (

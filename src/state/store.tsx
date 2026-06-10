@@ -1150,7 +1150,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // queue drained and the turn finished — run that direction's checks once per
   // idle episode so "done" means "checks ran", not self-report. Going busy
   // again re-arms the latch (so the NEXT turn end verifies again); a fresh
-  // dispatch clears it too (spawnWorker/driveDirection).
+  // dispatch clears it too (spawnWorker/driveDirection). Only implementation
+  // phases verify: a planning turn produces a plan, not code worth checking.
   const prevTurnRef = useRef<Record<number, string>>({});
   useEffect(() => {
     for (const [sidStr, turn] of Object.entries(workerTurn)) {
@@ -1167,11 +1168,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         turn.state === "idle" &&
         !autoCheckedRef.current.has(sess.directionId)
       ) {
+        const phase = (directionsByThread[sess.threadId] ?? []).find(
+          (d) => d.id === sess.directionId,
+        )?.status;
+        if (phase !== "working" && phase !== "review") continue;
         autoCheckedRef.current.add(sess.directionId);
         void verifyDirection(sess.directionId);
       }
     }
-  }, [workerTurn, verifyDirection]);
+  }, [workerTurn, verifyDirection, directionsByThread]);
 
   useEffect(() => {
     if (activeThreadId == null) {

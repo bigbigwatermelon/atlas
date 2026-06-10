@@ -138,10 +138,10 @@ pub struct ThreadOverview {
     pub thread_id: i32,
     pub title: String,
     pub kind: String,
-    pub status: String,
     pub direction_ids: Vec<i32>,
-    /// directions whose status is "done" (for the workspace board's phase).
-    pub done: u32,
+    /// Stored lifecycle status of each direction (same order as direction_ids),
+    /// so the workspace board derives the thread's phase deterministically.
+    pub statuses: Vec<String>,
     /// distinct repos this thread WRITES (across its directions).
     pub write_repos: Vec<RepoLite>,
 }
@@ -165,9 +165,8 @@ pub async fn workspace_overview(db: State<'_, Db>, workspace_id: i32) -> R<Vec<T
             thread_id: t.id,
             title: t.title,
             kind: t.kind,
-            status: t.status,
             direction_ids: dirs.iter().map(|d| d.id).collect(),
-            done: dirs.iter().filter(|d| d.status == "done").count() as u32,
+            statuses: dirs.iter().map(|d| d.status.clone()).collect(),
             write_repos: seen.into_iter().map(|(id, name)| RepoLite { id, name }).collect(),
         });
     }
@@ -263,10 +262,19 @@ pub async fn create_direction(
     tool: String,
     repo_id: i32,
     reason: String,
+    mandate: Option<String>,
 ) -> R<entities::direction::Model> {
-    let dir = repo::create_direction(&db, thread_id, &name, &tool, repo_id, &reason)
-        .await
-        .map_err(e)?;
+    let dir = repo::create_direction(
+        &db,
+        thread_id,
+        &name,
+        &tool,
+        repo_id,
+        &reason,
+        mandate.as_deref().unwrap_or("plan+impl"),
+    )
+    .await
+    .map_err(e)?;
     materialize::materialize_direction(&db, dir.id).await.map_err(e)?;
     Ok(dir)
 }

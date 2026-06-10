@@ -10,7 +10,7 @@
 
 **简体中文** · [English](README.md)
 
-<sub>Tauri v2 · React 19 · Rust · SQLite · xterm.js</sub>
+<sub>Tauri v2 · React 19 · Rust · SQLite</sub>
 
 </div>
 
@@ -110,9 +110,9 @@ Weft 由四个嵌套层级组织而成。每个 session 都有明确角色，让
 
 1. **自动化是方向。** 默认路径是自治的：Task 进入，代码交付。界面用于监督流程，而不是让人推动每一步。
 2. **人处理例外，不处理流水线。** Weft 不额外增加审批关。真正的阻塞来自原生工具的提示，或来自可配置的不可逆操作边界，例如受保护分支合并或生产部署。
-3. **运行原生 CLI，不重画它们。** Weft 以普通二进制方式启动 `claude`、`codex` 和 `opencode`，并使用用户自己的配置，保留 hooks、skills 和权限机制。原生 TUI 跑在 PTY 中，Weft 负责承载和编排。
+3. **运行原生 CLI，会话界面由 Weft 自己渲染。** Weft 以普通二进制方式启动 `claude`、`codex` 和 `opencode`，并使用用户自己的配置，保留 hooks、skills 和权限机制。每个 CLI 通过其官方结构化 JSON 流被 headless 驱动，Weft 渲染自己的会话界面；任何会话都可以随时在你自己的终端里接管。
 4. **跨仓接线保持临时。** 兄弟仓通过 `--add-dir` 这类启动参数只读挂载；Weft 不会把这类接线写进 canonical 仓库的配置。
-5. **隐藏机制，呈现决策。** worktree、PTY、MCP bus、sidecar 等实现细节归入 **Inspect**。Task、scope、分支、PR、diff、工具选择和 brief 才是主界面的一等信息。
+5. **隐藏机制，呈现决策。** worktree、headless agent 进程、MCP bus、sidecar 等实现细节归入 **Inspect**。Task、scope、分支、PR、diff、工具选择和 brief 才是主界面的一等信息。
 6. **从第一天起支持双语。** UI 文案和 agent 输出语言都支持语言偏好。内部状态枚举保持英文，代码和标识符也始终使用英文。
 
 ---
@@ -124,8 +124,8 @@ Weft 由四个嵌套层级组织而成。每个 session 都有明确角色，让
 </p>
 
 **锁定技术栈**：Tauri v2（Rust + React / TypeScript / Vite）·
-`portable-pty` + `xterm.js` · SQLite（sea-orm）· 系统 `git worktree` ·
-`react-i18next`。
+基于各 CLI 原生 JSON 流的 headless chat 引擎 · SQLite（sea-orm）·
+系统 `git worktree` · `react-i18next`。
 
 ---
 
@@ -164,15 +164,16 @@ cd src-tauri && cargo test
 ```text
 src/                  React 前端
   board/              两级看板、仓库图、scope 确认、Needs you、bus
-  session/            Lead tab、transcript、diff 视图
-  panels/             xterm.js 终端面板
+  session/            chat 时间线、composer、observe 与 diff 视图
   nav/  components/    workspace 导航、对话框、UI 基础组件、Inspect
   i18n/               en / zh 资源与运行时切换
 src-tauri/src/        Rust 后端
-  drivers/            ToolDriver: claude · codex · opencode + sidecar 解析
-  pty.rs              PTY 会话与输入仲裁
-  roles/curator/lead  survey · scope · brief · dispatch · worker mandate
-  bus/                thread bus（MCP / axum server）+ coordinator 注入
+  lead_chat/          headless chat 引擎：claude stream-json（长驻）、
+                      codex exec --json · opencode run --format json（每回合）
+  sidecar.rs          读取各工具原生会话存档 → 归一化 observe 事件
+  ask.rs              Ask Bridge：权限请求 → Needs-you 卡片 → 决定回流
+  planner / curator / coordinator / brief   survey · scope · brief · dispatch
+  bus/                thread bus（MCP / axum server）+ coordinator 唤醒
   materialize.rs      scope → worktree + add-dir 接线
   store/              SQLite schema 与 repository
 ARCHITECTURE.md       完整设计与可行性研究

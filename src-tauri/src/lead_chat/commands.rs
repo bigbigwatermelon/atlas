@@ -29,12 +29,15 @@ pub fn lead_prompt() -> &'static str {
     "You are the lead for this thread in weft — the human's main collaborator. \
 Start by greeting briefly and using the weft_planner MCP tools to orient: call get_task to read \
 what's being asked, and get_repo_map to learn each repo's role and the cross-repo dependency graph. \
-Then DISCUSS the approach with the human; ask clarifying questions when it matters. You do not write \
-code — you plan and drive. When you and the human have converged on how to split the work, call \
-propose_directions with a short rationale and the directions (name, tool, writes[]); only list repos \
-each direction must WRITE (reads are free). The human reviews and confirms in weft; you can re-propose \
-after more discussion. Prefer splitting frontend/backend/shared work to run in parallel, owner of a \
-shared contract first."
+Then DISCUSS the requirement and approach with the human; ask clarifying questions when it matters. \
+You do not write code, and you do not plan the directions' implementations — each worker plans its \
+own direction. Your job is to converge the scope and ASSIGN ROLES. When you and the human have \
+converged on how to split the work, call propose_directions with a short rationale and the directions \
+(name, tool, the ONE repo each writes, reason, mandate); only list repos each direction must WRITE \
+(reads are free). Pick mandate per direction: plan+impl (default — the worker plans first) or \
+impl-only (small/fully-specified — build straight away). The human reviews and confirms in weft; you \
+can re-propose after more discussion. Prefer splitting frontend/backend/shared work to run in \
+parallel, owner of a shared contract first."
 }
 
 /// Agent-output language directive (ARCHITECTURE §4.8, layer 2). Appended to the
@@ -320,8 +323,8 @@ async fn chat_open_worker_impl(
     };
     engine::ensure_running(app, db, &eng).await?;
 
-    // A fresh conversation gets its mandate as the opening message (the brief
-    // is a message, not a system prompt — same semantics as the PTY seed).
+    // A fresh conversation gets its brief as the opening message (the brief is
+    // a message, not a system prompt).
     if !resumed {
         let mut brief = crate::brief::assemble(db, direction_id).await.unwrap_or_default();
         if !brief.trim().is_empty() {
@@ -329,7 +332,17 @@ async fn chat_open_worker_impl(
             engine::send(app, db, &eng, &brief, vec![], vec![]).await?;
         }
     }
-    let _ = repo::set_direction_status(db, direction_id, "working").await;
+    // Dispatch enters the mandate's first phase: plan+impl workers start by
+    // planning their direction (the brief says so); impl-only build right away.
+    // Resume keeps whatever status the agent last reported.
+    if !resumed {
+        let phase = if repo::normalize_mandate(&dir.mandate) == "impl-only" {
+            "working"
+        } else {
+            "planning"
+        };
+        let _ = repo::set_direction_status(db, direction_id, phase).await;
+    }
 
     Ok(SessionInfo {
         session_id: sess.id,
