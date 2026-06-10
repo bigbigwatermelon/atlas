@@ -78,6 +78,7 @@ async fn lead_engine(
     let base = app.state::<crate::BusBase>().0.clone();
     let inj = crate::bus::inject::inject_planner(&base, thread_id, &t.lead_tool, &cwd);
     let ask = crate::bus::inject::inject_ask_hook(&base, thread_id, "lead", &t.lead_tool, &cwd);
+    crate::skills::inject_for(db, t.workspace_id, &cwd).await;
     let mut extra = ask.args;
     extra.extend(inj.args);
     let system_prompt = format!("{}{}", lead_prompt(), lang_directive(lang));
@@ -290,6 +291,9 @@ async fn chat_open_worker_impl(
     let base = app.state::<crate::BusBase>().0.clone();
     let inj = crate::bus::inject::inject(&base, dir.thread_id, &direction_id.to_string(), &dir.tool, &cwd);
     let ask = crate::bus::inject::inject_ask_hook(&base, dir.thread_id, &direction_id.to_string(), &dir.tool, &cwd);
+    if let Ok(Some(th)) = repo::get_thread(db, dir.thread_id).await {
+        crate::skills::inject_for(db, th.workspace_id, &cwd).await;
+    }
     let mut extra = ask.args;
     extra.extend(inj.args);
 
@@ -374,6 +378,9 @@ async fn worker_engine(app: &AppHandle, db: &Db, session_id: i32) -> anyhow::Res
     let base = app.state::<crate::BusBase>().0.clone();
     let inj = crate::bus::inject::inject(&base, dir.thread_id, &sess.direction_id.to_string(), &sess.tool, &cwd);
     let ask = crate::bus::inject::inject_ask_hook(&base, dir.thread_id, &sess.direction_id.to_string(), &sess.tool, &cwd);
+    if let Ok(Some(th)) = repo::get_thread(db, dir.thread_id).await {
+        crate::skills::inject_for(db, th.workspace_id, &cwd).await;
+    }
     let mut extra = ask.args;
     extra.extend(inj.args);
     let inner = engine::EngineInner {

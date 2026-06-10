@@ -108,6 +108,32 @@ pub async fn sync_source(db: &Db, id: i32) -> Result<()> {
     Ok(())
 }
 
+/// Sweep all sources at startup, then every interval (WEFT_SKILLS_SYNC_SECS,
+/// default 6h; floored at 60s). Best-effort, never blocks.
+pub fn spawn_periodic(app: tauri::AppHandle) {
+    use tauri::Manager;
+    std::thread::spawn(move || {
+        let interval = std::env::var("WEFT_SKILLS_SYNC_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(6 * 3600)
+            .max(60);
+        loop {
+            if let Some(db) = app.try_state::<Db>() {
+                let db = Db(db.0.clone());
+                tauri::async_runtime::spawn(async move {
+                    if let Ok(sources) = repo::list_skill_sources(&db).await {
+                        for s in sources {
+                            let _ = sync_source(&db, s.id).await;
+                        }
+                    }
+                });
+            }
+            std::thread::sleep(std::time::Duration::from_secs(interval));
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

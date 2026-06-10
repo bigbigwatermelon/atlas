@@ -92,6 +92,7 @@ pub fn run() {
             coordinator::run(app.handle().clone(), wake_rx);
             lead_chat::engine::spawn_watchdog(app.handle().clone());
             gc::spawn_periodic(app.handle().clone());
+            skills::spawn_periodic(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
