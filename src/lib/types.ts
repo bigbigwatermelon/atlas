@@ -17,7 +17,6 @@ export interface RepoRef {
   slug: string;
   local_git_path: string;
   base_ref: string;
-  default_tool: string;
 }
 
 /** One effective skill/rule for a repo, tagged with the layer it comes from
