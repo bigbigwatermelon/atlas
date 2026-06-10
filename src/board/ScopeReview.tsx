@@ -43,16 +43,16 @@ export function ScopeReview({ onBack }: { onBack: () => void }) {
     const writeNames = new Set<string>();
     const writeLanes: ScopeLane[] = [];
     dirs.forEach((direction, dirIndex) => {
-      direction.writes.forEach((entry, writeIndex) => {
-        writeNames.add(entry.repo_name);
-        writeLanes.push({
-          key: `${dirIndex}-${entry.repo_name}`,
-          role: "write",
-          repoName: entry.repo_name,
-          repoKnown: entry.known,
-          direction,
-          order: dirIndex + writeIndex + 1,
-        });
+      // One write repo per direction (scope rework): repo + required reason.
+      const entry = direction.repo;
+      writeNames.add(entry.repo_name);
+      writeLanes.push({
+        key: `${dirIndex}-${entry.repo_name}`,
+        role: "write",
+        repoName: entry.repo_name,
+        repoKnown: entry.known,
+        direction,
+        order: dirIndex + 1,
       });
     });
     const noneLanes: ScopeLane[] = repos

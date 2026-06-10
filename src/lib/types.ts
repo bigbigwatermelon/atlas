@@ -219,12 +219,14 @@ export interface RepoGraph {
   edges: RepoEdge[];
 }
 
-/** The lead's proposed split of a Task into directions (by repo NAME).
- *  Only the WRITE set is scoped — reads are unmanaged (agents read freely). */
+/** The lead's proposed split of a Task into directions: ONE write repo each
+ *  (by NAME) plus the required reason — reads are unmanaged (scope rework). */
 export interface ProposedDirection {
   name: string;
   tool: string;
-  writes: string[];
+  repo: string;
+  reason: string;
+  decision?: string;
 }
 export interface Proposal {
   rationale: string;
@@ -240,7 +242,9 @@ export interface ScopeEntry {
 export interface ResolvedDirection {
   name: string;
   tool: string;
-  writes: ScopeEntry[];
+  repo: ScopeEntry;
+  reason: string;
+  decision: string;
 }
 export interface ResolvedProposal {
   thread_id: number;
