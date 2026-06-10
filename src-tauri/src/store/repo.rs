@@ -18,6 +18,11 @@ fn now() -> String {
     format!("{secs}")
 }
 
+/// Unix-secs as string, for skill_source.last_synced.
+pub fn now_unix() -> String {
+    now()
+}
+
 pub async fn create_workspace(db: &Db, name: &str) -> Result<workspace::Model> {
     let existing: Vec<String> = workspace::Entity::find()
         .all(&db.0)
