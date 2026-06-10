@@ -12,6 +12,7 @@ import { appLink, resumeCommand } from "../lib/resume";
 import { DiffPanel } from "./DiffPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
+import { Tooltip } from "../components/ui/Tooltip";
 import { Inspect } from "../components/Inspect";
 import { ToolIcon, toolFullName } from "../components/ToolIcon";
 
@@ -122,6 +123,9 @@ export function ObserveView() {
   return (
     <div className="flex min-w-0 flex-1">
       <section className="flex min-w-0 flex-1 flex-col bg-bg">
+        {/* Chat takeover needs no PTY-era bar (status chip / Attach): the
+            conversation is the console; diff + inspect ride the composer row. */}
+        {!chatMode && (
         <header className="flex items-center justify-end gap-2 border-b border-border bg-surface px-3 py-2">
             {ref && (
               <span className="mr-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sm)] bg-bg px-2 py-0.5 text-[11px] font-medium text-ink-muted">
@@ -154,6 +158,7 @@ export function ObserveView() {
               />
             )}
         </header>
+        )}
 
         {driveError && (
           <div className="border-b border-border bg-[oklch(0.64_0.2_25/0.12)] px-3 py-1.5 text-[12px] text-danger">
@@ -200,6 +205,29 @@ export function ObserveView() {
                 ref?.native_id && appLink(ref.tool, ref.native_id)
                   ? () => void api.openUrl(appLink(ref.tool, ref.native_id!)!)
                   : undefined
+              }
+              extraActions={
+                ref && (
+                  <>
+                    <Tooltip label={t("diff.tab")}>
+                      <button
+                        onClick={() => setShowDiff(true)}
+                        aria-label={t("diff.tab")}
+                        className="grid h-7 w-7 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
+                      >
+                        <GitCompare size={13} />
+                      </button>
+                    </Tooltip>
+                    <Inspect
+                      path={ref.worktree}
+                      branch={ref.branch}
+                      nativeId={ref.native_id}
+                      tool={ref.tool}
+                      size={13}
+                      className="h-7 w-7 shrink-0"
+                    />
+                  </>
+                )
               }
             />
           </>

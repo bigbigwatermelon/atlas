@@ -41,6 +41,7 @@ export function ChatComposer({
   onStop,
   onTakeOver,
   onOpenApp,
+  extraActions,
   onNeedSlashCommands,
 }: {
   slashCommands: string[];
@@ -55,6 +56,8 @@ export function ChatComposer({
   onTakeOver?: () => Promise<boolean>;
   /** Open the vendor's own app on this session (codex deep link). */
   onOpenApp?: () => void;
+  /** Host-injected action icons (diff, inspect …) for the toolbar row. */
+  extraActions?: React.ReactNode;
   /** Called when "/" is typed but the command list is empty — refresh it. */
   onNeedSlashCommands?: () => void;
 }) {
@@ -289,6 +292,7 @@ export function ChatComposer({
               {t("lead.queuedN", { count: queued })}
             </span>
           )}
+          {extraActions}
           {onOpenApp && (
             <Tooltip label={t("lead.openInApp")}>
               <button
