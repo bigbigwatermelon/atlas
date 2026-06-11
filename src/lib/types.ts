@@ -278,6 +278,7 @@ export interface EnabledSkill {
   description: string;
   dir: string;
   overridden: boolean;
+  global: boolean;
 }
 
 /** The resolved default coding tool plus the user's explicit choice (if any). */

@@ -611,7 +611,10 @@ pub async fn effective_config(db: State<'_, Db>, repo_path: String, ws_id: Optio
             .map_err(e)?
             .into_iter()
             .filter(|s| !s.overridden)
-            .map(|s| (s.name, "weft-workspace".to_string(), s.dir))
+            .map(|s| {
+                let layer = if s.global { "weft-global" } else { "weft-workspace" };
+                (s.name, layer.to_string(), s.dir)
+            })
             .collect(),
         None => Vec::new(),
     };

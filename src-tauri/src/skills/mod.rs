@@ -16,6 +16,9 @@ pub struct EnabledSkill {
     pub dir: String,
     /// True when a same-named skill from a lower source id already won.
     pub overridden: bool,
+    /// True when enabled at "global" scope (all workspaces) rather than only
+    /// this workspace — drives the weft-global vs weft-workspace layer label.
+    pub global: bool,
 }
 
 /// Pure enable-resolution: given each source's parsed skills (tagged by an
@@ -46,12 +49,17 @@ pub fn resolve_enabled<K: AsRef<str>>(
     rows.into_iter()
         .map(|(sid, p)| {
             let overridden = !seen.insert(p.name.as_str());
+            // global when a "global"-scope enable row exists for this (source, skill)
+            let global = enables
+                .iter()
+                .any(|(s, n, scope)| *s == sid && n == &p.name && scope == "global");
             EnabledSkill {
                 source_id: sid,
                 name: p.name.clone(),
                 description: p.description.clone(),
                 dir: p.dir.clone(),
                 overridden,
+                global,
             }
         })
         .collect()

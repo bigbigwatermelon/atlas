@@ -61,7 +61,13 @@ export function SkillsSettings() {
       </div>
       <div className="flex flex-col gap-3">
         {sources.map((s) => (
-          <SourceRow key={s.id} source={s} wsId={activeWorkspaceId} onChanged={refresh} />
+          <SourceRow
+            key={s.id}
+            source={s}
+            allSources={sources}
+            wsId={activeWorkspaceId}
+            onChanged={refresh}
+          />
         ))}
       </div>
     </div>
@@ -70,10 +76,12 @@ export function SkillsSettings() {
 
 function SourceRow({
   source,
+  allSources,
   wsId,
   onChanged,
 }: {
   source: SkillSource;
+  allSources: SkillSource[];
   wsId: number | null;
   onChanged: () => void;
 }) {
@@ -144,7 +152,7 @@ function SourceRow({
       {skills.length > 0 ? (
         <div className="flex flex-col divide-y divide-border border-t border-border">
           {skills.map((sk) => (
-            <SkillRow key={sk.name} sourceId={source.id} skill={sk} wsId={wsId} onChanged={load} enabled={enabled} />
+            <SkillRow key={sk.name} sourceId={source.id} skill={sk} wsId={wsId} onChanged={load} enabled={enabled} allSources={allSources} />
           ))}
         </div>
       ) : (
@@ -162,17 +170,24 @@ function SkillRow({
   wsId,
   onChanged,
   enabled,
+  allSources,
 }: {
   sourceId: number;
   skill: ParsedSkill;
   wsId: number | null;
   onChanged: () => void;
   enabled: EnabledSkill[];
+  allSources: SkillSource[];
 }) {
   const { t } = useTranslation();
   const { markSkillsDirty } = useStore();
   const mine = enabled.find((e) => e.source_id === sourceId && e.name === skill.name);
   const overriddenBy = enabled.find((e) => e.name === skill.name && !e.overridden && e.source_id !== sourceId);
+  // Short, human display for the shadowing source: the repo name from its URL.
+  const overSource = overriddenBy && allSources.find((s) => s.id === overriddenBy.source_id);
+  const overName = overSource
+    ? overSource.git_url.replace(/\.git$/, "").split("/").filter(Boolean).pop() || overSource.git_url
+    : overriddenBy?.source_id;
   const [global, setGlobal] = useState(false);
   const [thisWs, setThisWs] = useState(false);
 
@@ -205,7 +220,7 @@ function SkillRow({
         )}
         {overriddenBy && (
           <div className="text-[10.5px] text-waiting">
-            {t("settings.skillsOverridden", { source: overriddenBy.source_id })}
+            {t("settings.skillsOverridden", { source: overName })}
           </div>
         )}
       </div>
