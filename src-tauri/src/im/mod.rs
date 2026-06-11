@@ -118,6 +118,103 @@ pub trait Channel: Send + Sync {
     async fn send_text(&self, open_id: &str, text: &str) -> anyhow::Result<()>;
 }
 
+/// 路由结果执行：直调既有 registry/repo 函数（卡片应答与桌面同函数，spec §2）。
+/// `sender` 是入站消息发送者 open_id，用于提示/确认回执；`lang` 控制提示语言。
+/// 出站发送失败仅记日志——应答本身已生效，回执是尽力而为。
+pub async fn execute(
+    route: inbound::Route,
+    db: &crate::store::Db,
+    asks: &crate::ask::AskRegistry,
+    bus: &crate::bus::BusRegistry,
+    channel: &dyn Channel,
+    sender: &str,
+    lang: &str,
+) -> anyhow::Result<()> {
+    let t = |zh: &'static str, en: &'static str| if lang == "zh" { zh } else { en };
+    match route {
+        inbound::Route::Ignore => {}
+        inbound::Route::Bind { open_id } => {
+            // Route 读的是 allow 快照；落库前重查仍为空（Route::Bind doc 的竞态契约）。
+            let cur = crate::store::repo::get_setting(db, K_ALLOW).await?.unwrap_or_default();
+            if !ImSettings::parse_allow(&cur).is_empty() {
+                return Ok(()); // 已有 owner：本次绑定静默放弃
+            }
+            crate::store::repo::set_setting(db, K_ALLOW, &open_id).await?;
+            if let Err(e) = channel
+                .send_text(
+                    &open_id,
+                    t(
+                        "绑定成功 ✓ 之后 Weft 的权限请求和 agent 提问会推送到这里，回复卡片消息即可作答。",
+                        "Bound ✓ Weft will push permission asks and agent questions here; reply to a card to answer.",
+                    ),
+                )
+                .await
+            {
+                eprintln!("[weft][im] bind confirm: {e}");
+            }
+        }
+        inbound::Route::AnswerPerm { ask_id, answer } => {
+            if !asks.answer(ask_id, answer) {
+                if let Err(e) = channel
+                    .send_text(
+                        sender,
+                        t(
+                            "这条权限请求已被处理或已过期。",
+                            "That permission ask was already handled or has expired.",
+                        ),
+                    )
+                    .await
+                {
+                    eprintln!("[weft][im] stale-perm hint: {e}");
+                }
+            }
+            // 终态卡 patch 由桥的 AskEvent::Resolved 消费侧统一做（双面同源）。
+        }
+        inbound::Route::AnswerHuman { thread, ask_id, text } => {
+            if !bus.answer_ask(thread, ask_id, &text) {
+                if let Err(e) = channel
+                    .send_text(
+                        sender,
+                        t("这个提问已被回答过了。", "That question was already answered."),
+                    )
+                    .await
+                {
+                    eprintln!("[weft][im] stale-human hint: {e}");
+                }
+            }
+        }
+        inbound::Route::BadVerdict => {
+            if let Err(e) = channel
+                .send_text(
+                    sender,
+                    t(
+                        "没看懂。回复：允许 / 拒绝 / 总是 / 放行（或 1/2/3/4）。",
+                        "Didn't catch that. Reply: allow / deny / always / full (or 1/2/3/4).",
+                    ),
+                )
+                .await
+            {
+                eprintln!("[weft][im] verdict hint: {e}");
+            }
+        }
+        inbound::Route::FreeText => {
+            if let Err(e) = channel
+                .send_text(
+                    sender,
+                    t(
+                        "自由对话（全局助理）将在后续版本上线；当前请回复卡片消息作答权限与提问。",
+                        "Free chat (the global concierge) lands in a later milestone; for now reply to cards.",
+                    ),
+                )
+                .await
+            {
+                eprintln!("[weft][im] freetext hint: {e}");
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
