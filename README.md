@@ -85,8 +85,26 @@ Feishu websocket as interactive cards. Replying to a card answers it through the
 same function the desktop UI uses — both surfaces stay in sync (the card patches
 to its resolved state regardless of where you answered). First p2p sender
 auto-binds as owner; group messages can never trigger binding; DB errors are
-fail-closed. Per-issue Feishu threads and a free-chat concierge that takes
-orders are on the roadmap.
+fail-closed.
+
+Beyond cards, the bridge carries three surfaces end-to-end:
+
+- **Issue threads.** Bind an issue (`thread_id`) to a Feishu thread via the
+  desktop's Settings → IM → Routes panel. Group messages in that thread are
+  routed into the issue's lead engine and the lead's replies post back to the
+  same thread (with a 👀 reaction held until the lead actually responds, so the
+  IM side sees real backpressure instead of silence).
+- **Concierge (single-chat).** Any free-text DM to the bot is routed into a
+  Concierge lead engine that has the `weft_global` MCP server attached
+  (`list_workspaces / list_issues / pending_needs_you / issue_status /
+  answer_permission / answer_question / message_lead / create_issue`). The
+  Concierge verifies state with tools before answering and only acts on the
+  human's behalf when they explicitly consent (irreversible decisions stay
+  on the desktop).
+- **Online resync.** Each time the bridge transitions to *online* (initial
+  start or after a settings/credential bump), it sends the owner a one-shot
+  summary of every pending Needs-you so nothing silently piles up while you
+  were away. Reconnect-within-the-same-generation does not re-fire.
 
 ## Current Capabilities
 
@@ -102,7 +120,9 @@ orders are on the roadmap.
 - IM bridge (Feishu): mirror permission asks and agent questions to a long-lived
   Lark websocket as interactive cards; reply on mobile to resolve them. First
   private-chat sender auto-binds; settings live in `app_setting` and the bridge
-  is fail-closed.
+  is fail-closed. Issue ↔ Feishu thread binding (lead messages flow both ways),
+  a Concierge single-chat helper backed by the `weft_global` MCP, and a one-shot
+  resync summary on every (re)online transition.
 - Skill source manager: register git-backed skill repos, sync on demand, and
   toggle individual skills on globally or per-workspace.
 - Sidecar observation for Claude jsonl, Codex rollout jsonl, and OpenCode SQLite.
