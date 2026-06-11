@@ -26,6 +26,7 @@ mod gc;
 mod inspect;
 pub mod lead_chat;
 mod planner;
+mod power;
 pub mod profile;
 mod sidecar;
 mod tools;
