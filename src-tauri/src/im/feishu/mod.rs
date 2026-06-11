@@ -70,4 +70,62 @@ impl super::Channel for FeishuChannel {
         self.create(open_id, "text", content).await?;
         Ok(())
     }
+
+    async fn reply_text(&self, reply_to: &str, text: &str) -> anyhow::Result<String> {
+        // 飞书 reply API：传入任意话题内消息 id，回复自动挂同一话题下
+        // （open-lark 0.14：im.v1.message.reply）。
+        let content = serde_json::json!({ "text": text }).to_string();
+        let req = CreateMessageRequest::builder()
+            .request_body(
+                CreateMessageRequestBody::builder()
+                    .msg_type("text")
+                    .content(content)
+                    .build(),
+            )
+            .build();
+        let msg = self
+            .client
+            .im
+            .v1
+            .message
+            .reply(reply_to, req, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("feishu reply: {e}"))?;
+        Ok(msg.message_id)
+    }
+
+    async fn add_reaction(&self, message_id: &str, emoji: &str) -> anyhow::Result<String> {
+        // open-lark 0.14 的 message_reaction.create 把响应解到 EmptyResponse，
+        // 不直接回 reaction_id——按 id 删的能力要等适配器走原始 REST。当前回
+        // 占位空串，调用方据此跳过后续 delete。lead 首条 reply 上来后这条 👀
+        // 会被话题流挤下去，语义虽不再 100% 严格但已不会误导。
+        let _ = self
+            .client
+            .im
+            .v1
+            .message_reaction
+            .create(message_id, emoji, None, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("feishu add_reaction: {e}"))?;
+        Ok(String::new())
+    }
+
+    async fn delete_reaction(
+        &self,
+        message_id: &str,
+        reaction_id: &str,
+    ) -> anyhow::Result<()> {
+        if reaction_id.is_empty() {
+            return Ok(()); // add_reaction 没回 id：跳过 delete。
+        }
+        let _ = self
+            .client
+            .im
+            .v1
+            .message_reaction
+            .delete(message_id, reaction_id, None, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("feishu delete_reaction: {e}"))?;
+        Ok(())
+    }
 }

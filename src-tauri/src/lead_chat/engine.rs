@@ -740,6 +740,7 @@ fn spawn_reader(
                                 let _ = app.emit(EVENT, Push::Finalize {
                                     thread_id, message_id: id, status: "complete".into(),
                                 });
+                                emit_lead_out(&app, thread_id, id, &clean);
                             }
                             None => {
                                 let (sid, turn) = (inner.session_id, inner.turn_id);
@@ -748,7 +749,9 @@ fn spawn_reader(
                                 )
                                 .await
                                 {
+                                    let mid = m.id;
                                     let _ = app.emit(EVENT, Push::Message { thread_id, message: m });
+                                    emit_lead_out(&app, thread_id, mid, &clean);
                                 }
                             }
                         }
@@ -881,6 +884,9 @@ fn spawn_reader(
                         let _ = app.emit(EVENT, Push::Finalize {
                             thread_id, message_id: id, status: status.into(),
                         });
+                        if status == "complete" {
+                            emit_lead_out(&app, thread_id, id, &text);
+                        }
                     }
                     if let Some(next) = inner.turn.on_turn_end() {
                         inner.turn_id += 1;
@@ -944,6 +950,10 @@ fn spawn_reader(
                 let _ = app.emit(EVENT, Push::Finalize {
                     thread_id: inner.thread_id, message_id: id, status: status.into(),
                 });
+                // 仅 complete 才回流 IM——interrupted/error 的半截不应上桥。
+                if status == "complete" {
+                    emit_lead_out(&app, inner.thread_id, id, &text);
+                }
             }
             inner.child = None;
             if let Some(next) = inner.turn.on_turn_end() {
@@ -994,6 +1004,23 @@ fn spawn_reader(
             });
         }
     });
+}
+
+/// M2-4 tap: 把 assistant 段「complete」时的清洗文本广播给订阅者
+/// （IM 桥据此回流到飞书话题）。`LeadOutHub` 未注册或无订阅都静默——
+/// 单测/单进程跑的 `tauri::test::mock_app` 没注册该状态也不会 panic。
+fn emit_lead_out(app: &AppHandle, thread_id: i32, message_id: i32, text: &str) {
+    let t = text.trim();
+    if t.is_empty() {
+        return;
+    }
+    if let Some(hub) = app.try_state::<super::out_hub::LeadOutHub>() {
+        hub.emit(super::out_hub::LeadOut {
+            thread_id,
+            message_id,
+            text: t.to_string(),
+        });
+    }
 }
 
 #[cfg(test)]

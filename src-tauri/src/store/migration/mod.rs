@@ -1,6 +1,6 @@
 use crate::store::entities::{
-    app_setting, direction, lead_message, plan, repo_profile, repo_ref, session, skill_enable,
-    skill_source, thread, worktree, workspace,
+    app_setting, direction, im_route, lead_message, plan, repo_profile, repo_ref, session,
+    skill_enable, skill_source, thread, worktree, workspace,
 };
 use sea_orm::{EntityTrait, Schema};
 use sea_orm_migration::prelude::*;
@@ -25,6 +25,7 @@ impl MigratorTrait for Migrator {
             Box::new(M0012DropRepoDefaultTool),
             Box::new(M0013SkillSource),
             Box::new(M0014SkillEnable),
+            Box::new(M0015ImRoute),
         ]
     }
 }
@@ -517,6 +518,40 @@ impl MigrationTrait for M0014SkillEnable {
     }
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager.drop_table(Table::drop().table(Alias::new("skill_enable")).to_owned()).await?;
+        Ok(())
+    }
+}
+
+/// Adds the im_route table — issue ↔ IM thread binding (spec §6, M2).
+pub struct M0015ImRoute;
+impl MigrationName for M0015ImRoute {
+    fn name(&self) -> &str { "m0015_im_route" }
+}
+#[async_trait::async_trait]
+impl MigrationTrait for M0015ImRoute {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let schema = Schema::new(manager.get_database_backend());
+        let mut stmt = schema.create_table_from_entity(im_route::Entity);
+        stmt.if_not_exists();
+        manager.create_table(stmt).await?;
+        // Composite unique: same Feishu thread can't bind to two issues.
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_im_route_thread_ref")
+                    .table(Alias::new("im_route"))
+                    .col(Alias::new("channel"))
+                    .col(Alias::new("chat_id"))
+                    .col(Alias::new("im_thread_ref"))
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager.drop_table(Table::drop().table(Alias::new("im_route")).to_owned()).await?;
         Ok(())
     }
 }

@@ -76,15 +76,15 @@
   --c-danger: oklch(0.655 0.200 25);
 }
 
-/* ── LIGHT — LOOM: warm paper; teal/coral deepened for AA on white ── */
+/* ── LIGHT — LOOM: warm cream paper (editorial), teal/coral deepened for AA ── */
 :root[data-theme="light"] {
   color-scheme: light;
-  --c-bg: oklch(0.967 0.006 75);
-  --c-surface: oklch(0.992 0.004 75);
-  --c-raised: oklch(1 0 0);
-  --c-border: oklch(0.885 0.008 75);
-  --c-border-strong: oklch(0.790 0.012 75);
-  --c-hover: oklch(0.945 0.006 75);
+  --c-bg: oklch(0.940 0.022 88);
+  --c-surface: oklch(0.958 0.018 88);
+  --c-raised: oklch(0.978 0.012 88);
+  --c-border: oklch(0.860 0.022 86);
+  --c-border-strong: oklch(0.760 0.026 84);
+  --c-hover: oklch(0.915 0.024 88);
   --c-ink: oklch(0.275 0.020 75);
   --c-ink-muted: oklch(0.455 0.018 75);
   --c-ink-faint: oklch(0.575 0.016 75);

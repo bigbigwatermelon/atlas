@@ -1,5 +1,6 @@
 pub mod app_setting;
 pub mod direction;
+pub mod im_route;
 pub mod lead_message;
 pub mod plan;
 pub mod repo_profile;

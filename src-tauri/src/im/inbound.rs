@@ -11,6 +11,8 @@ pub enum Inbound {
     Text {
         sender_open_id: String,
         chat_type: String, // "p2p" | "group"
+        chat_id: String,   // 飞书群/单聊 id（群路由用，M2-3）
+        thread_id: Option<String>, // 飞书话题 id（群里 issue 话题用，M2-3）
         message_id: String,
         parent_id: Option<String>,
         text: String,
@@ -30,8 +32,19 @@ pub enum Route {
     AnswerHuman { thread: i32, ask_id: u64, text: String },
     /// 回复了权限卡但动词解析不出 → 回用法提示。
     BadVerdict,
-    /// 单聊自由文本：M1 回「Concierge M3 上线」提示。
-    FreeText,
+    /// 飞书话题里给已绑定 issue 的自由文本 → 灌进 lead engine（M2-3）。
+    /// 解析路径在 inbound 之外：执行侧用 (chat_id, im_thread_ref) 查 im_route。
+    IssueMessage {
+        chat_id: String,
+        im_thread_ref: String,
+        sender_open_id: String,
+        text: String,
+    },
+    /// 单聊自由文本：M3 之前回 Concierge 占位；M3 起接入 Concierge engine。
+    FreeText {
+        sender_open_id: String,
+        text: String,
+    },
 }
 
 /// 中英动词/序号 → `ask::Answer`。与 outbound 权限卡提示文案是共享协议（见
@@ -72,10 +85,20 @@ pub fn route(inb: &Inbound, allow: &[String], cards: &CardIndex) -> Route {
                 _ => Route::Ignore,
             }
         }
-        Inbound::Text { sender_open_id, chat_type, parent_id, text, .. } => {
-            // 群判定必须在 Bind 之前：空白名单 + 群消息不得触发绑定。
+        Inbound::Text { sender_open_id, chat_type, chat_id, thread_id, parent_id, text, .. } => {
+            // 群消息：白名单/绑定都不适用——issue 线程消息由执行侧用 (chat_id, thread_id)
+            // 查 im_route 决定路由。话题外的群消息一律忽略（避免引入「机器人 @ 触发」
+            // 这种不在 spec 内的入口）。
             if chat_type != "p2p" {
-                return Route::Ignore; // 群路由是 M2（im_route 表）
+                return match thread_id {
+                    Some(tref) => Route::IssueMessage {
+                        chat_id: chat_id.clone(),
+                        im_thread_ref: tref.clone(),
+                        sender_open_id: sender_open_id.clone(),
+                        text: text.clone(),
+                    },
+                    None => Route::Ignore,
+                };
             }
             if allow.is_empty() {
                 return Route::Bind { open_id: sender_open_id.clone() };
@@ -99,7 +122,7 @@ pub fn route(inb: &Inbound, allow: &[String], cards: &CardIndex) -> Route {
                     None => {}
                 }
             }
-            Route::FreeText
+            Route::FreeText { sender_open_id: sender_open_id.clone(), text: text.clone() }
         }
     }
 }
@@ -113,6 +136,8 @@ mod tests {
         Inbound::Text {
             sender_open_id: sender.into(),
             chat_type: "p2p".into(),
+            chat_id: "oc_dm".into(),
+            thread_id: None,
             message_id: "om_in".into(),
             parent_id: parent.map(|s| s.to_string()),
             text: body.into(),
@@ -181,36 +206,82 @@ mod tests {
         let allow = vec!["ou_me".to_string()];
         assert_eq!(
             route(&text("ou_me", Some("om_gone"), "允许"), &allow, &cards()),
-            Route::FreeText
+            Route::FreeText { sender_open_id: "ou_me".into(), text: "允许".into() }
         );
     }
 
     #[test]
-    fn free_p2p_text_hints_and_group_is_ignored_in_m1() {
+    fn free_p2p_text_hints_and_group_routes_or_ignores() {
         let allow = vec!["ou_me".to_string()];
-        assert_eq!(route(&text("ou_me", None, "今天进展如何"), &allow, &cards()), Route::FreeText);
-        let g = Inbound::Text {
+        assert_eq!(
+            route(&text("ou_me", None, "今天进展如何"), &allow, &cards()),
+            Route::FreeText { sender_open_id: "ou_me".into(), text: "今天进展如何".into() }
+        );
+        let g_no_thread = Inbound::Text {
             sender_open_id: "ou_me".into(),
             chat_type: "group".into(),
+            chat_id: "oc_g".into(),
+            thread_id: None,
             message_id: "om".into(),
             parent_id: None,
             text: "hi".into(),
         };
-        assert_eq!(route(&g, &allow, &cards()), Route::Ignore);
+        // 没 thread_id = 群闲聊，忽略（spec: 不走「机器人 @」入口）
+        assert_eq!(route(&g_no_thread, &allow, &cards()), Route::Ignore);
+
+        let g_in_thread = Inbound::Text {
+            sender_open_id: "ou_x".into(),
+            chat_type: "group".into(),
+            chat_id: "oc_g".into(),
+            thread_id: Some("omt_42".into()),
+            message_id: "om".into(),
+            parent_id: None,
+            text: "推一下".into(),
+        };
+        // 话题内消息无视白名单（绑定语义在 im_route 上）；执行侧拿 (chat_id, thread_id) 反查
+        assert_eq!(
+            route(&g_in_thread, &allow, &cards()),
+            Route::IssueMessage {
+                chat_id: "oc_g".into(),
+                im_thread_ref: "omt_42".into(),
+                sender_open_id: "ou_x".into(),
+                text: "推一下".into(),
+            }
+        );
     }
 
     #[test]
     fn group_with_empty_allowlist_never_binds() {
-        // 顺序锁：group 判定必须在 Bind 之前。调换 route 里这两个 if 的
-        // 顺序（先查空白名单）时此测试必红——群成员不得成为首绑 owner。
-        let g = Inbound::Text {
+        // 顺序锁：群消息（含 thread 与否）都不得通过 Bind 路径——空白名单 + 群消息
+        // 一律不绑定。话题内 → IssueMessage（让 im_route 决定），话题外 → Ignore。
+        let no_thread = Inbound::Text {
             sender_open_id: "ou_stranger".into(),
             chat_type: "group".into(),
+            chat_id: "oc_g".into(),
+            thread_id: None,
             message_id: "om".into(),
             parent_id: None,
             text: "hi".into(),
         };
-        assert_eq!(route(&g, &[], &cards()), Route::Ignore);
+        assert_eq!(route(&no_thread, &[], &cards()), Route::Ignore);
+        let in_thread = Inbound::Text {
+            sender_open_id: "ou_stranger".into(),
+            chat_type: "group".into(),
+            chat_id: "oc_g".into(),
+            thread_id: Some("omt_1".into()),
+            message_id: "om".into(),
+            parent_id: None,
+            text: "hi".into(),
+        };
+        assert_eq!(
+            route(&in_thread, &[], &cards()),
+            Route::IssueMessage {
+                chat_id: "oc_g".into(),
+                im_thread_ref: "omt_1".into(),
+                sender_open_id: "ou_stranger".into(),
+                text: "hi".into(),
+            }
+        );
     }
 
     #[test]

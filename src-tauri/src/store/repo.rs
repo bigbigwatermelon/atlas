@@ -1,8 +1,8 @@
 //! All DB reads/writes go through here. Keeps SeaORM specifics out of commands.
 
 use super::entities::{
-    app_setting, direction, lead_message, plan, repo_profile, repo_ref, session, skill_enable,
-    skill_source, thread, worktree, workspace,
+    app_setting, direction, im_route, lead_message, plan, repo_profile, repo_ref, session,
+    skill_enable, skill_source, thread, worktree, workspace,
 };
 use super::Db;
 use crate::slug::unique_slug;
@@ -173,6 +173,42 @@ pub async fn set_setting(db: &Db, key: &str, value: &str) -> Result<()> {
         .exec(&db.0)
         .await?;
     Ok(())
+}
+
+/// Concierge 占位 thread（spec §5 / M3-1）：跨 workspace 的「全局助理」timeline。
+/// 在专用 workspace 下落地一条 thread，并把 id 缓存到 app_setting，复用时直接返回。
+/// 调用方拿到的 id 之后即可走 lead_engine + lead_chat::engine::send。
+pub const K_CONCIERGE_THREAD: &str = "concierge.thread_id";
+pub const K_CONCIERGE_WORKSPACE: &str = "concierge.workspace_id";
+
+pub async fn ensure_concierge_thread(db: &Db) -> Result<i32> {
+    if let Some(s) = get_setting(db, K_CONCIERGE_THREAD).await? {
+        if let Ok(id) = s.parse::<i32>() {
+            // 验证 thread 仍在（被清库的兜底：重建一条而不是 panic）。
+            if get_thread(db, id).await?.is_some() {
+                return Ok(id);
+            }
+        }
+    }
+    let ws_id = match get_setting(db, K_CONCIERGE_WORKSPACE).await? {
+        Some(s) => s.parse::<i32>().ok(),
+        None => None,
+    };
+    let ws_id = match ws_id {
+        Some(id)
+            if workspace::Entity::find_by_id(id).one(&db.0).await?.is_some() =>
+        {
+            id
+        }
+        _ => {
+            let ws = create_workspace(db, "Concierge").await?;
+            set_setting(db, K_CONCIERGE_WORKSPACE, &ws.id.to_string()).await?;
+            ws.id
+        }
+    };
+    let t = create_thread(db, ws_id, "Concierge", "concierge", "claude").await?;
+    set_setting(db, K_CONCIERGE_THREAD, &t.id.to_string()).await?;
+    Ok(t.id)
 }
 
 pub async fn add_repo_ref(
@@ -683,6 +719,74 @@ pub async fn set_lead_native_id(db: &Db, thread_id: i32, native_id: &str) -> Res
     Ok(())
 }
 
+// ─────────────────────────── im_route (M2) ───────────────────────────
+
+/// Bind an issue (thread) to an IM thread. Upserts on `thread_id`: re-binding the
+/// same issue replaces its target. Returns the resulting row.
+pub async fn bind_im_route(
+    db: &Db,
+    thread_id: i32,
+    channel: &str,
+    chat_id: &str,
+    im_thread_ref: &str,
+) -> Result<im_route::Model> {
+    if let Some(existing) =
+        im_route::Entity::find().filter(im_route::Column::ThreadId.eq(thread_id)).one(&db.0).await?
+    {
+        let mut a: im_route::ActiveModel = existing.into();
+        a.channel = Set(channel.to_string());
+        a.chat_id = Set(chat_id.to_string());
+        a.im_thread_ref = Set(im_thread_ref.to_string());
+        let m = a.update(&db.0).await?;
+        return Ok(m);
+    }
+    let now = now();
+    let am = im_route::ActiveModel {
+        channel: Set(channel.to_string()),
+        chat_id: Set(chat_id.to_string()),
+        im_thread_ref: Set(im_thread_ref.to_string()),
+        thread_id: Set(thread_id),
+        created_at: Set(now),
+        ..Default::default()
+    };
+    let m = am.insert(&db.0).await?.try_into_model()?;
+    Ok(m)
+}
+
+pub async fn unbind_im_route(db: &Db, thread_id: i32) -> Result<()> {
+    im_route::Entity::delete_many()
+        .filter(im_route::Column::ThreadId.eq(thread_id))
+        .exec(&db.0)
+        .await?;
+    Ok(())
+}
+
+pub async fn list_im_routes(db: &Db) -> Result<Vec<im_route::Model>> {
+    Ok(im_route::Entity::find().all(&db.0).await?)
+}
+
+pub async fn im_route_of_thread(db: &Db, thread_id: i32) -> Result<Option<im_route::Model>> {
+    Ok(im_route::Entity::find()
+        .filter(im_route::Column::ThreadId.eq(thread_id))
+        .one(&db.0)
+        .await?)
+}
+
+/// Reverse lookup: which issue is this IM thread bound to?
+pub async fn im_route_of_thread_ref(
+    db: &Db,
+    channel: &str,
+    chat_id: &str,
+    im_thread_ref: &str,
+) -> Result<Option<im_route::Model>> {
+    Ok(im_route::Entity::find()
+        .filter(im_route::Column::Channel.eq(channel))
+        .filter(im_route::Column::ChatId.eq(chat_id))
+        .filter(im_route::Column::ImThreadRef.eq(im_thread_ref))
+        .one(&db.0)
+        .await?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -726,6 +830,41 @@ mod tests {
         assert_eq!(lead_native_id(&db, 3).await.unwrap().as_deref(), Some("def"));
         // meta row stays single + out of turn numbering
         assert_eq!(list_lead_messages(&db, 3).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn im_route_bind_and_lookup() {
+        let db = mem().await;
+        let r = bind_im_route(&db, 7, "feishu", "oc_chat", "th_1").await.unwrap();
+        assert_eq!(r.thread_id, 7);
+        // forward lookup by thread_id
+        let got = im_route_of_thread(&db, 7).await.unwrap().unwrap();
+        assert_eq!(got.im_thread_ref, "th_1");
+        // reverse lookup by (channel, chat_id, im_thread_ref)
+        let got = im_route_of_thread_ref(&db, "feishu", "oc_chat", "th_1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.thread_id, 7);
+        // re-bind same issue: row count stays 1, target replaced
+        bind_im_route(&db, 7, "feishu", "oc_chat", "th_2").await.unwrap();
+        assert_eq!(list_im_routes(&db).await.unwrap().len(), 1);
+        assert!(im_route_of_thread_ref(&db, "feishu", "oc_chat", "th_1")
+            .await
+            .unwrap()
+            .is_none());
+        // unbind
+        unbind_im_route(&db, 7).await.unwrap();
+        assert!(im_route_of_thread(&db, 7).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn im_route_thread_ref_is_unique_across_issues() {
+        // Same (channel, chat_id, im_thread_ref) cannot bind to two different issues.
+        let db = mem().await;
+        bind_im_route(&db, 1, "feishu", "oc_chat", "th_1").await.unwrap();
+        let err = bind_im_route(&db, 2, "feishu", "oc_chat", "th_1").await;
+        assert!(err.is_err(), "second bind should violate unique index");
     }
 
     #[tokio::test]

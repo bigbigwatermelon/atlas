@@ -23,6 +23,8 @@ pub fn text_of(message_type: &str, content: &str) -> Option<String> {
 pub fn to_inbound(
     open_id: &str,
     chat_type: &str,
+    chat_id: &str,
+    thread_id: Option<String>,
     message_id: &str,
     parent_id: Option<String>,
     message_type: &str,
@@ -31,6 +33,8 @@ pub fn to_inbound(
     Some(Inbound::Text {
         sender_open_id: open_id.to_string(),
         chat_type: chat_type.to_string(),
+        chat_id: chat_id.to_string(),
+        thread_id,
         message_id: message_id.to_string(),
         parent_id,
         text: text_of(message_type, content)?,
@@ -56,6 +60,8 @@ pub async fn run_ws(
             if let Some(inb) = to_inbound(
                 &event.event.sender.sender_id.open_id,
                 &m.chat_type,
+                &m.chat_id,
+                m.thread_id.clone(),
                 &m.message_id,
                 m.parent_id.clone(),
                 &m.message_type,
@@ -87,13 +93,24 @@ mod tests {
 
     #[test]
     fn to_inbound_maps_fields() {
-        let inb = to_inbound("ou_a", "p2p", "om_1", Some("om_0".into()), "text", r#"{"text":"hi"}"#)
-            .unwrap();
+        let inb = to_inbound(
+            "ou_a",
+            "p2p",
+            "oc_dm",
+            None,
+            "om_1",
+            Some("om_0".into()),
+            "text",
+            r#"{"text":"hi"}"#,
+        )
+        .unwrap();
         assert_eq!(
             inb,
             Inbound::Text {
                 sender_open_id: "ou_a".into(),
                 chat_type: "p2p".into(),
+                chat_id: "oc_dm".into(),
+                thread_id: None,
                 message_id: "om_1".into(),
                 parent_id: Some("om_0".into()),
                 text: "hi".into(),
@@ -102,7 +119,37 @@ mod tests {
     }
 
     #[test]
+    fn to_inbound_carries_group_thread_id() {
+        let inb = to_inbound(
+            "ou_a",
+            "group",
+            "oc_g",
+            Some("omt_42".into()),
+            "om_1",
+            None,
+            "text",
+            r#"{"text":"推一下"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            inb,
+            Inbound::Text {
+                sender_open_id: "ou_a".into(),
+                chat_type: "group".into(),
+                chat_id: "oc_g".into(),
+                thread_id: Some("omt_42".into()),
+                message_id: "om_1".into(),
+                parent_id: None,
+                text: "推一下".into(),
+            }
+        );
+    }
+
+    #[test]
     fn to_inbound_drops_non_text() {
-        assert!(to_inbound("ou_a", "p2p", "om_1", None, "image", r#"{"image_key":"k"}"#).is_none());
+        assert!(
+            to_inbound("ou_a", "p2p", "oc_dm", None, "om_1", None, "image", r#"{"image_key":"k"}"#)
+                .is_none()
+        );
     }
 }

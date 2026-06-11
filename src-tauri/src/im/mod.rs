@@ -117,11 +117,43 @@ pub trait Channel: Send + Sync {
     async fn patch_card(&self, message_id: &str, card: serde_json::Value) -> anyhow::Result<()>;
     /// 发纯文本到用户（p2p）。
     async fn send_text(&self, open_id: &str, text: &str) -> anyhow::Result<()>;
+    /// 回复一条已存在的消息（M2-4：lead 回流飞书话题）。reply_to 必须是话题
+    /// 根消息或话题内任意一条消息——飞书 `reply` API 自动把回复挂到同一话题。
+    /// 返回新发消息的 message_id（供后续 reaction 之类的回执使用）。
+    async fn reply_text(&self, reply_to: &str, text: &str) -> anyhow::Result<String>;
+    /// 给指定消息加一个 emoji 表情回执（M2-6：入站收到 → 👀）。返回 reaction_id
+    /// 用于稍后 delete；通道不支持 reaction 时默认实现返回空串（调用方应据此跳过）。
+    async fn add_reaction(&self, _message_id: &str, _emoji: &str) -> anyhow::Result<String> {
+        Ok(String::new())
+    }
+    /// 删除之前加上的 reaction（M2-6：首次出站前清掉 👀）。
+    async fn delete_reaction(
+        &self,
+        _message_id: &str,
+        _reaction_id: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
-/// 路由结果执行：直调既有 registry/repo 函数（卡片应答与桌面同函数，spec §2）。
-/// `sender` 是入站消息发送者 open_id，用于提示/确认回执；`lang` 控制提示语言。
-/// 出站发送失败仅记日志——应答本身已生效，回执是尽力而为。
+/// M2-6 桥运行时上下文：让 execute() 在入站 IssueMessage 路径里挂 👀，
+/// 同时把 (im_message_id, reaction_id) 记到 `acks[thread_id]`——lead 首条
+/// 出站时 [`spawn`] 出站任务取走清空。`message_id`/`acks` 任一缺失即跳过
+/// reaction（测试路径 / 配置未注入 都安全）。
+#[derive(Default)]
+pub struct ExecuteCtx {
+    pub inbound_message_id: Option<String>,
+    pub acks: Option<Arc<tokio::sync::Mutex<HashMap<i32, Vec<(String, String)>>>>>,
+}
+
+/// Route execution requires an AppHandle when an issue message has to be fed
+/// into the lead engine (M2-3 / M3 Concierge): the engine wiring (planner MCP,
+/// ask hook, etc.) lives on app state. For tests that don't exercise those
+/// paths, pass None — IssueMessage / FreeText that needs the app degrade to
+/// a polite stub instead of panicking.
+///
+/// `ctx`（M2-6）：桥运行时塞进的额外上下文——目前只有「这条入站消息的飞书
+/// message_id」用于挂 👀 reaction。tests 传 None 即可。
 pub async fn execute(
     route: inbound::Route,
     db: &crate::store::Db,
@@ -130,6 +162,8 @@ pub async fn execute(
     channel: &dyn Channel,
     sender: &str,
     lang: &str,
+    app: Option<&tauri::AppHandle>,
+    ctx: Option<&ExecuteCtx>,
 ) -> anyhow::Result<()> {
     let t = |zh: &'static str, en: &'static str| if lang == "zh" { zh } else { en };
     match route {
@@ -198,8 +232,16 @@ pub async fn execute(
                 eprintln!("[weft][im] verdict hint: {e}");
             }
         }
-        inbound::Route::FreeText => {
-            if let Err(e) = channel
+        inbound::Route::FreeText { sender_open_id, text } => {
+            // M3: 接 Concierge engine。无 app 句柄（测试路径）或 Concierge 未就绪
+            // 时退化成提示。Concierge 入口通过 lead_chat thread_id=0（spec §5 M3-1）
+            // 在 app 上挂载。
+            let _ = (&sender_open_id, &text);
+            if let Some(app) = app {
+                if let Err(e) = consume_free_text(app, db, &sender_open_id, &text, lang).await {
+                    eprintln!("[weft][im] concierge: {e}");
+                }
+            } else if let Err(e) = channel
                 .send_text(
                     sender,
                     t(
@@ -210,6 +252,37 @@ pub async fn execute(
                 .await
             {
                 eprintln!("[weft][im] freetext hint: {e}");
+            }
+        }
+        inbound::Route::IssueMessage { chat_id, im_thread_ref, sender_open_id: _, text } => {
+            // 飞书话题里的消息 → 反查 im_route 命中 issue → 灌进 lead engine。
+            // 未绑定（话题尚未 bind 过 issue）静默忽略：M2-5 提供桌面/IM 主动绑定入口。
+            let r =
+                crate::store::repo::im_route_of_thread_ref(db, "feishu", &chat_id, &im_thread_ref)
+                    .await?;
+            let Some(route) = r else { return Ok(()) };
+            // M2-6 回执：在投递 engine 之前先挂 👀——出站前批量 delete。
+            // ctx 没给 message_id / acks 则跳过；reaction add 失败不阻挡后续灌入。
+            if let (Some(ctx), true) =
+                (ctx, ctx.map(|c| c.inbound_message_id.is_some()).unwrap_or(false))
+            {
+                if let (Some(mid), Some(acks)) =
+                    (ctx.inbound_message_id.as_deref(), ctx.acks.as_ref())
+                {
+                    match channel.add_reaction(mid, "EYES").await {
+                        Ok(rid) => {
+                            acks.lock().await.entry(route.thread_id).or_default()
+                                .push((mid.to_string(), rid));
+                        }
+                        Err(e) => eprintln!("[weft][im] add reaction: {e}"),
+                    }
+                }
+            }
+            let Some(app) = app else { return Ok(()) }; // 测试路径不进 engine
+            if let Err(e) =
+                feed_issue_message(app, db, route.thread_id, &text, lang).await
+            {
+                eprintln!("[weft][im] issue lead send: {e}");
             }
         }
     }
@@ -238,6 +311,11 @@ struct BridgeInner {
     /// "disabled" | "connecting" | "online" | "error: …"
     status: String,
     cards: Arc<tokio::sync::Mutex<CardIndex>>,
+    /// M2-6: 入站 👀 reaction 簿记。键 = lead_chat thread_id；值 = 这次 lead
+    /// 出站前应当 delete 的 (im_message_id, reaction_id) 列表。lead 一旦
+    /// finalize 出站，桥侧把对应 thread 的所有挂账 reaction 全部清掉——队列
+    /// 里挤压的多条 👀 一次性收回，回执语义诚实反映「轮到这条被回复」。
+    pending_acks: Arc<tokio::sync::Mutex<HashMap<i32, Vec<(String, String)>>>>,
 }
 
 impl ImBridge {
@@ -249,11 +327,18 @@ impl ImBridge {
         self.inner.lock().unwrap_or_else(|e| e.into_inner()).status = s.to_string();
     }
     /// 起新一代：自增代际号、换一张干净的卡片索引（旧任务下次 live() 检查时退出）。
-    fn bump(&self) -> (u64, Arc<tokio::sync::Mutex<CardIndex>>) {
+    fn bump(
+        &self,
+    ) -> (
+        u64,
+        Arc<tokio::sync::Mutex<CardIndex>>,
+        Arc<tokio::sync::Mutex<HashMap<i32, Vec<(String, String)>>>>,
+    ) {
         let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         g.generation += 1;
         g.cards = Arc::new(tokio::sync::Mutex::new(CardIndex::default()));
-        (g.generation, g.cards.clone())
+        g.pending_acks = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        (g.generation, g.cards.clone(), g.pending_acks.clone())
     }
     fn live(&self, generation: u64) -> bool {
         self.inner.lock().unwrap_or_else(|e| e.into_inner()).generation == generation
@@ -266,7 +351,7 @@ impl ImBridge {
 pub fn spawn(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         let bridge = app.state::<ImBridge>();
-        let (generation, cards) = bridge.bump();
+        let (generation, cards, acks) = bridge.bump();
         let db = app.state::<crate::store::Db>().inner().clone();
 
         let settings = match ImSettings::load(&db).await {
@@ -326,7 +411,8 @@ pub fn spawn(app: tauri::AppHandle) {
         // —— 入站：ws → 路由 → 执行 ——
         let (in_tx, mut in_rx) = tokio::sync::mpsc::unbounded_channel();
         {
-            let (app2, db2, ch, cards2) = (app.clone(), db.clone(), channel.clone(), cards.clone());
+            let (app2, db2, ch, cards2, acks2) =
+                (app.clone(), db.clone(), channel.clone(), cards.clone(), acks.clone());
             tauri::async_runtime::spawn(async move {
                 let bridge = app2.state::<ImBridge>();
                 while let Some(inb) = in_rx.recv().await {
@@ -341,17 +427,62 @@ pub fn spawn(app: tauri::AppHandle) {
                             continue;
                         }
                     };
-                    let sender = match &inb {
-                        inbound::Inbound::Text { sender_open_id, .. } => sender_open_id.clone(),
-                        inbound::Inbound::Action { operator_open_id, .. } => operator_open_id.clone(),
+                    let (sender, in_mid) = match &inb {
+                        inbound::Inbound::Text { sender_open_id, message_id, .. } => {
+                            (sender_open_id.clone(), Some(message_id.clone()))
+                        }
+                        inbound::Inbound::Action { operator_open_id, .. } => {
+                            (operator_open_id.clone(), None)
+                        }
                     };
                     let r = { inbound::route(&inb, &allow, &*cards2.lock().await) };
                     let asks = app2.state::<crate::ask::AskRegistry>();
                     let bus = app2.state::<crate::bus::BusRegistry>();
-                    if let Err(e) =
-                        execute(r, &db2, &asks, &bus, ch.as_ref(), &sender, IM_LANG).await
+                    let ctx = ExecuteCtx {
+                        inbound_message_id: in_mid,
+                        acks: Some(acks2.clone()),
+                    };
+                    if let Err(e) = execute(
+                        r,
+                        &db2,
+                        &asks,
+                        &bus,
+                        ch.as_ref(),
+                        &sender,
+                        IM_LANG,
+                        Some(&app2),
+                        Some(&ctx),
+                    )
+                    .await
                     {
                         eprintln!("[weft][im] execute: {e}");
+                    }
+                }
+            });
+        }
+
+        // —— 回流：lead engine assistant 文本 finalize → 反查 im_route → 飞书 reply ——
+        // 没注册 LeadOutHub（单测可能这样跑）则跳过——桥也能正常处理入站。
+        if let Some(hub) = app.try_state::<crate::lead_chat::out_hub::LeadOutHub>() {
+            let mut rx = hub.subscribe();
+            let (db2, ch, acks2) = (db.clone(), channel.clone(), acks.clone());
+            let app4 = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let bridge = app4.state::<ImBridge>();
+                loop {
+                    if !bridge.live(generation) {
+                        return;
+                    }
+                    match rx.recv().await {
+                        Ok(out) => {
+                            consume_lead_out(out, &db2, ch.as_ref(), &acks2).await;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            // engine 产文本太快 / 桥太慢——容量 64 已远超单轮 finalize
+                            // 量级，跑到这里多半是死锁前兆，只丢日志不退出。
+                            eprintln!("[weft][im] lead-out lagged: {n} dropped");
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
                     }
                 }
             });
@@ -501,6 +632,71 @@ async fn consume_human_event(
             }
         }
     }
+}
+
+/// M2-3: 把飞书话题里的一条消息灌进 issue 对应的 lead engine。
+/// 不感知前端 lang 设置——桥侧固定中文（spec：IM 出站默认 zh）。
+async fn feed_issue_message(
+    app: &tauri::AppHandle,
+    db: &crate::store::Db,
+    thread_id: i32,
+    text: &str,
+    lang: &str,
+) -> anyhow::Result<()> {
+    let eng = crate::lead_chat::commands::lead_engine(app, db, thread_id, lang).await?;
+    crate::lead_chat::engine::send(app, db, &eng, text, Vec::new(), Vec::new()).await
+}
+
+/// M2-4: lead engine 的 assistant 文本完成 → 反查 im_route → 飞书话题 reply。
+/// 同时把这个 thread 挂账的 👀 reactions 一次性 delete（spec §4 回执语义：
+/// 「轮到这条被回复」才取下 👀，排队期间一直在）。pub 给集成测试用。
+pub async fn consume_lead_out(
+    out: crate::lead_chat::out_hub::LeadOut,
+    db: &crate::store::Db,
+    ch: &dyn Channel,
+    acks: &Arc<tokio::sync::Mutex<HashMap<i32, Vec<(String, String)>>>>,
+) {
+    // 反查 im_route：thread 没绑定 → engine 文本只走桌面，不上桥。
+    let route = match crate::store::repo::im_route_of_thread(db, out.thread_id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => return,
+        Err(e) => {
+            eprintln!("[weft][im] lead-out lookup route: {e}");
+            return;
+        }
+    };
+    let body = outbound::issue_reply_text(IM_LANG, &out.text);
+    // im_thread_ref 即话题根 message_id：飞书 reply API 会把回复挂同一话题。
+    if let Err(e) = ch.reply_text(&route.im_thread_ref, &body).await {
+        eprintln!("[weft][im] reply lead text: {e}");
+        return; // reply 失败就不 clear 回执——下一条 lead 还会带它走。
+    }
+    // 出站成功 → 清掉这个 thread 上挂的所有 👀。
+    let pending: Vec<(String, String)> = {
+        let mut g = acks.lock().await;
+        g.remove(&out.thread_id).unwrap_or_default()
+    };
+    for (mid, rid) in pending {
+        if let Err(e) = ch.delete_reaction(&mid, &rid).await {
+            eprintln!("[weft][im] delete reaction: {e}");
+        }
+    }
+}
+
+/// M3-3: 单聊自由文本 → Concierge engine（lead_chat thread_id=0 占位）。
+/// 占位实现：未配置 Concierge 时退化为提示——M3-1 把 thread_id=0 的 lead 装上。
+async fn consume_free_text(
+    app: &tauri::AppHandle,
+    db: &crate::store::Db,
+    sender_open_id: &str,
+    text: &str,
+    lang: &str,
+) -> anyhow::Result<()> {
+    // 确保 Concierge thread 存在并拿到 id（spec §5 占位 thread；首次自动建 workspace）。
+    let thread_id = crate::store::repo::ensure_concierge_thread(db).await?;
+    let eng = crate::lead_chat::commands::lead_engine(app, db, thread_id, lang).await?;
+    let framed = format!("[from {sender_open_id}] {text}");
+    crate::lead_chat::engine::send(app, db, &eng, &framed, Vec::new(), Vec::new()).await
 }
 
 #[cfg(test)]

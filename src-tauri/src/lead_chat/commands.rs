@@ -63,7 +63,9 @@ pub fn lang_directive(lang: &str) -> &'static str {
 /// Get-or-create the lead's engine for a thread: scratch cwd, planner MCP +
 /// ask bridge injections, conversational lead prompt as the system prompt.
 /// Mirrors the retired PTY `plan_with_lead` wiring (spec §2).
-async fn lead_engine(
+/// Public so the IM bridge can drive the same lead engine when a飞书 thread
+/// message lands on a bound issue (spec §4 / M2-3).
+pub async fn lead_engine(
     app: &AppHandle,
     db: &Db,
     thread_id: i32,

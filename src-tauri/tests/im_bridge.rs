@@ -10,6 +10,9 @@ use weft_app_lib::store::Db;
 #[derive(Default)]
 struct FakeChannel {
     texts: Arc<Mutex<Vec<(String, String)>>>, // (open_id, text)
+    replies: Arc<Mutex<Vec<(String, String)>>>, // (reply_to, body)
+    reactions: Arc<Mutex<Vec<(String, String)>>>, // (message_id, emoji) — adds
+    deletions: Arc<Mutex<Vec<(String, String)>>>, // (message_id, reaction_id) — deletes
 }
 
 #[async_trait::async_trait]
@@ -24,6 +27,18 @@ impl Channel for FakeChannel {
         self.texts.lock().unwrap().push((open_id.into(), text.into()));
         Ok(())
     }
+    async fn reply_text(&self, reply_to: &str, text: &str) -> anyhow::Result<String> {
+        self.replies.lock().unwrap().push((reply_to.into(), text.into()));
+        Ok(format!("om_reply_{}", self.replies.lock().unwrap().len()))
+    }
+    async fn add_reaction(&self, message_id: &str, emoji: &str) -> anyhow::Result<String> {
+        self.reactions.lock().unwrap().push((message_id.into(), emoji.into()));
+        Ok(format!("re_{}", self.reactions.lock().unwrap().len()))
+    }
+    async fn delete_reaction(&self, message_id: &str, reaction_id: &str) -> anyhow::Result<()> {
+        self.deletions.lock().unwrap().push((message_id.into(), reaction_id.into()));
+        Ok(())
+    }
 }
 
 async fn mem_db() -> Db {
@@ -36,7 +51,7 @@ async fn answer_perm_route_resolves_the_blocked_ask() {
     let (asks, bus, ch) = (AskRegistry::new(), BusRegistry::new(), FakeChannel::default());
     let (id, rx) = asks.request(1, "10", "claude", "Run: npm test", "npm test");
     let r = Route::AnswerPerm { ask_id: id, answer: Answer::Allow };
-    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh").await.unwrap();
+    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh", None, None).await.unwrap();
     assert_eq!(rx.await.unwrap(), Decision::Allow);
     assert!(asks.open().is_empty());
     assert!(ch.texts.lock().unwrap().is_empty()); // 成功路径不发提示
@@ -49,7 +64,7 @@ async fn answer_human_route_lands_in_asker_inbox() {
     bus.join(1, "10");
     let qid = bus.ask_human(1, "10", "major or minor?");
     let r = Route::AnswerHuman { thread: 1, ask_id: qid, text: "minor".into() };
-    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh").await.unwrap();
+    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh", None, None).await.unwrap();
     let inbox = bus.inbox(1, "10");
     assert_eq!(inbox.len(), 1);
     assert_eq!(inbox[0].text, "minor");
@@ -61,7 +76,7 @@ async fn bind_route_appends_allowlist_and_confirms() {
     let db = mem_db().await;
     let (asks, bus, ch) = (AskRegistry::new(), BusRegistry::new(), FakeChannel::default());
     let r = Route::Bind { open_id: "ou_me".into() };
-    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh").await.unwrap();
+    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh", None, None).await.unwrap();
     let saved = repo::get_setting(&db, im::K_ALLOW).await.unwrap();
     assert_eq!(saved.as_deref(), Some("ou_me"));
     let texts = ch.texts.lock().unwrap();
@@ -76,7 +91,7 @@ async fn bind_route_rechecks_allowlist_still_empty() {
     let (asks, bus, ch) = (AskRegistry::new(), BusRegistry::new(), FakeChannel::default());
     repo::set_setting(&db, im::K_ALLOW, "ou_first").await.unwrap();
     let r = Route::Bind { open_id: "ou_second".into() };
-    im::execute(r, &db, &asks, &bus, &ch, "ou_second", "zh").await.unwrap();
+    im::execute(r, &db, &asks, &bus, &ch, "ou_second", "zh", None, None).await.unwrap();
     let saved = repo::get_setting(&db, im::K_ALLOW).await.unwrap();
     assert_eq!(saved.as_deref(), Some("ou_first")); // 未被覆盖/追加
     assert!(ch.texts.lock().unwrap().is_empty()); // 不发确认
@@ -87,7 +102,7 @@ async fn stale_perm_answer_replies_already_handled() {
     let db = mem_db().await;
     let (asks, bus, ch) = (AskRegistry::new(), BusRegistry::new(), FakeChannel::default());
     let r = Route::AnswerPerm { ask_id: 999, answer: Answer::Allow };
-    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh").await.unwrap();
+    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh", None, None).await.unwrap();
     let texts = ch.texts.lock().unwrap();
     assert_eq!(texts.len(), 1); // 「已过期/已处理」提示发给 sender
     assert_eq!(texts[0].0, "ou_me");
@@ -101,7 +116,7 @@ async fn stale_human_answer_replies_already_answered() {
     let qid = bus.ask_human(1, "10", "q?");
     assert!(bus.answer_ask(1, qid, "first"));
     let r = Route::AnswerHuman { thread: 1, ask_id: qid, text: "second".into() };
-    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh").await.unwrap();
+    im::execute(r, &db, &asks, &bus, &ch, "ou_me", "zh", None, None).await.unwrap();
     assert_eq!(ch.texts.lock().unwrap().len(), 1);
 }
 
@@ -109,10 +124,132 @@ async fn stale_human_answer_replies_already_answered() {
 async fn hint_routes_send_usage_text() {
     let db = mem_db().await;
     let (asks, bus, ch) = (AskRegistry::new(), BusRegistry::new(), FakeChannel::default());
-    im::execute(Route::BadVerdict, &db, &asks, &bus, &ch, "ou_me", "zh").await.unwrap();
-    im::execute(Route::FreeText, &db, &asks, &bus, &ch, "ou_me", "zh").await.unwrap();
-    im::execute(Route::Ignore, &db, &asks, &bus, &ch, "ou_me", "zh").await.unwrap();
+    im::execute(Route::BadVerdict, &db, &asks, &bus, &ch, "ou_me", "zh", None, None).await.unwrap();
+    im::execute(
+        Route::FreeText { sender_open_id: "ou_me".into(), text: "今天进展如何".into() },
+        &db,
+        &asks,
+        &bus,
+        &ch,
+        "ou_me",
+        "zh",
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    im::execute(Route::Ignore, &db, &asks, &bus, &ch, "ou_me", "zh", None, None).await.unwrap();
     let texts = ch.texts.lock().unwrap();
     assert_eq!(texts.len(), 2); // BadVerdict + FreeText 各一条；Ignore 零动作
     assert!(texts[0].1.contains("允许")); // 用法提示含协议词
+}
+
+#[tokio::test]
+async fn issue_message_route_resolves_via_im_route() {
+    // M2-3：bind 一条 im_route 后，IssueMessage 路由应能用 (chat_id, thread_ref)
+    // 反查到 issue thread_id。这里跑 execute(..., None) 即无 app 句柄路径——
+    // 不进 engine，但反查 + early-return 不能报错。完整 issue → lead engine 投递由
+    // 桥运行时（spawn 路径）覆盖。
+    let db = mem_db().await;
+    let (asks, bus, ch) = (AskRegistry::new(), BusRegistry::new(), FakeChannel::default());
+    let ws = repo::create_workspace(&db, "ws").await.unwrap();
+    let t = repo::create_thread(&db, ws.id, "issue-x", "feature", "claude").await.unwrap();
+    repo::bind_im_route(&db, t.id, "feishu", "oc_g", "omt_42").await.unwrap();
+    let r = Route::IssueMessage {
+        chat_id: "oc_g".into(),
+        im_thread_ref: "omt_42".into(),
+        sender_open_id: "ou_x".into(),
+        text: "推一下".into(),
+    };
+    im::execute(r, &db, &asks, &bus, &ch, "ou_x", "zh", None, None).await.unwrap();
+    assert!(ch.texts.lock().unwrap().is_empty()); // 未走 engine 也不发其他文字
+}
+
+#[tokio::test]
+async fn issue_message_route_unbound_thread_is_silent() {
+    // 未 bind 的话题消息：execute 静默 return Ok(())（不报错、不出站）。
+    let db = mem_db().await;
+    let (asks, bus, ch) = (AskRegistry::new(), BusRegistry::new(), FakeChannel::default());
+    let r = Route::IssueMessage {
+        chat_id: "oc_g".into(),
+        im_thread_ref: "omt_never_bound".into(),
+        sender_open_id: "ou_x".into(),
+        text: "无主消息".into(),
+    };
+    im::execute(r, &db, &asks, &bus, &ch, "ou_x", "zh", None, None).await.unwrap();
+    assert!(ch.texts.lock().unwrap().is_empty());
+    assert!(ch.reactions.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn issue_message_with_ctx_adds_eyes_reaction() {
+    // M2-6: bind 后的话题消息且 ctx 带 inbound_message_id + acks → 加 👀。
+    use std::collections::HashMap;
+    let db = mem_db().await;
+    let (asks, bus, ch) = (AskRegistry::new(), BusRegistry::new(), FakeChannel::default());
+    let ws = repo::create_workspace(&db, "ws").await.unwrap();
+    let t = repo::create_thread(&db, ws.id, "issue-x", "feature", "claude").await.unwrap();
+    repo::bind_im_route(&db, t.id, "feishu", "oc_g", "omt_42").await.unwrap();
+    let acks = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let ctx = im::ExecuteCtx {
+        inbound_message_id: Some("om_in_1".into()),
+        acks: Some(acks.clone()),
+    };
+    let r = Route::IssueMessage {
+        chat_id: "oc_g".into(),
+        im_thread_ref: "omt_42".into(),
+        sender_open_id: "ou_x".into(),
+        text: "看下进展".into(),
+    };
+    im::execute(r, &db, &asks, &bus, &ch, "ou_x", "zh", None, Some(&ctx)).await.unwrap();
+    let rxns = ch.reactions.lock().unwrap();
+    assert_eq!(rxns.len(), 1);
+    assert_eq!(rxns[0], ("om_in_1".into(), "EYES".into()));
+    let acks_g = acks.lock().await;
+    assert_eq!(acks_g.get(&t.id).map(|v| v.len()), Some(1));
+}
+
+#[tokio::test]
+async fn consume_lead_out_replies_and_drains_acks() {
+    // 端到端 M2-4 + M2-6：bind im_route → 模拟入站累计两条 👀 →
+    // consume_lead_out 一次回流 + 清空两条 reaction。
+    use std::collections::HashMap;
+    use weft_app_lib::lead_chat::out_hub::LeadOut;
+    let db = mem_db().await;
+    let ch = FakeChannel::default();
+    let ws = repo::create_workspace(&db, "ws").await.unwrap();
+    let t = repo::create_thread(&db, ws.id, "issue-y", "feature", "claude").await.unwrap();
+    repo::bind_im_route(&db, t.id, "feishu", "oc_g", "omt_99").await.unwrap();
+    // 预挂两条 👀（模拟入站消费已加过）
+    let acks = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::<i32, Vec<(String, String)>>::new()));
+    {
+        let mut g = acks.lock().await;
+        g.entry(t.id).or_default().push(("om_a".into(), "re_a".into()));
+        g.entry(t.id).or_default().push(("om_b".into(), "re_b".into()));
+    }
+    let out = LeadOut { thread_id: t.id, message_id: 7, text: "搞定了一半".into() };
+    im::consume_lead_out(out, &db, &ch, &acks).await;
+    // reply 一次，body 带 Lead 前缀
+    let replies = ch.replies.lock().unwrap();
+    assert_eq!(replies.len(), 1);
+    assert_eq!(replies[0].0, "omt_99");
+    assert!(replies[0].1.starts_with("Lead："));
+    // 两条 👀 一次性被 delete
+    let dels = ch.deletions.lock().unwrap();
+    assert_eq!(dels.len(), 2);
+    assert!(acks.lock().await.get(&t.id).is_none());
+}
+
+#[tokio::test]
+async fn consume_lead_out_unbound_thread_is_noop() {
+    // thread 没绑 im_route → 桥不 reply、不动 reactions。
+    use std::collections::HashMap;
+    use weft_app_lib::lead_chat::out_hub::LeadOut;
+    let db = mem_db().await;
+    let ch = FakeChannel::default();
+    let acks = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::<i32, Vec<(String, String)>>::new()));
+    let out = LeadOut { thread_id: 999, message_id: 1, text: "nope".into() };
+    im::consume_lead_out(out, &db, &ch, &acks).await;
+    assert!(ch.replies.lock().unwrap().is_empty());
+    assert!(ch.deletions.lock().unwrap().is_empty());
 }
