@@ -46,9 +46,14 @@ pub async fn list_workspaces(db: &Db) -> Result<Vec<workspace::Model>> {
 /// Rename = display-name only. slug (and anything derived from it — branches,
 /// worktree paths) is a stable identifier and never changes after creation.
 pub async fn rename_workspace(db: &Db, workspace_id: i32, name: &str) -> Result<workspace::Model> {
-    let name = name.trim();
-    if name.is_empty() {
-        anyhow::bail!("workspace name cannot be empty");
+    let name = validate_display_name(name, "workspace name")?;
+    let dup = workspace::Entity::find()
+        .filter(workspace::Column::Name.eq(name))
+        .filter(workspace::Column::Id.ne(workspace_id))
+        .one(&db.0)
+        .await?;
+    if dup.is_some() {
+        anyhow::bail!("another workspace already named {name:?}");
     }
     let m = workspace::Entity::find_by_id(workspace_id)
         .one(&db.0)
@@ -57,6 +62,16 @@ pub async fn rename_workspace(db: &Db, workspace_id: i32, name: &str) -> Result<
     let mut a: workspace::ActiveModel = m.into();
     a.name = Set(name.to_string());
     Ok(a.update(&db.0).await?)
+}
+
+/// Trim and reject empty for any display field. Centralized so rename helpers
+/// stay consistent and error wording can evolve in one place.
+fn validate_display_name<'a>(input: &'a str, what: &str) -> Result<&'a str> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("{what} cannot be empty");
+    }
+    Ok(trimmed)
 }
 
 pub async fn add_skill_source(db: &Db, git_url: &str, git_ref: Option<&str>) -> Result<skill_source::Model> {
@@ -226,14 +241,20 @@ pub async fn get_thread(db: &Db, thread_id: i32) -> Result<Option<thread::Model>
 
 /// Display-title only; slug stays (see rename_workspace).
 pub async fn rename_thread(db: &Db, thread_id: i32, title: &str) -> Result<thread::Model> {
-    let title = title.trim();
-    if title.is_empty() {
-        anyhow::bail!("issue title cannot be empty");
-    }
+    let title = validate_display_name(title, "issue title")?;
     let m = thread::Entity::find_by_id(thread_id)
         .one(&db.0)
         .await?
         .ok_or_else(|| anyhow::anyhow!("thread {thread_id} not found"))?;
+    let dup = thread::Entity::find()
+        .filter(thread::Column::WorkspaceId.eq(m.workspace_id))
+        .filter(thread::Column::Title.eq(title))
+        .filter(thread::Column::Id.ne(thread_id))
+        .one(&db.0)
+        .await?;
+    if dup.is_some() {
+        anyhow::bail!("another issue in this workspace already titled {title:?}");
+    }
     let mut a: thread::ActiveModel = m.into();
     a.title = Set(title.to_string());
     Ok(a.update(&db.0).await?)
@@ -378,14 +399,20 @@ pub async fn set_direction_status(db: &Db, direction_id: i32, status: &str) -> R
 
 /// Display-name only; slug AND branch stay (live worktrees keep working).
 pub async fn rename_direction(db: &Db, direction_id: i32, name: &str) -> Result<direction::Model> {
-    let name = name.trim();
-    if name.is_empty() {
-        anyhow::bail!("task name cannot be empty");
-    }
+    let name = validate_display_name(name, "task name")?;
     let m = direction::Entity::find_by_id(direction_id)
         .one(&db.0)
         .await?
         .ok_or_else(|| anyhow::anyhow!("direction {direction_id} not found"))?;
+    let dup = direction::Entity::find()
+        .filter(direction::Column::ThreadId.eq(m.thread_id))
+        .filter(direction::Column::Name.eq(name))
+        .filter(direction::Column::Id.ne(direction_id))
+        .one(&db.0)
+        .await?;
+    if dup.is_some() {
+        anyhow::bail!("another task in this issue already named {name:?}");
+    }
     let mut a: direction::ActiveModel = m.into();
     a.name = Set(name.to_string());
     Ok(a.update(&db.0).await?)
@@ -838,6 +865,48 @@ mod tests {
         assert!(rename_workspace(&db, 9999, "x").await.is_err());
         assert!(rename_thread(&db, 9999, "x").await.is_err());
         assert!(rename_direction(&db, 9999, "x").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn rename_rejects_sibling_collisions() {
+        let db = mem().await;
+        let ws_a = create_workspace(&db, "Alpha").await.unwrap();
+        let ws_b = create_workspace(&db, "Beta").await.unwrap();
+        // same name as another workspace → rejected; renaming to its own
+        // current name is a no-op-style allowed (filtered by id-ne).
+        assert!(rename_workspace(&db, ws_b.id, "Alpha").await.is_err());
+        assert!(rename_workspace(&db, ws_a.id, "Alpha").await.is_ok());
+
+        let repo = add_repo_ref(&db, ws_a.id, "web-app", "/tmp/x", "main")
+            .await
+            .unwrap();
+        let t1 = create_thread(&db, ws_a.id, "Login", "feature", "claude")
+            .await
+            .unwrap();
+        let t2 = create_thread(&db, ws_a.id, "Signup", "feature", "claude")
+            .await
+            .unwrap();
+        // duplicate within same workspace → rejected
+        assert!(rename_thread(&db, t2.id, "Login").await.is_err());
+        // same title in a DIFFERENT workspace is fine
+        let t3 = create_thread(&db, ws_b.id, "Other", "feature", "claude")
+            .await
+            .unwrap();
+        assert!(rename_thread(&db, t3.id, "Login").await.is_ok());
+
+        let d1 = create_direction(&db, t1.id, "api", "claude", repo.id, "r", "plan+impl")
+            .await
+            .unwrap();
+        let d2 = create_direction(&db, t1.id, "ui", "claude", repo.id, "r", "plan+impl")
+            .await
+            .unwrap();
+        assert!(rename_direction(&db, d2.id, "api").await.is_err());
+        // same direction name under a DIFFERENT thread is fine
+        let d3 = create_direction(&db, t2.id, "main", "claude", repo.id, "r", "plan+impl")
+            .await
+            .unwrap();
+        assert!(rename_direction(&db, d3.id, "api").await.is_ok());
+        let _ = d1;
     }
 
     #[tokio::test]
