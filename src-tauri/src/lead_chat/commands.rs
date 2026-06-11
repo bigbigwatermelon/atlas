@@ -440,6 +440,39 @@ pub async fn chat_stop(app: AppHandle, session_id: i32) -> Result<(), String> {
     Ok(())
 }
 
+/// idle-time skill refresh (worker): re-inject the workspace's enabled skills
+/// into the live session's cwd and flag the engine so the next send silently
+/// restarts the resident process to pick them up. No-op if the engine is gone.
+#[tauri::command]
+pub async fn flag_session_skill_refresh(app: AppHandle, db: State<'_, Db>, session_id: i32) -> Result<(), String> {
+    let Some(eng) = app.state::<LeadChatState>().get(session_id as i64) else {
+        return Ok(());
+    };
+    let (thread_id, cwd) = {
+        let g = eng.lock().await;
+        (g.thread_id, g.cwd.clone())
+    };
+    if let Ok(Some(th)) = repo::get_thread(&db, thread_id).await {
+        crate::skills::inject_for(&db, th.workspace_id, &cwd).await;
+    }
+    eng.lock().await.pending_skill_refresh = true;
+    Ok(())
+}
+
+/// idle-time skill refresh (lead). Same as the worker variant, keyed by thread.
+#[tauri::command]
+pub async fn flag_lead_skill_refresh(app: AppHandle, db: State<'_, Db>, thread_id: i32) -> Result<(), String> {
+    let Some(eng) = app.state::<LeadChatState>().get(lead_key(thread_id)) else {
+        return Ok(());
+    };
+    let cwd = { eng.lock().await.cwd.clone() };
+    if let Ok(Some(th)) = repo::get_thread(&db, thread_id).await {
+        crate::skills::inject_for(&db, th.workspace_id, &cwd).await;
+    }
+    eng.lock().await.pending_skill_refresh = true;
+    Ok(())
+}
+
 /// One-shot import of a legacy PTY-lead transcript (the tool's own jsonl,
 /// parsed by the sidecar) into lead_message rows. Best-effort: any failure
 /// leaves the timeline empty — history remains reachable in a terminal.

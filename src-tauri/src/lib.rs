@@ -146,6 +146,8 @@ pub fn run() {
             lead_chat::commands::chat_send,
             lead_chat::commands::chat_interrupt,
             lead_chat::commands::chat_stop,
+            lead_chat::commands::flag_session_skill_refresh,
+            lead_chat::commands::flag_lead_skill_refresh,
             inspect::open_terminal,
             inspect::reveal_path,
             inspect::open_url,
