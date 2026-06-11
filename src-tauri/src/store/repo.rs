@@ -43,6 +43,22 @@ pub async fn list_workspaces(db: &Db) -> Result<Vec<workspace::Model>> {
     Ok(workspace::Entity::find().all(&db.0).await?)
 }
 
+/// Rename = display-name only. slug (and anything derived from it — branches,
+/// worktree paths) is a stable identifier and never changes after creation.
+pub async fn rename_workspace(db: &Db, workspace_id: i32, name: &str) -> Result<workspace::Model> {
+    let name = name.trim();
+    if name.is_empty() {
+        anyhow::bail!("workspace name cannot be empty");
+    }
+    let m = workspace::Entity::find_by_id(workspace_id)
+        .one(&db.0)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("workspace {workspace_id} not found"))?;
+    let mut a: workspace::ActiveModel = m.into();
+    a.name = Set(name.to_string());
+    Ok(a.update(&db.0).await?)
+}
+
 pub async fn add_skill_source(db: &Db, git_url: &str, git_ref: Option<&str>) -> Result<skill_source::Model> {
     let m = skill_source::ActiveModel {
         git_url: Set(git_url.to_string()),
@@ -208,6 +224,21 @@ pub async fn get_thread(db: &Db, thread_id: i32) -> Result<Option<thread::Model>
     Ok(thread::Entity::find_by_id(thread_id).one(&db.0).await?)
 }
 
+/// Display-title only; slug stays (see rename_workspace).
+pub async fn rename_thread(db: &Db, thread_id: i32, title: &str) -> Result<thread::Model> {
+    let title = title.trim();
+    if title.is_empty() {
+        anyhow::bail!("issue title cannot be empty");
+    }
+    let m = thread::Entity::find_by_id(thread_id)
+        .one(&db.0)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("thread {thread_id} not found"))?;
+    let mut a: thread::ActiveModel = m.into();
+    a.title = Set(title.to_string());
+    Ok(a.update(&db.0).await?)
+}
+
 pub async fn get_plan(db: &Db, thread_id: i32) -> Result<Option<plan::Model>> {
     Ok(plan::Entity::find()
         .filter(plan::Column::ThreadId.eq(thread_id))
@@ -343,6 +374,21 @@ pub async fn set_direction_status(db: &Db, direction_id: i32, status: &str) -> R
         a.update(&db.0).await?;
     }
     Ok(())
+}
+
+/// Display-name only; slug AND branch stay (live worktrees keep working).
+pub async fn rename_direction(db: &Db, direction_id: i32, name: &str) -> Result<direction::Model> {
+    let name = name.trim();
+    if name.is_empty() {
+        anyhow::bail!("task name cannot be empty");
+    }
+    let m = direction::Entity::find_by_id(direction_id)
+        .one(&db.0)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("direction {direction_id} not found"))?;
+    let mut a: direction::ActiveModel = m.into();
+    a.name = Set(name.to_string());
+    Ok(a.update(&db.0).await?)
 }
 
 /// The single write repo bound to a direction (scope rework). None if the
@@ -753,6 +799,45 @@ mod tests {
             get_setting(&db, "default_tool").await.unwrap(),
             Some("claude".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn rename_updates_display_name_only() {
+        let db = mem().await;
+        let ws = create_workspace(&db, "Demo WS").await.unwrap();
+        let repo = add_repo_ref(&db, ws.id, "web-app", "/tmp/x", "main")
+            .await
+            .unwrap();
+        let t = create_thread(&db, ws.id, "Add login", "feature", "claude")
+            .await
+            .unwrap();
+        let d = create_direction(&db, t.id, "main", "claude", repo.id, "r", "plan+impl")
+            .await
+            .unwrap();
+
+        // trim + 只更新显示字段；slug / branch 都保持创建时的值
+        let ws2 = rename_workspace(&db, ws.id, "  New WS  ").await.unwrap();
+        assert_eq!(ws2.name, "New WS");
+        assert_eq!(ws2.slug, "demo-ws");
+
+        let t2 = rename_thread(&db, t.id, "Add SSO login").await.unwrap();
+        assert_eq!(t2.title, "Add SSO login");
+        assert_eq!(t2.slug, "add-login");
+
+        let d2 = rename_direction(&db, d.id, "api work").await.unwrap();
+        assert_eq!(d2.name, "api work");
+        assert_eq!(d2.slug, "main");
+        assert_eq!(d2.branch, "ws/demo-ws/add-login/main");
+    }
+
+    #[tokio::test]
+    async fn rename_rejects_empty_and_missing() {
+        let db = mem().await;
+        let ws = create_workspace(&db, "w").await.unwrap();
+        assert!(rename_workspace(&db, ws.id, "   ").await.is_err());
+        assert!(rename_workspace(&db, 9999, "x").await.is_err());
+        assert!(rename_thread(&db, 9999, "x").await.is_err());
+        assert!(rename_direction(&db, 9999, "x").await.is_err());
     }
 
     #[tokio::test]
