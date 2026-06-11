@@ -59,9 +59,11 @@ export function ThreadBoard() {
     needs,
     asks,
     checksByDirection,
+    renameDirection,
   } = useStore();
   const { t } = useTranslation();
   const thread = threads.find((th) => th.id === activeThreadId);
+  const [renamingDirectionId, setRenamingDirectionId] = useState<number | null>(null);
   useEffect(() => {
     setThreadTab("lead");
     setReviewingProposal(false);
@@ -69,6 +71,10 @@ export function ThreadBoard() {
 
   if (!thread) return null;
   const dirs = directionsByThread[thread.id] ?? [];
+  // Derive `initial` from the live directions slice rather than capturing it
+  // at click time — keeps the dialog in sync with concurrent rename/refresh.
+  const renamingDirection =
+    renamingDirectionId != null ? dirs.find((d) => d.id === renamingDirectionId) ?? null : null;
 
   // Column from the stored, agent/human-set status. queued/planning/working
   // share the driving column; an open ask/need or a failing check only tags
@@ -116,7 +122,7 @@ export function ThreadBoard() {
                     >
                       {cards.map((d) => (
                         <div key={d.id}>
-                          <DirectionCard direction={d} />
+                          <DirectionCard direction={d} onRename={setRenamingDirectionId} />
                         </div>
                       ))}
                       {cards.length === 0 && (
@@ -133,6 +139,16 @@ export function ThreadBoard() {
         )}
       </div>
 
+      {renamingDirection && (
+        <RenameDialog
+          open={renamingDirectionId != null}
+          onOpenChange={(o) => !o && setRenamingDirectionId(null)}
+          title={t("thread.renameTask")}
+          label={t("dialog.taskName")}
+          initial={renamingDirection.name}
+          onSubmit={(v) => renameDirection(renamingDirection.id, v)}
+        />
+      )}
     </section>
   );
 }
@@ -156,7 +172,13 @@ function EmptyDiscuss({ onTalk }: { onTalk: () => void }) {
   );
 }
 
-function DirectionCard({ direction }: { direction: Direction }) {
+function DirectionCard({
+  direction,
+  onRename,
+}: {
+  direction: Direction;
+  onRename: (id: number) => void;
+}) {
   const {
     worktreesByDirection,
     repos,
@@ -166,14 +188,12 @@ function DirectionCard({ direction }: { direction: Direction }) {
     asks,
     checksByDirection,
     requestSkillReview,
-    renameDirection,
     openNeeds,
   } = useStore();
   const { t } = useTranslation();
   const writes = worktreesByDirection[direction.id] ?? [];
   const checks = checksByDirection[direction.id];
   const [reviewSent, setReviewSent] = useState(false);
-  const [renaming, setRenaming] = useState(false);
 
   const allChecks = (checks ?? []).flatMap((rc) => rc.checks);
   const failed = allChecks.filter((c) => c.status === "fail").length;
@@ -223,7 +243,7 @@ function DirectionCard({ direction }: { direction: Direction }) {
             type="button"
             title={t("thread.renameTask")}
             aria-label={t("thread.renameTask")}
-            onClick={() => setRenaming(true)}
+            onClick={() => onRename(direction.id)}
             className="grid h-6 w-6 shrink-0 place-items-center rounded-[var(--radius-sm)] text-ink-faint opacity-0 transition-opacity hover:bg-brand-ghost hover:text-ink group-hover:opacity-100"
           >
             <Pencil size={12} />
@@ -300,15 +320,6 @@ function DirectionCard({ direction }: { direction: Direction }) {
           </Button>
         </div>
       </div>
-
-      <RenameDialog
-        open={renaming}
-        onOpenChange={(o) => !o && setRenaming(false)}
-        title={t("thread.renameTask")}
-        label={t("dialog.taskName")}
-        initial={direction.name}
-        onSubmit={(v) => renameDirection(direction.id, v)}
-      />
     </motion.div>
   );
 }

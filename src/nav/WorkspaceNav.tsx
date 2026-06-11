@@ -29,6 +29,7 @@ export function WorkspaceNav() {
     threads,
     selectWorkspace,
     renameWorkspace,
+    renameThread,
     backToWorkspace,
     needsByWorkspace,
     homeTab,
@@ -43,8 +44,15 @@ export function WorkspaceNav() {
   // Live workspace-wide pending count for the Needs-you focal entry.
   const needsCount = needs.length + asks.length + writeTriggers.length;
   const [dlg, setDlg] = useState<null | "ws" | "repo" | "thread">(null);
-  const [renamingWs, setRenamingWs] = useState<{ id: number; name: string } | null>(null);
+  // Both rename surfaces store only an id and derive `initial` from the live
+  // slice — so concurrent updates flow through instead of being captured.
+  const [renamingWsId, setRenamingWsId] = useState<number | null>(null);
+  const [renamingThreadId, setRenamingThreadId] = useState<number | null>(null);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
+  const renamingWs =
+    renamingWsId != null ? workspaces.find((w) => w.id === renamingWsId) ?? null : null;
+  const renamingThread =
+    renamingThreadId != null ? threads.find((th) => th.id === renamingThreadId) ?? null : null;
   const { t } = useTranslation();
   // Any OTHER workspace waiting on the human → flag it on the switcher.
   const otherNeeds = workspaces.some(
@@ -72,7 +80,7 @@ export function WorkspaceNav() {
             otherNeeds={otherNeeds}
             onSelect={(id) => void selectWorkspace(id)}
             onNew={() => setDlg("ws")}
-            onRename={(w) => setRenamingWs(w)}
+            onRename={(w) => setRenamingWsId(w.id)}
           />
         </div>
       </div>
@@ -162,7 +170,7 @@ export function WorkspaceNav() {
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {threads.map((t) => (
-                  <ThreadRow key={t.id} thread={t} />
+                  <ThreadRow key={t.id} thread={t} onRename={setRenamingThreadId} />
                 ))}
               </ul>
             )}
@@ -205,16 +213,26 @@ export function WorkspaceNav() {
       <CreateWorkspaceDialog open={dlg === "ws"} onOpenChange={(o) => !o && setDlg(null)} />
       <CreateThreadDialog open={dlg === "thread"} onOpenChange={(o) => !o && setDlg(null)} />
       <AddRepoDialog open={dlg === "repo"} onOpenChange={(o) => !o && setDlg(null)} />
-      <RenameDialog
-        open={renamingWs != null}
-        onOpenChange={(o) => !o && setRenamingWs(null)}
-        title={t("nav.renameWorkspace")}
-        label={t("dialog.workspaceName")}
-        initial={renamingWs?.name ?? ""}
-        onSubmit={async (v) => {
-          if (renamingWs) await renameWorkspace(renamingWs.id, v);
-        }}
-      />
+      {renamingWs && (
+        <RenameDialog
+          open={renamingWsId != null}
+          onOpenChange={(o) => !o && setRenamingWsId(null)}
+          title={t("nav.renameWorkspace")}
+          label={t("dialog.workspaceName")}
+          initial={renamingWs.name}
+          onSubmit={(v) => renameWorkspace(renamingWs.id, v)}
+        />
+      )}
+      {renamingThread && (
+        <RenameDialog
+          open={renamingThreadId != null}
+          onOpenChange={(o) => !o && setRenamingThreadId(null)}
+          title={t("nav.renameThread")}
+          label={t("dialog.threadTitle")}
+          initial={renamingThread.title}
+          onSubmit={(v) => renameThread(renamingThread.id, v)}
+        />
+      )}
     </nav>
   );
 }
@@ -283,19 +301,17 @@ function WsNavItem({
   );
 }
 
-function ThreadRow({ thread }: { thread: Thread }) {
+function ThreadRow({ thread, onRename }: { thread: Thread; onRename: (id: number) => void }) {
   const {
     activeThreadId,
     directionsByThread,
     selectThread,
     deleteThread,
-    renameThread,
     sessions,
     needs,
     asks,
   } = useStore();
   const { t } = useTranslation();
-  const [renaming, setRenaming] = useState(false);
   const isActive = activeThreadId === thread.id;
   const dirCount = directionsByThread[thread.id]?.length;
   const liveCount = Object.values(sessions).filter(
@@ -312,7 +328,10 @@ function ThreadRow({ thread }: { thread: Thread }) {
       <button
         onClick={() => void selectThread(thread.id)}
         className={cn(
-          "relative flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-left transition-colors",
+          "relative flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-left transition-[padding,background-color]",
+          // reserve space on hover so the pencil + trash overlay doesn't sit on
+          // top of the needsYou / dirCount badges
+          "group-hover:pr-[3.25rem]",
           isActive ? "bg-brand-ghost text-ink" : "text-ink-muted hover:bg-brand-ghost hover:text-ink",
         )}
       >
@@ -332,7 +351,7 @@ function ThreadRow({ thread }: { thread: Thread }) {
             {liveCount}
           </span>
         )}
-        <span className="ml-auto flex items-center gap-1.5">
+        <span className="ml-auto flex items-center gap-1.5 transition-opacity group-hover:opacity-0">
           {needsYou && (
             <span
               title={t("nav.needsYou")}
@@ -345,27 +364,19 @@ function ThreadRow({ thread }: { thread: Thread }) {
         </span>
       </button>
       <button
-        onClick={() => setRenaming(true)}
+        onClick={() => onRename(thread.id)}
         aria-label={t("nav.renameThread")}
-        className="absolute right-7 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded bg-surface text-ink-faint opacity-0 transition-opacity hover:bg-brand-ghost hover:text-ink group-hover:opacity-100"
+        className="absolute right-7 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded text-ink-faint opacity-0 transition-opacity hover:bg-brand-ghost hover:text-ink group-hover:opacity-100"
       >
         <Pencil size={12} />
       </button>
       <button
         onClick={() => void deleteThread(thread.id)}
         aria-label={t("nav.deleteThread")}
-        className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded bg-surface text-ink-faint opacity-0 transition-opacity hover:bg-[oklch(0.64_0.2_25/0.15)] hover:text-danger group-hover:opacity-100"
+        className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded text-ink-faint opacity-0 transition-opacity hover:bg-[oklch(0.64_0.2_25/0.15)] hover:text-danger group-hover:opacity-100"
       >
         <Trash2 size={12} />
       </button>
-      <RenameDialog
-        open={renaming}
-        onOpenChange={(o) => !o && setRenaming(false)}
-        title={t("nav.renameThread")}
-        label={t("dialog.threadTitle")}
-        initial={thread.title}
-        onSubmit={(v) => renameThread(thread.id, v)}
-      />
     </li>
   );
 }
@@ -426,7 +437,12 @@ function WorkspacePicker({
                 )}
                 <button
                   type="button"
-                  aria-label={t("nav.renameWorkspace")}
+                  // Mouse-only affordance: keyboard users have a dedicated
+                  // "Rename current workspace" menu item below the list. We
+                  // hide this from keyboard/AT so we don't nest a focusable
+                  // button inside a DM.Item (role=menuitem).
+                  tabIndex={-1}
+                  aria-hidden="true"
                   title={t("nav.renameWorkspace")}
                   onPointerDown={(e) => e.stopPropagation()}
                   onPointerUp={(e) => e.stopPropagation()}
@@ -442,6 +458,14 @@ function WorkspacePicker({
             );
           })}
           <DM.Separator className="my-1 h-px bg-border" />
+          {active && (
+            <DM.Item
+              onSelect={() => onRename(active)}
+              className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] text-ink-muted outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink"
+            >
+              <Pencil size={13} /> {t("nav.renameWorkspace")}
+            </DM.Item>
+          )}
           <DM.Item
             onSelect={onNew}
             className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] text-ink-muted outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink"
