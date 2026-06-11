@@ -508,6 +508,9 @@ export const en = {
     title: "This screen crashed",
     body: "Other screens and background agents are unaffected.",
     retry: "Retry",
+    renameDuplicate: "Another item already uses that name.",
+    renameEmpty: "Name cannot be empty.",
+    renameFailed: "Rename failed. Please try again.",
   },
   kind: {
     feature: "Feature",

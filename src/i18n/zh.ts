@@ -494,6 +494,9 @@ export const zh = {
     title: "这个界面崩溃了",
     body: "其余界面与后台 agent 不受影响。",
     retry: "重试",
+    renameDuplicate: "已有同名条目。",
+    renameEmpty: "名称不能为空。",
+    renameFailed: "重命名失败，请重试。",
   },
   kind: {
     feature: "功能",
