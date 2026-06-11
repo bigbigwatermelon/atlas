@@ -723,7 +723,12 @@ fn spawn_reader(
                     // message — so a missing streaming row means insert, not drop.
                     if !texts.is_empty() {
                         let full = texts.join("\n\n");
-                        let content = serde_json::json!({ "text": full }).to_string();
+                        // Fork <weft:*> sentinels out of the body before persisting:
+                        // action_card lives as its own row so the UI can render the
+                        // card without parsing prose; list_repos triggers a stdin
+                        // reply (handled below) and produces no row of its own.
+                        let (clean, sentinels) = super::sentinels::extract_sentinels(&full);
+                        let content = serde_json::json!({ "text": clean }).to_string();
                         match inner.current.take() {
                             Some((id, _, _)) => {
                                 let _ = repo::update_lead_message(&db, id, &content, "complete").await;
@@ -739,6 +744,104 @@ fn spawn_reader(
                                 .await
                                 {
                                     let _ = app.emit(EVENT, Push::Message { thread_id, message: m });
+                                }
+                            }
+                        }
+                        // Persist / answer sentinels in encounter order. Errors are
+                        // logged but never abort the reader — a malformed card must
+                        // not wedge the chat stream.
+                        for s in sentinels {
+                            match s {
+                                super::sentinels::Sentinel::ActionCard(json) => {
+                                    // Reject anything that isn't a JSON object so the
+                                    // UI can rely on `card.title / actions / …`.
+                                    match serde_json::from_str::<serde_json::Value>(&json) {
+                                        Ok(v) if v.is_object() => {
+                                            let (sid, turn) = (inner.session_id, inner.turn_id);
+                                            match repo::insert_lead_message(
+                                                &db, thread_id, sid, turn,
+                                                "assistant", "action_card", &json, "complete",
+                                            )
+                                            .await
+                                            {
+                                                Ok(m) => {
+                                                    let _ = app.emit(EVENT, Push::Message {
+                                                        thread_id, message: m,
+                                                    });
+                                                }
+                                                Err(e) => eprintln!(
+                                                    "[weft] lead sentinel: insert action_card failed: {e}"
+                                                ),
+                                            }
+                                        }
+                                        Ok(_) => eprintln!(
+                                            "[weft] lead sentinel: action_card payload is not an object — dropped"
+                                        ),
+                                        Err(e) => eprintln!(
+                                            "[weft] lead sentinel: action_card JSON parse failed: {e}"
+                                        ),
+                                    }
+                                }
+                                super::sentinels::Sentinel::ListRepos => {
+                                    // Look up workspace via the thread row (engine
+                                    // doesn't cache it; one extra query per call is
+                                    // cheap and avoids a wider refactor).
+                                    let ws_id = match repo::get_thread(&db, thread_id).await {
+                                        Ok(Some(t)) => Some(t.workspace_id),
+                                        Ok(None) => {
+                                            eprintln!(
+                                                "[weft] lead sentinel: list_repos — thread {thread_id} not found"
+                                            );
+                                            None
+                                        }
+                                        Err(e) => {
+                                            eprintln!(
+                                                "[weft] lead sentinel: list_repos — get_thread failed: {e}"
+                                            );
+                                            None
+                                        }
+                                    };
+                                    if let Some(workspace_id) = ws_id {
+                                        let repos = match repo::list_repos(&db, workspace_id).await {
+                                            Ok(r) => r,
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "[weft] lead sentinel: list_repos query failed: {e}"
+                                                );
+                                                Vec::new()
+                                            }
+                                        };
+                                        let payload = serde_json::json!({
+                                            "repos": repos.iter().map(|r| serde_json::json!({
+                                                "id": r.id,
+                                                "name": r.name,
+                                                "slug": r.slug,
+                                                "local_git_path": r.local_git_path,
+                                                "base_ref": r.base_ref,
+                                            })).collect::<Vec<_>>()
+                                        });
+                                        let body = match serde_json::to_string(&payload) {
+                                            Ok(s) => s,
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "[weft] lead sentinel: serialize list_repos_result failed: {e}"
+                                                );
+                                                continue;
+                                            }
+                                        };
+                                        let reply = format!(
+                                            "<weft:list_repos_result>{body}</weft:list_repos_result>"
+                                        );
+                                        // Invisible plumbing: tracked=false keeps this
+                                        // off the timeline; the agent reads it as a
+                                        // tool-result-style user turn.
+                                        let out = Outgoing {
+                                            text: reply,
+                                            images: Vec::new(),
+                                            tracked: false,
+                                        };
+                                        write_user(&mut inner, &out).await;
+                                    }
                                 }
                             }
                         }
