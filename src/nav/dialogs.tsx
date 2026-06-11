@@ -397,6 +397,85 @@ export function CreateThreadDialog({ open, onOpenChange }: DProps) {
   );
 }
 
+export function RenameDialog({
+  open,
+  onOpenChange,
+  title,
+  label,
+  initial,
+  onSubmit,
+}: DProps & {
+  title: string;
+  label: string;
+  initial: string;
+  onSubmit: (value: string) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [value, setValue] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Re-seed from the current name each time the dialog opens.
+  useEffect(() => {
+    if (open) {
+      setValue(initial);
+      setBusy(false);
+      setErr(null);
+    }
+  }, [open, initial]);
+
+  async function submit() {
+    const v = value.trim();
+    if (!v || busy) return;
+    if (v === initial.trim()) {
+      onOpenChange(false);
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await onSubmit(v);
+      onOpenChange(false);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent title={title}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+          className="flex flex-col gap-4"
+        >
+          <Field label={label}>
+            <Input
+              autoFocus
+              value={value}
+              onChange={(e) => setValue(e.currentTarget.value)}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          </Field>
+          {err && <p className="text-[12px] text-danger">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="submit" variant="primary" disabled={!value.trim() || busy}>
+              {busy ? t("dialog.renaming") : t("common.rename")}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 interface DProps {
   open: boolean;
   onOpenChange: (o: boolean) => void;

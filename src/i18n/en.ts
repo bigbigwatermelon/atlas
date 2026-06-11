@@ -2,6 +2,7 @@ export const en = {
   common: {
     cancel: "Cancel",
     create: "Create",
+    rename: "Rename",
     allow: "Allow",
     deny: "Deny",
     open: "Open",
@@ -21,6 +22,8 @@ export const en = {
     threads: "Issues",
     newThread: "New issue",
     deleteThread: "Delete issue",
+    renameThread: "Rename issue",
+    renameWorkspace: "Rename workspace",
     collapseSidebar: "Collapse sidebar",
     expandSidebar: "Show sidebar",
     noThreads: "No issues yet. Create one to start.",
@@ -156,6 +159,7 @@ export const en = {
     colEmpty: "—",
     dropHere: "Drop to move here",
     setStatus: "Set status",
+    renameTask: "Rename sub-task",
     discussTitle: "Talk to the lead to plan this issue",
     discussBody:
       "Describe what you want in the conversation on the right. The lead reads your repos, proposes how to split the work, and you confirm it into sub-tasks here.",
@@ -401,6 +405,8 @@ export const en = {
     threadType: "Type",
     createThread: "Create issue",
     creating: "Creating…",
+    renaming: "Renaming…",
+    taskName: "Name",
   },
   settings: {
     title: "Settings",

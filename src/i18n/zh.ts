@@ -2,6 +2,7 @@ export const zh = {
   common: {
     cancel: "取消",
     create: "创建",
+    rename: "重命名",
     allow: "允许",
     deny: "拒绝",
     open: "打开",
@@ -21,6 +22,8 @@ export const zh = {
     threads: "issue",
     newThread: "新建 issue",
     deleteThread: "删除 issue",
+    renameThread: "重命名 issue",
+    renameWorkspace: "重命名工作区",
     collapseSidebar: "收起侧边栏",
     expandSidebar: "展开侧边栏",
     noThreads: "还没有 issue。新建一个开始。",
@@ -153,6 +156,7 @@ export const zh = {
     colEmpty: "—",
     dropHere: "拖到此处移动",
     setStatus: "设置状态",
+    renameTask: "重命名子任务",
     discussTitle: "和 lead 聊聊来规划这个 issue",
     discussBody:
       "在右侧的对话里描述你想要什么。lead 会读取你的仓库、提议如何拆分工作，你在这里确认成子任务。",
@@ -389,6 +393,8 @@ export const zh = {
     threadType: "类型",
     createThread: "创建 issue",
     creating: "创建中…",
+    renaming: "重命名中…",
+    taskName: "名称",
   },
   settings: {
     title: "设置",
