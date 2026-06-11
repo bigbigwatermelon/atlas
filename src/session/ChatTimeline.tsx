@@ -5,6 +5,10 @@ import type { LeadMessage } from "../lib/types";
 import { Markdown } from "../components/Markdown";
 import { cn } from "../lib/cn";
 import { cleanToolName, compactToolTarget, toolIcon, toolLabelKey } from "./transcriptBits";
+import { ActionCardBlock, type ActionCardAction } from "./blocks/ActionCardBlock";
+import type { useRepoActions } from "./useRepoActions";
+
+type RunAction = ReturnType<typeof useRepoActions>["run"];
 
 /**
  * The chat-engine timeline: renders weft-owned LeadMessage rows (no polling,
@@ -12,18 +16,33 @@ import { cleanToolName, compactToolTarget, toolIcon, toolLabelKey } from "./tran
  * the flow, where they happened — the conversation IS the console. Tool calls
  * are NOT rows: the one currently running shows as a transient activity line
  * under the stream and disappears when the turn moves on.
+ *
+ * The lead host wires up runAction/promptText so action_card buttons trigger
+ * the real repo flows; worker hosts (Observe/Session) omit them and any
+ * historical action_card rows fall back to read-only display.
  */
 export function ChatTimeline({
   messages,
   busy,
   activity,
   onReviewProposal,
+  runAction,
+  actionsBusy,
+  threadId,
+  workspaceId,
+  promptText,
 }: {
   messages: LeadMessage[];
   busy: boolean;
   /** The tool call executing right now (transient), if any. */
   activity?: { name: string; summary: string } | null;
   onReviewProposal: () => void;
+  /** Lead-only: dispatch a repo action card. Omit → cards render read-only. */
+  runAction?: RunAction;
+  actionsBusy?: Record<string, boolean>;
+  threadId?: number | null;
+  workspaceId?: number | null;
+  promptText?: (title: string, placeholder?: string) => Promise<string | null>;
 }) {
   const { t } = useTranslation();
   const endRef = useRef<HTMLDivElement>(null);
@@ -66,7 +85,17 @@ export function ChatTimeline({
     >
       <div className="mx-auto flex w-full max-w-[820px] flex-col gap-2.5">
         {visible.map((m) => (
-          <TimelineRow key={m.id} m={m} onReviewProposal={onReviewProposal} />
+          <TimelineRow
+            key={m.id}
+            m={m}
+            all={visible}
+            onReviewProposal={onReviewProposal}
+            runAction={runAction}
+            actionsBusy={actionsBusy}
+            threadId={threadId ?? null}
+            workspaceId={workspaceId ?? null}
+            promptText={promptText}
+          />
         ))}
         {busy && activity && <ActivityLine name={activity.name} summary={activity.summary} />}
         {busy && !activity && (
@@ -117,15 +146,88 @@ function parse(content: string): Record<string, unknown> {
   }
 }
 
+// Wider sibling to `parse` for sentinel-payload rows (action_card) where the
+// JSON may legitimately contain arrays nested at the top — we still only
+// accept an object root, but reject scalars/arrays without throwing.
+function safeParseObj(content: string): Record<string, unknown> {
+  try {
+    const v: unknown = JSON.parse(content);
+    return v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+// Read-only history replay: only the most recent assistant row is interactive.
+// Older action_cards stay rendered for context but their buttons are disabled.
+function isLastAssistant(m: LeadMessage, all: LeadMessage[]): boolean {
+  for (let i = all.length - 1; i >= 0; i--) {
+    if (all[i].role === "assistant") return all[i].id === m.id;
+  }
+  return false;
+}
+
 function TimelineRow({
   m,
+  all,
   onReviewProposal,
+  runAction,
+  actionsBusy,
+  threadId,
+  workspaceId,
+  promptText,
 }: {
   m: LeadMessage;
+  all: LeadMessage[];
   onReviewProposal: () => void;
+  runAction?: RunAction;
+  actionsBusy?: Record<string, boolean>;
+  threadId: number | null;
+  workspaceId: number | null;
+  promptText?: (title: string, placeholder?: string) => Promise<string | null>;
 }) {
   const { t } = useTranslation();
   const c = parse(m.content);
+
+  if (m.kind === "action_card") {
+    const parsed = safeParseObj(m.content);
+    const title = typeof parsed.title === "string" ? parsed.title : "";
+    const body = typeof parsed.body === "string" ? parsed.body : undefined;
+    // runtime-checked sentinel payload from the lead — schema enforced by
+    // src-tauri/src/lead_chat/sentinels.rs before the row is persisted.
+    const actions = Array.isArray(parsed.actions)
+      ? (parsed.actions as ActionCardAction[])
+      : [];
+    // Worker hosts (no runAction wired) and historical rows fall back to
+    // read-only — buttons render disabled so the card stays in context but
+    // can't fire a flow without a handler.
+    const readOnly = !runAction || !promptText || !isLastAssistant(m, all);
+    const onAction: ((a: ActionCardAction) => void) | undefined =
+      runAction && promptText
+        ? (a) =>
+            void runAction({
+              actionId: a.id,
+              kind: a.kind,
+              ctx: {
+                threadId: threadId ?? undefined,
+                preferredWorkspaceId: workspaceId,
+              },
+              promptText,
+            })
+        : undefined;
+    return (
+      <ActionCardBlock
+        title={title}
+        body={body}
+        actions={actions}
+        readOnly={readOnly}
+        busy={actionsBusy ?? {}}
+        onAction={onAction ?? (() => {})}
+      />
+    );
+  }
 
   if (m.kind === "command") {
     return (

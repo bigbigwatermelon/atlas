@@ -31,7 +31,7 @@ mod power;
 pub mod profile;
 mod sidecar;
 mod tools;
-mod commands;
+pub mod commands;
 
 /// The bus server's base URL, e.g. "http://127.0.0.1:54321".
 pub struct BusBase(pub String);
@@ -104,6 +104,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::create_workspace,
             commands::list_workspaces,
+            commands::ensure_default_workspace,
             commands::add_repo_ref,
             commands::clone_repo,
             commands::create_repo,
@@ -149,6 +150,7 @@ pub fn run() {
             lead_chat::commands::lead_stop,
             lead_chat::commands::lead_state,
             lead_chat::commands::list_lead_messages,
+            lead_chat::commands::post_lead_tool_result,
             lead_chat::commands::chat_open_worker,
             lead_chat::commands::chat_send,
             lead_chat::commands::chat_interrupt,

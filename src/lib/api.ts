@@ -36,6 +36,8 @@ export const api = {
   listWorkspaces: () => invoke<Workspace[]>("list_workspaces"),
   createWorkspace: (name: string) =>
     invoke<Workspace>("create_workspace", { name }),
+  ensureDefaultWorkspace: () =>
+    invoke<number>("ensure_default_workspace"),
 
   listRepos: (workspaceId: number) =>
     invoke<RepoRef[]>("list_repos", { workspaceId }),
@@ -45,6 +47,8 @@ export const api = {
     invoke<RepoRef>("clone_repo", { workspaceId, url, dest, name }),
   createRepo: (workspaceId: number, name: string, dest: string) =>
     invoke<RepoRef>("create_repo", { workspaceId, name, dest }),
+  postLeadToolResult: (threadId: number, payload: unknown) =>
+    invoke<void>("post_lead_tool_result", { threadId, payload }),
 
   // Repo map (curator): profiles + cross-repo dependency graph.
   repoGraph: (workspaceId: number) =>
