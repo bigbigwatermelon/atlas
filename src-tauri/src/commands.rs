@@ -14,6 +14,11 @@ pub async fn create_workspace(db: State<'_, Db>, name: String) -> R<entities::wo
 }
 
 #[tauri::command]
+pub async fn rename_workspace(db: State<'_, Db>, workspace_id: i32, name: String) -> R<entities::workspace::Model> {
+    repo::rename_workspace(&db, workspace_id, &name).await.map_err(e)
+}
+
+#[tauri::command]
 pub async fn list_workspaces(db: State<'_, Db>) -> R<Vec<entities::workspace::Model>> {
     repo::list_workspaces(&db).await.map_err(e)
 }
@@ -119,6 +124,11 @@ pub async fn update_repo_profile(
 pub async fn create_thread(db: State<'_, Db>, workspace_id: i32, title: String, kind: String) -> R<entities::thread::Model> {
     let tool = crate::tools::default_tool(&db).await;
     repo::create_thread(&db, workspace_id, &title, &kind, &tool).await.map_err(e)
+}
+
+#[tauri::command]
+pub async fn rename_thread(db: State<'_, Db>, thread_id: i32, title: String) -> R<entities::thread::Model> {
+    repo::rename_thread(&db, thread_id, &title).await.map_err(e)
 }
 
 #[tauri::command]
@@ -284,6 +294,11 @@ pub async fn create_direction(
 #[tauri::command]
 pub async fn set_task_status(db: State<'_, Db>, direction_id: i32, status: String) -> R<()> {
     repo::set_direction_status(&db, direction_id, &status).await.map_err(e)
+}
+
+#[tauri::command]
+pub async fn rename_direction(db: State<'_, Db>, direction_id: i32, name: String) -> R<entities::direction::Model> {
+    repo::rename_direction(&db, direction_id, &name).await.map_err(e)
 }
 
 /// The worker's worktree diff (file stats + unified patch) for the Diff tab.
