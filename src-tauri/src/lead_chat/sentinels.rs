@@ -1,7 +1,7 @@
 //! Scan assistant text for weft control sentinels so the engine can fork them
 //! out of the timeline body. Pure string scanning — no regex dep, no allocs
 //! beyond the cleaned output. Two markers today, matching the directives
-//! injected via `repo_state::SENTINEL_DIRECTIVES`:
+//! injected via `commands::SENTINEL_DIRECTIVES`:
 //!   `<weft:action_card>{json}</weft:action_card>` — assistant proposes a card.
 //!   `<weft:list_repos/>` — assistant requests the current workspace's repos.
 //! Malformed (unclosed) action_card stays inline as plain text so a half-typed

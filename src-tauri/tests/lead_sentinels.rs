@@ -57,3 +57,33 @@ fn skips_malformed_action_card_unclosed() {
     assert_eq!(clean, t);
     assert!(found.is_empty());
 }
+
+#[test]
+fn extracts_two_list_repos_in_row() {
+    let t = "<weft:list_repos/><weft:list_repos/>";
+    let (clean, found) = extract_sentinels(t);
+    assert_eq!(clean, "");
+    assert_eq!(found.len(), 2);
+    assert!(matches!(found[0], Sentinel::ListRepos));
+    assert!(matches!(found[1], Sentinel::ListRepos));
+}
+
+#[test]
+fn action_card_json_can_contain_lt() {
+    let t = r#"<weft:action_card>{"title":"a<b","actions":[]}</weft:action_card>"#;
+    let (clean, found) = extract_sentinels(t);
+    assert_eq!(clean, "");
+    assert_eq!(found.len(), 1);
+    match &found[0] {
+        Sentinel::ActionCard(j) => assert!(j.contains("a<b")),
+        _ => panic!(),
+    }
+}
+
+#[test]
+fn sentinel_butting_text_no_whitespace() {
+    let t = "hello<weft:list_repos/>world";
+    let (clean, found) = extract_sentinels(t);
+    assert_eq!(clean, "helloworld");
+    assert_eq!(found.len(), 1);
+}

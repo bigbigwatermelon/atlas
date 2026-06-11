@@ -722,6 +722,9 @@ fn spawn_reader(
                     // built-in slash commands reply via a synthetic assistant
                     // message — so a missing streaming row means insert, not drop.
                     if !texts.is_empty() {
+                        // Sentinels are scanned across the joined body, so the
+                        // join+extract order is load-bearing — a marker split
+                        // across two text blocks would otherwise slip through.
                         let full = texts.join("\n\n");
                         // Fork <weft:*> sentinels out of the body before persisting:
                         // action_card lives as its own row so the UI can render the
