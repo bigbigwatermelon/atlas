@@ -9,6 +9,7 @@ import {
   FolderPlus,
   HelpCircle,
   LayoutGrid,
+  Pencil,
   Plus,
   Search,
   Settings,
@@ -19,7 +20,7 @@ import { useStore } from "../state/store";
 import type { Thread } from "../lib/types";
 import { cn } from "../lib/cn";
 import { openCommandPalette } from "../components/CommandPalette";
-import { AddRepoDialog, CreateThreadDialog, CreateWorkspaceDialog } from "./dialogs";
+import { AddRepoDialog, CreateThreadDialog, CreateWorkspaceDialog, RenameDialog } from "./dialogs";
 
 export function WorkspaceNav() {
   const {
@@ -27,6 +28,7 @@ export function WorkspaceNav() {
     activeWorkspaceId,
     threads,
     selectWorkspace,
+    renameWorkspace,
     backToWorkspace,
     needsByWorkspace,
     homeTab,
@@ -41,6 +43,7 @@ export function WorkspaceNav() {
   // Live workspace-wide pending count for the Needs-you focal entry.
   const needsCount = needs.length + asks.length + writeTriggers.length;
   const [dlg, setDlg] = useState<null | "ws" | "repo" | "thread">(null);
+  const [renamingWs, setRenamingWs] = useState<{ id: number; name: string } | null>(null);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
   const { t } = useTranslation();
   // Any OTHER workspace waiting on the human → flag it on the switcher.
@@ -69,6 +72,7 @@ export function WorkspaceNav() {
             otherNeeds={otherNeeds}
             onSelect={(id) => void selectWorkspace(id)}
             onNew={() => setDlg("ws")}
+            onRename={(w) => setRenamingWs(w)}
           />
         </div>
       </div>
@@ -201,6 +205,16 @@ export function WorkspaceNav() {
       <CreateWorkspaceDialog open={dlg === "ws"} onOpenChange={(o) => !o && setDlg(null)} />
       <CreateThreadDialog open={dlg === "thread"} onOpenChange={(o) => !o && setDlg(null)} />
       <AddRepoDialog open={dlg === "repo"} onOpenChange={(o) => !o && setDlg(null)} />
+      <RenameDialog
+        open={renamingWs != null}
+        onOpenChange={(o) => !o && setRenamingWs(null)}
+        title={t("nav.renameWorkspace")}
+        label={t("dialog.workspaceName")}
+        initial={renamingWs?.name ?? ""}
+        onSubmit={async (v) => {
+          if (renamingWs) await renameWorkspace(renamingWs.id, v);
+        }}
+      />
     </nav>
   );
 }
@@ -275,11 +289,13 @@ function ThreadRow({ thread }: { thread: Thread }) {
     directionsByThread,
     selectThread,
     deleteThread,
+    renameThread,
     sessions,
     needs,
     asks,
   } = useStore();
   const { t } = useTranslation();
+  const [renaming, setRenaming] = useState(false);
   const isActive = activeThreadId === thread.id;
   const dirCount = directionsByThread[thread.id]?.length;
   const liveCount = Object.values(sessions).filter(
@@ -329,12 +345,27 @@ function ThreadRow({ thread }: { thread: Thread }) {
         </span>
       </button>
       <button
+        onClick={() => setRenaming(true)}
+        aria-label={t("nav.renameThread")}
+        className="absolute right-7 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded bg-surface text-ink-faint opacity-0 transition-opacity hover:bg-brand-ghost hover:text-ink group-hover:opacity-100"
+      >
+        <Pencil size={12} />
+      </button>
+      <button
         onClick={() => void deleteThread(thread.id)}
         aria-label={t("nav.deleteThread")}
         className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded bg-surface text-ink-faint opacity-0 transition-opacity hover:bg-[oklch(0.64_0.2_25/0.15)] hover:text-danger group-hover:opacity-100"
       >
         <Trash2 size={12} />
       </button>
+      <RenameDialog
+        open={renaming}
+        onOpenChange={(o) => !o && setRenaming(false)}
+        title={t("nav.renameThread")}
+        label={t("dialog.threadTitle")}
+        initial={thread.title}
+        onSubmit={(v) => renameThread(thread.id, v)}
+      />
     </li>
   );
 }
@@ -346,6 +377,7 @@ function WorkspacePicker({
   otherNeeds,
   onSelect,
   onNew,
+  onRename,
 }: {
   workspaces: { id: number; name: string }[];
   activeId: number | null;
@@ -353,6 +385,7 @@ function WorkspacePicker({
   otherNeeds: boolean;
   onSelect: (id: number) => void;
   onNew: () => void;
+  onRename: (w: { id: number; name: string }) => void;
 }) {
   const active = workspaces.find((w) => w.id === activeId);
   const { t } = useTranslation();
@@ -379,18 +412,32 @@ function WorkspacePicker({
                 key={w.id}
                 onSelect={() => onSelect(w.id)}
                 className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink",
+                  "group flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink",
                   isActive ? "text-ink" : "text-ink-muted",
                 )}
               >
                 <Check size={13} className={cn("shrink-0", isActive ? "text-brand" : "text-transparent")} />
-                <span className="truncate">{w.name}</span>
+                <span className="min-w-0 flex-1 truncate">{w.name}</span>
                 {/* only flag OTHER workspaces — the current one is shown in-app */}
                 {!isActive && count > 0 && (
-                  <span className="ml-auto rounded-full bg-waiting/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-waiting">
+                  <span className="rounded-full bg-waiting/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-waiting">
                     {count}
                   </span>
                 )}
+                <button
+                  type="button"
+                  aria-label={t("nav.renameWorkspace")}
+                  title={t("nav.renameWorkspace")}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRename(w);
+                  }}
+                  className="grid h-5 w-5 shrink-0 place-items-center rounded text-ink-faint opacity-0 transition-opacity hover:text-ink group-hover:opacity-100 group-data-[highlighted]:opacity-100"
+                >
+                  <Pencil size={12} />
+                </button>
               </DM.Item>
             );
           })}

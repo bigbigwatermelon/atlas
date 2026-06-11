@@ -10,6 +10,7 @@ import {
   GitCompare,
   Layers,
   MessagesSquare,
+  Pencil,
   ScanEye,
   TerminalSquare,
   X,
@@ -21,6 +22,7 @@ import { StatusDot } from "../components/ui/StatusChip";
 import { Tooltip } from "../components/ui/Tooltip";
 import { ToolIcon, toolFullName } from "../components/ToolIcon";
 import { ScopeReview } from "./ScopeReview";
+import { RenameDialog } from "../nav/dialogs";
 import { LeadTab } from "../session/LeadTab";
 import { cn } from "../lib/cn";
 
@@ -164,12 +166,14 @@ function DirectionCard({ direction }: { direction: Direction }) {
     asks,
     checksByDirection,
     requestSkillReview,
+    renameDirection,
     openNeeds,
   } = useStore();
   const { t } = useTranslation();
   const writes = worktreesByDirection[direction.id] ?? [];
   const checks = checksByDirection[direction.id];
   const [reviewSent, setReviewSent] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   const allChecks = (checks ?? []).flatMap((rc) => rc.checks);
   const failed = allChecks.filter((c) => c.status === "fail").length;
@@ -193,7 +197,7 @@ function DirectionCard({ direction }: { direction: Direction }) {
     <motion.div
       layout
       className={cn(
-        "flex flex-col rounded-[var(--radius-lg)] border bg-surface text-left transition-colors hover:border-border-strong",
+        "group flex flex-col rounded-[var(--radius-lg)] border bg-surface text-left transition-colors hover:border-border-strong",
         hasNeed ? "border-waiting/45" : "border-border",
       )}
     >
@@ -215,6 +219,15 @@ function DirectionCard({ direction }: { direction: Direction }) {
               {t("thread.colNeeds")}
             </button>
           )}
+          <button
+            type="button"
+            title={t("thread.renameTask")}
+            aria-label={t("thread.renameTask")}
+            onClick={() => setRenaming(true)}
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-[var(--radius-sm)] text-ink-faint opacity-0 transition-opacity hover:bg-brand-ghost hover:text-ink group-hover:opacity-100"
+          >
+            <Pencil size={12} />
+          </button>
           <StatusMenu direction={direction} />
         </div>
       </div>
@@ -288,6 +301,14 @@ function DirectionCard({ direction }: { direction: Direction }) {
         </div>
       </div>
 
+      <RenameDialog
+        open={renaming}
+        onOpenChange={(o) => !o && setRenaming(false)}
+        title={t("thread.renameTask")}
+        label={t("dialog.taskName")}
+        initial={direction.name}
+        onSubmit={(v) => renameDirection(direction.id, v)}
+      />
     </motion.div>
   );
 }
