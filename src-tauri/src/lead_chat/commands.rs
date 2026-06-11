@@ -21,12 +21,7 @@ pub struct SessionInfo {
     pub native_id: Option<String>,
 }
 
-/// The conversational lead prompt. The lead is the human's main collaborator for
-/// the thread: it discusses the work, and the plan EMERGES from that conversation
-/// rather than from a one-shot propose-and-exit. It proposes when (and only when)
-/// the human has converged with it, and may re-propose after more discussion.
-pub fn lead_prompt() -> &'static str {
-    "You are the lead for this thread in weft — the human's main collaborator. \
+const BASE_PROMPT: &str = "You are the lead for this thread in weft — the human's main collaborator. \
 Start by greeting briefly and using the weft_planner MCP tools to orient: call get_task to read \
 what's being asked, and get_repo_map to learn each repo's role and the cross-repo dependency graph. \
 Then DISCUSS the requirement and approach with the human; ask clarifying questions when it matters. \
@@ -37,7 +32,21 @@ converged on how to split the work, call propose_directions with a short rationa
 (reads are free). Pick mandate per direction: plan+impl (default — the worker plans first) or \
 impl-only (small/fully-specified — build straight away). The human reviews and confirms in weft; you \
 can re-propose after more discussion. Prefer splitting frontend/backend/shared work to run in \
-parallel, owner of a shared contract first."
+parallel, owner of a shared contract first.";
+
+/// Sentinel usage directives appended to the lead prompt. Each subsequent task
+/// (Task 3-5) keeps growing this block, so it lives as its own const for easy
+/// editing — raw string keeps quotes/JSON readable.
+const SENTINEL_DIRECTIVES: &str = r#"When the user has no suitable repo for the work, render a single-line action card by outputting exactly:
+<weft:action_card>{"title":"...","body":"...","actions":[{"id":"...","label":"...","kind":"add"|"new"|"clone"}]}</weft:action_card>
+Each action's kind must be one of "add" (import existing folder), "new" (create a new repo), or "clone" (clone a remote URL). Use language matching the user's locale for title/body/label. To query the full repo list when the <repo_state> hint is truncated, emit on its own line: <weft:list_repos/> You will receive the reply as <weft:list_repos_result>{...}</weft:list_repos_result>. After a user finishes an action, you will receive <weft:repo_action>{...}</weft:repo_action> with status: ok/error/cancelled."#;
+
+/// The conversational lead prompt. The lead is the human's main collaborator for
+/// the thread: it discusses the work, and the plan EMERGES from that conversation
+/// rather than from a one-shot propose-and-exit. It proposes when (and only when)
+/// the human has converged with it, and may re-propose after more discussion.
+pub fn lead_prompt() -> String {
+    format!("{BASE_PROMPT}\n\n{SENTINEL_DIRECTIVES}")
 }
 
 /// Agent-output language directive (ARCHITECTURE §4.8, layer 2). Appended to the
@@ -81,7 +90,11 @@ async fn lead_engine(
     crate::skills::inject_for(db, t.workspace_id, &cwd).await;
     let mut extra = ask.args;
     extra.extend(inj.args);
-    let system_prompt = format!("{}{}", lead_prompt(), lang_directive(lang));
+    let system_prompt = {
+        let repo_state =
+            crate::lead_chat::repo_state::render_repo_state(db, Some(t.workspace_id)).await?;
+        format!("{}{}\n\n{}", lead_prompt(), lang_directive(lang), repo_state)
+    };
     let inner = engine::EngineInner {
         thread_id,
         tool: t.lead_tool.clone(),
@@ -500,4 +513,43 @@ async fn import_legacy(db: &Db, thread_id: i32) -> anyhow::Result<usize> {
         }
     }
     Ok(n)
+}
+
+/// Frontend callback after a repo onboarding action card finishes (add /
+/// new / clone). Wraps the payload in `<weft:repo_action>…</weft:repo_action>`
+/// and delivers it as an invisible user turn so the agent can react without
+/// the result polluting the visible timeline. Respects the turn machine:
+/// mid-turn clicks get queued and flush at the next boundary instead of
+/// shoving JSON between in-flight protocol lines. Does NOT ensure_running —
+/// a click into a dead lead is a no-op (we don't want a card click to
+/// resurrect a stopped engine behind the user's back).
+#[tauri::command]
+pub async fn post_lead_tool_result(
+    app: AppHandle,
+    thread_id: i32,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    let json = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
+    let text = format!("<weft:repo_action>{json}</weft:repo_action>");
+    let key = lead_key(thread_id);
+    match app.state::<LeadChatState>().get(key) {
+        Some(eng) => {
+            // TODO: frontend currently can't distinguish delivered vs queued vs
+            // no-engine. Acceptable now — action cards are visual + ephemeral
+            // — revisit if "card click did nothing" debugging gets noisy.
+            let mut inner = eng.lock().await;
+            let out = engine::Outgoing { text, images: vec![], tracked: false };
+            if inner.turn.try_begin_send() {
+                inner.turn_id += 1;
+                inner.clock.begin_turn();
+                engine::write_user(&mut inner, &out).await;
+            } else {
+                inner.turn.queue.push_back(out);
+            }
+        }
+        None => {
+            eprintln!("[weft] post_lead_tool_result: no lead engine for thread {thread_id}");
+        }
+    }
+    Ok(())
 }

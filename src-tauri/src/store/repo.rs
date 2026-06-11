@@ -74,6 +74,15 @@ fn validate_display_name<'a>(input: &'a str, what: &str) -> Result<&'a str> {
     Ok(trimmed)
 }
 
+/// The most-recently created workspace (highest id), if any. Used as the
+/// default-workspace bootstrap target for first-run onboarding.
+pub async fn latest_workspace(db: &Db) -> Result<Option<workspace::Model>> {
+    Ok(workspace::Entity::find()
+        .order_by_desc(workspace::Column::Id)
+        .one(&db.0)
+        .await?)
+}
+
 pub async fn add_skill_source(db: &Db, git_url: &str, git_ref: Option<&str>) -> Result<skill_source::Model> {
     let m = skill_source::ActiveModel {
         git_url: Set(git_url.to_string()),

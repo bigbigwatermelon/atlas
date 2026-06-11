@@ -6,3 +6,5 @@
 pub mod commands;
 pub mod engine;
 pub mod proto;
+pub mod repo_state;
+pub mod sentinels;
