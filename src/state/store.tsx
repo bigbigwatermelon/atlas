@@ -171,6 +171,9 @@ interface Store {
   backToWorkspace: () => void;
 
   createWorkspace: (name: string) => Promise<void>;
+  renameWorkspace: (workspaceId: number, name: string) => Promise<void>;
+  renameThread: (threadId: number, title: string) => Promise<void>;
+  renameDirection: (directionId: number, name: string) => Promise<void>;
   addRepo: (name: string, path: string) => Promise<void>;
   cloneRepo: (url: string, dest: string, name: string) => Promise<void>;
   createRepo: (name: string, dest: string) => Promise<void>;
@@ -479,6 +482,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [refreshWorkspaces, selectWorkspace],
   );
+
+  const renameWorkspace = useCallback(async (workspaceId: number, name: string) => {
+    const ws = await api.renameWorkspace(workspaceId, name);
+    setWorkspaces((cur) => cur.map((w) => (w.id === ws.id ? ws : w)));
+  }, []);
+
+  const renameThread = useCallback(
+    async (threadId: number, title: string) => {
+      const t = await api.renameThread(threadId, title);
+      setThreads((cur) => cur.map((x) => (x.id === t.id ? t : x)));
+      void refreshOverview();
+    },
+    [refreshOverview],
+  );
+
+  const renameDirection = useCallback(async (directionId: number, name: string) => {
+    const d = await api.renameDirection(directionId, name);
+    setDirections((m) => {
+      const next: Record<number, Direction[]> = {};
+      for (const [tid, list] of Object.entries(m)) {
+        next[Number(tid)] = list.map((x) => (x.id === d.id ? d : x));
+      }
+      return next;
+    });
+  }, []);
 
   const refreshAfterRepo = useCallback(async (ws: number) => {
     setRepos(await api.listRepos(ws));
@@ -1389,6 +1417,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     backToBoard,
     backToWorkspace,
     createWorkspace,
+    renameWorkspace,
+    renameThread,
+    renameDirection,
     addRepo,
     cloneRepo,
     createRepo,

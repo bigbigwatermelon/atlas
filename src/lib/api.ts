@@ -36,6 +36,8 @@ export const api = {
   listWorkspaces: () => invoke<Workspace[]>("list_workspaces"),
   createWorkspace: (name: string) =>
     invoke<Workspace>("create_workspace", { name }),
+  renameWorkspace: (workspaceId: number, name: string) =>
+    invoke<Workspace>("rename_workspace", { workspaceId, name }),
 
   listRepos: (workspaceId: number) =>
     invoke<RepoRef[]>("list_repos", { workspaceId }),
@@ -60,6 +62,8 @@ export const api = {
     invoke<ThreadOverview[]>("workspace_overview", { workspaceId }),
   createThread: (workspaceId: number, title: string, kind: string) =>
     invoke<Thread>("create_thread", { workspaceId, title, kind }),
+  renameThread: (threadId: number, title: string) =>
+    invoke<Thread>("rename_thread", { threadId, title }),
   deleteThread: (threadId: number) =>
     invoke<void>("delete_thread", { threadId }),
 
@@ -67,6 +71,8 @@ export const api = {
     invoke<Direction[]>("list_directions", { threadId }),
   setTaskStatus: (directionId: number, status: string) =>
     invoke<void>("set_task_status", { directionId, status }),
+  renameDirection: (directionId: number, name: string) =>
+    invoke<Direction>("rename_direction", { directionId, name }),
 
   // Planner: the lead's proposed Task → scope decomposition (§4.10, §5.1).
   getProposal: (threadId: number) =>
