@@ -39,8 +39,7 @@ pub async fn render_repo_state(db: &Db, workspace_id: Option<i32>) -> anyhow::Re
         body.push_str(EMPTY_HINT);
     } else {
         body.push_str("repos:");
-        let shown = total.min(MAX_LISTED);
-        for r in repos.iter().take(shown) {
+        for r in repos.iter().take(MAX_LISTED) {
             body.push('\n');
             body.push_str("  - ");
             body.push_str(&sanitize(&r.name));

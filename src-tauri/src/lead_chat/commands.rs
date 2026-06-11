@@ -21,12 +21,7 @@ pub struct SessionInfo {
     pub native_id: Option<String>,
 }
 
-/// The conversational lead prompt. The lead is the human's main collaborator for
-/// the thread: it discusses the work, and the plan EMERGES from that conversation
-/// rather than from a one-shot propose-and-exit. It proposes when (and only when)
-/// the human has converged with it, and may re-propose after more discussion.
-pub fn lead_prompt() -> &'static str {
-    "You are the lead for this thread in weft — the human's main collaborator. \
+const BASE_PROMPT: &str = "You are the lead for this thread in weft — the human's main collaborator. \
 Start by greeting briefly and using the weft_planner MCP tools to orient: call get_task to read \
 what's being asked, and get_repo_map to learn each repo's role and the cross-repo dependency graph. \
 Then DISCUSS the requirement and approach with the human; ask clarifying questions when it matters. \
@@ -37,13 +32,21 @@ converged on how to split the work, call propose_directions with a short rationa
 (reads are free). Pick mandate per direction: plan+impl (default — the worker plans first) or \
 impl-only (small/fully-specified — build straight away). The human reviews and confirms in weft; you \
 can re-propose after more discussion. Prefer splitting frontend/backend/shared work to run in \
-parallel, owner of a shared contract first.\n\n\
-When the user has no suitable repo for the work, render a single-line action card by outputting exactly:\n\
-<weft:action_card>{\"title\":\"...\",\"body\":\"...\",\"actions\":[{\"id\":\"...\",\"label\":\"...\",\"kind\":\"add\"|\"new\"|\"clone\"}]}</weft:action_card>\n\
-Each action's kind must be one of \"add\" (import existing folder), \"new\" (create a new repo), or \"clone\" (clone a remote URL). Use language matching the user's locale for title/body/label. \
-To query the full repo list when the <repo_state> hint is truncated, emit on its own line: <weft:list_repos/> \
-You will receive the reply as <weft:list_repos_result>{...}</weft:list_repos_result>. \
-After a user finishes an action, you will receive <weft:repo_action>{...}</weft:repo_action> with status: ok/error/cancelled."
+parallel, owner of a shared contract first.";
+
+/// Sentinel usage directives appended to the lead prompt. Each subsequent task
+/// (Task 3-5) keeps growing this block, so it lives as its own const for easy
+/// editing — raw string keeps quotes/JSON readable.
+const SENTINEL_DIRECTIVES: &str = r#"When the user has no suitable repo for the work, render a single-line action card by outputting exactly:
+<weft:action_card>{"title":"...","body":"...","actions":[{"id":"...","label":"...","kind":"add"|"new"|"clone"}]}</weft:action_card>
+Each action's kind must be one of "add" (import existing folder), "new" (create a new repo), or "clone" (clone a remote URL). Use language matching the user's locale for title/body/label. To query the full repo list when the <repo_state> hint is truncated, emit on its own line: <weft:list_repos/> You will receive the reply as <weft:list_repos_result>{...}</weft:list_repos_result>. After a user finishes an action, you will receive <weft:repo_action>{...}</weft:repo_action> with status: ok/error/cancelled."#;
+
+/// The conversational lead prompt. The lead is the human's main collaborator for
+/// the thread: it discusses the work, and the plan EMERGES from that conversation
+/// rather than from a one-shot propose-and-exit. It proposes when (and only when)
+/// the human has converged with it, and may re-propose after more discussion.
+pub fn lead_prompt() -> String {
+    format!("{BASE_PROMPT}\n\n{SENTINEL_DIRECTIVES}")
 }
 
 /// Agent-output language directive (ARCHITECTURE §4.8, layer 2). Appended to the
