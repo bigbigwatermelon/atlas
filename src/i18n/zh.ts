@@ -492,4 +492,31 @@ export const zh = {
     refactor: "重构",
     spike: "探索",
   },
+  actionCard: {
+    addRepoLabel: "导入已有目录",
+    newRepoLabel: "新建仓库",
+    cloneRepoLabel: "克隆仓库",
+    readOnlyHint: "这张卡片属于较早的轮次。",
+  },
+  repoActions: {
+    chooseDir: "选择目录",
+    chooseParentDir: "选择父目录",
+    repoNameTitle: "仓库名",
+    repoNamePlaceholder: "my-project",
+    repoUrlTitle: "Git URL",
+    repoUrlPlaceholder: "https://github.com/...",
+    addedToast: "已添加仓库 {{name}}",
+    failedToast: "失败：{{message}}",
+    noWorkspaceToast: "无法准备工作区",
+  },
+  slashLocal: {
+    addRepo: "导入已有目录",
+    newRepo: "新建仓库",
+    cloneRepo: "克隆仓库",
+  },
+  emptyMap: {
+    addRepoBtn: "导入",
+    newRepoBtn: "新建",
+    cloneRepoBtn: "克隆",
+  },
 } as const;

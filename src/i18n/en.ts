@@ -505,4 +505,31 @@ export const en = {
     refactor: "Refactor",
     spike: "Spike",
   },
+  actionCard: {
+    addRepoLabel: "Import existing folder",
+    newRepoLabel: "Create new repo",
+    cloneRepoLabel: "Clone from URL",
+    readOnlyHint: "This card belongs to an older turn.",
+  },
+  repoActions: {
+    chooseDir: "Choose a folder",
+    chooseParentDir: "Choose a parent folder",
+    repoNameTitle: "Repo name",
+    repoNamePlaceholder: "my-project",
+    repoUrlTitle: "Git URL",
+    repoUrlPlaceholder: "https://github.com/...",
+    addedToast: "Repo {{name}} added",
+    failedToast: "Failed: {{message}}",
+    noWorkspaceToast: "Could not prepare workspace",
+  },
+  slashLocal: {
+    addRepo: "Import existing folder",
+    newRepo: "Create new repo",
+    cloneRepo: "Clone from URL",
+  },
+  emptyMap: {
+    addRepoBtn: "Import existing",
+    newRepoBtn: "Create new",
+    cloneRepoBtn: "Clone",
+  },
 } as const;
