@@ -979,6 +979,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn repo_less_direction_can_back_a_generic_session() {
+        let db = Db::connect("sqlite::memory:").await.unwrap();
+        let ws = create_workspace(&db, "People Ops").await.unwrap();
+        let t = create_thread(&db, ws.id, "Draft offer email", "task", "codex")
+            .await
+            .unwrap();
+
+        let d = create_direction(&db, t.id, "Main run", "codex", 0, "", "plan+impl")
+            .await
+            .unwrap();
+        assert_eq!(d.repo_id, 0);
+        assert!(direction_repo_of(&db, d.id).await.unwrap().is_none());
+
+        let s = create_session(&db, d.id, 0, "codex", "/tmp/weft-run")
+            .await
+            .unwrap();
+        let latest = latest_session_for(&db, d.id, 0).await.unwrap().unwrap();
+        assert_eq!(latest.id, s.id);
+        assert_eq!(latest.cwd, "/tmp/weft-run");
+    }
+
+    #[tokio::test]
     async fn direction_repo_of_none_when_unset() {
         let db = mem().await;
         let ws = create_workspace(&db, "Demo WS").await.unwrap();

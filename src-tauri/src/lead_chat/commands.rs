@@ -15,6 +15,7 @@ pub struct SessionInfo {
     pub session_id: i32,
     pub repo: String,
     pub worktree: String,
+    pub cwd: String,
     pub branch: String,
     pub tool: String,
     pub resumed: bool,
@@ -399,6 +400,24 @@ pub async fn chat_open_worker(
     .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn chat_open_run(
+    app: AppHandle,
+    db: State<'_, Db>,
+    direction_id: i32,
+    lang: Option<String>,
+) -> Result<SessionInfo, String> {
+    chat_open_worker_impl(
+        &app,
+        &db,
+        direction_id,
+        0,
+        lang.as_deref().unwrap_or("en"),
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
 async fn chat_open_worker_impl(
     app: &AppHandle,
     db: &Db,
@@ -407,14 +426,29 @@ async fn chat_open_worker_impl(
     lang: &str,
 ) -> anyhow::Result<SessionInfo> {
     use sea_orm::EntityTrait;
-    let wt = repo::worktree_for(db, direction_id, repo_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("no materialized worktree for that direction+repo"))?;
     let dir = crate::store::entities::direction::Entity::find_by_id(direction_id)
         .one(&db.0)
         .await?
         .ok_or_else(|| anyhow::anyhow!("direction not found"))?;
-    let cwd = std::path::PathBuf::from(&wt.path);
+    let thread = repo::get_thread(db, dir.thread_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("thread not found"))?;
+    let workspace = crate::store::entities::workspace::Entity::find_by_id(thread.workspace_id)
+        .one(&db.0)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("workspace not found"))?;
+    let (cwd, branch) = if repo_id == 0 {
+        (
+            crate::paths::run_home(&workspace.slug, &thread.slug, &dir.slug)?,
+            String::new(),
+        )
+    } else {
+        let wt = repo::worktree_for(db, direction_id, repo_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("no materialized worktree for that direction+repo"))?;
+        (std::path::PathBuf::from(&wt.path), wt.branch)
+    };
+    let cwd_str = cwd.to_string_lossy().to_string();
 
     // Resume an earlier conversation when this slot already captured one.
     let prior = repo::latest_session_for(db, direction_id, repo_id).await?;
@@ -422,7 +456,7 @@ async fn chat_open_worker_impl(
     let resumed = native.is_some();
     let sess = match prior {
         Some(s) if s.native_session_id.is_some() => s,
-        _ => repo::create_session(db, direction_id, repo_id, &dir.tool, &wt.path).await?,
+        _ => repo::create_session(db, direction_id, repo_id, &dir.tool, &cwd_str).await?,
     };
 
     let base = app.state::<crate::BusBase>().0.clone();
@@ -440,9 +474,7 @@ async fn chat_open_worker_impl(
         &dir.tool,
         &cwd,
     );
-    if let Ok(Some(th)) = repo::get_thread(db, dir.thread_id).await {
-        crate::skills::inject_for(db, th.workspace_id, &cwd).await;
-    }
+    crate::skills::inject_for(db, thread.workspace_id, &cwd).await;
     let mut extra = ask.args;
     extra.extend(inj.args);
 
@@ -502,9 +534,10 @@ async fn chat_open_worker_impl(
 
     Ok(SessionInfo {
         session_id: sess.id,
-        repo: wt.path.clone(),
-        worktree: wt.path,
-        branch: wt.branch,
+        repo: cwd_str.clone(),
+        worktree: cwd_str.clone(),
+        cwd: cwd_str,
+        branch,
         tool: dir.tool,
         resumed,
         native_id: native,

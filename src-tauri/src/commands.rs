@@ -345,10 +345,33 @@ pub async fn create_direction(
     )
     .await
     .map_err(e)?;
-    materialize::materialize_direction(&db, dir.id)
-        .await
-        .map_err(e)?;
+    if repo_id != 0 {
+        materialize::materialize_direction(&db, dir.id)
+            .await
+            .map_err(e)?;
+    }
     Ok(dir)
+}
+
+#[tauri::command]
+pub async fn create_run(
+    db: State<'_, Db>,
+    thread_id: i32,
+    name: String,
+    tool: String,
+    reason: Option<String>,
+) -> R<entities::direction::Model> {
+    repo::create_direction(
+        &db,
+        thread_id,
+        &name,
+        &tool,
+        0,
+        reason.as_deref().unwrap_or(""),
+        "plan+impl",
+    )
+    .await
+    .map_err(e)
 }
 
 /// Set a task's lifecycle status (human override; the agent does this via the
