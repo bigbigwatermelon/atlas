@@ -16,6 +16,7 @@ mod claude;
 mod codex;
 mod codex_app_server;
 pub mod commands;
+mod commands_backup;
 pub mod config;
 mod coordinator;
 mod curator;
@@ -190,6 +191,12 @@ pub fn run() {
             commands::im_unbind_thread,
             commands::im_route_for_thread,
             commands::im_list_routes,
+            commands_backup::backup_get_status,
+            commands_backup::backup_save_prefs,
+            commands_backup::backup_test_remote,
+            commands_backup::backup_run_now,
+            commands_backup::backup_export_recovery_key,
+            commands_backup::backup_restore,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| fatal("running tauri application", e));
