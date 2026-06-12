@@ -37,6 +37,12 @@ toml = "0.8"
 keepawake = "0.6"
 open-lark = { version = "0.14", default-features = false, features = ["im", "websocket"] }
 tauri-plugin-process = "2.3.1"
+# SQLCipher: replace SQLite with the encrypted variant statically. The feature
+# must be declared on the top-level manifest so it propagates via Cargo feature
+# unification to sqlx-sqlite's indirect dep on libsqlite3-sys.
+libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher-vendored-openssl"] }
+keyring = "3"
+rand = "0.8"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
