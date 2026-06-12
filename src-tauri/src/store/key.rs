@@ -48,16 +48,21 @@ impl SqlCipherKey {
     }
 }
 
-/// Format key + salt as the SQLCipher `x'<64hex><32hex>'` literal.
+/// Format key + salt as the SQLCipher `"x'<64hex><32hex>'"` literal.
+/// The outer double quotes are REQUIRED: SQLCipher's `PRAGMA key` parser treats
+/// the value as a string and only then recognises the inner `x'...'` blob
+/// form. Sending the bare blob literal would yield "syntax error near x'...'".
 /// See https://www.zetetic.net/sqlcipher/sqlcipher-api/#example-3-raw-key-data-with-explicit-salt-without-key-derivation
 pub fn format_for_pragma(k: &SqlCipherKey) -> String {
     use std::fmt::Write;
-    let mut s = String::with_capacity(2 + 64 + 32 + 1);
+    let mut s = String::with_capacity(2 + 2 + 64 + 32 + 1);
+    s.push('"');
     s.push_str("x'");
     for b in k.key.iter().chain(k.salt.iter()) {
         let _ = write!(s, "{:02x}", b);
     }
     s.push('\'');
+    s.push('"');
     s
 }
 
@@ -134,12 +139,14 @@ mod tests {
         };
         let k = SqlCipherKey::from_bytes(&raw).unwrap();
         let s = format_for_pragma(&k);
-        assert!(s.starts_with("x'"));
-        assert!(s.ends_with('\''));
-        // 64 hex chars (key) + 32 hex chars (salt) + x'' = 99
-        assert_eq!(s.len(), 99);
+        // SQLCipher requires the blob literal to be wrapped in double quotes
+        // so its PRAGMA key parser accepts it as a string.
+        assert!(s.starts_with("\"x'"));
+        assert!(s.ends_with("'\""));
+        // 64 hex chars (key) + 32 hex chars (salt) + "x'' = 101
+        assert_eq!(s.len(), 101);
         // first key byte 00 → "00"; second 01 → "01"
-        assert_eq!(&s[2..6], "0001");
+        assert_eq!(&s[3..7], "0001");
     }
 
     #[test]
