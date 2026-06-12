@@ -96,6 +96,8 @@ export const api = {
     reason: string,
   ) =>
     invoke<Direction>("create_direction", { threadId, name, tool, repoId, reason }),
+  createRun: (threadId: number, name: string, tool: string, reason?: string) =>
+    invoke<Direction>("create_run", { threadId, name, tool, reason: reason ?? null }),
 
   listWorktrees: (directionId: number) =>
     invoke<Worktree[]>("list_worktrees", { directionId }),
@@ -125,6 +127,8 @@ export const api = {
   // Chat-mode workers (claude): same engine, keyed by session id.
   chatOpenWorker: (directionId: number, repoId: number, lang: string) =>
     invoke<SessionInfo>("chat_open_worker", { directionId, repoId, lang }),
+  chatOpenRun: (directionId: number, lang: string) =>
+    invoke<SessionInfo>("chat_open_run", { directionId, lang }),
   chatSend: (
     sessionId: number,
     text: string,

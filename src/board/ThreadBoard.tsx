@@ -184,6 +184,7 @@ function DirectionCard({
     repos,
     sessions,
     viewDirection,
+    driveRun,
     needs,
     asks,
     checksByDirection,
@@ -201,18 +202,37 @@ function DirectionCard({
   const hasNeed =
     needs.some((n) => n.direction_id === direction.id) ||
     asks.some((a) => a.dir === String(direction.id));
+  const isRepoLess = direction.repo_id === 0;
   const firstWrite = writes[0];
 
   const testsKind =
     failed > 0 ? "fail" : allChecks.length > 0 && passed === allChecks.length ? "pass" : "pend";
   // The review-column primary action is honest: open the actual diff for human
   // eyes (Task→PR is the delivery boundary; weft does not fake a PR step).
-  const action = hasNeed
-    ? { label: t("thread.handle"), variant: "primary" as const, diff: false }
-    : direction.status === "review"
-      ? { label: t("thread.viewChanges"), variant: "primary" as const, diff: true }
-      : { label: t("thread.openSession"), variant: "default" as const, diff: false };
+  const action =
+    isRepoLess && !hasNeed
+      ? { label: t("thread.openSession"), variant: "default" as const, diff: false }
+      : hasNeed
+        ? { label: t("thread.handle"), variant: "primary" as const, diff: false }
+        : direction.status === "review"
+          ? { label: t("thread.viewChanges"), variant: "primary" as const, diff: true }
+          : { label: t("thread.openSession"), variant: "default" as const, diff: false };
   const canRunReview = direction.status === "review";
+  const primaryDisabled = !isRepoLess && !firstWrite;
+  const primaryTitle = primaryDisabled ? t("thread.noWriteCopy") : undefined;
+  const onPrimary = () => {
+    if (isRepoLess) {
+      if (hasNeed) {
+        openNeeds();
+      } else {
+        void driveRun(direction.id, true);
+      }
+      return;
+    }
+    if (firstWrite) {
+      viewDirection(direction.id, firstWrite.repo_id, { diff: action.diff });
+    }
+  };
 
   return (
     <motion.div
@@ -322,12 +342,9 @@ function DirectionCard({
           <Button
             size="sm"
             variant={action.variant}
-            disabled={!firstWrite}
-            title={firstWrite ? undefined : t("thread.noWriteCopy")}
-            onClick={() =>
-              firstWrite &&
-              viewDirection(direction.id, firstWrite.repo_id, { diff: action.diff })
-            }
+            disabled={primaryDisabled}
+            title={primaryTitle}
+            onClick={onPrimary}
           >
             {action.diff ? <GitCompare size={13} /> : <TerminalSquare size={13} />}
             {action.label}

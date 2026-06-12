@@ -711,18 +711,49 @@ pub async fn session_for(
     direction_id: i32,
     repo_id: i32,
 ) -> R<Option<ObserveRef>> {
-    let wt = match repo::worktree_for(&db, direction_id, repo_id)
+    session_for_inner(&db, direction_id, repo_id).await
+}
+
+async fn session_for_inner(db: &Db, direction_id: i32, repo_id: i32) -> R<Option<ObserveRef>> {
+    let dir = match repo::get_direction(db, direction_id).await.map_err(e)? {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+
+    if repo_id == 0 {
+        use sea_orm::EntityTrait;
+
+        let thread = repo::get_thread(db, dir.thread_id)
+            .await
+            .map_err(e)?
+            .ok_or_else(|| "thread not found".to_string())?;
+        let workspace = entities::workspace::Entity::find_by_id(thread.workspace_id)
+            .one(&db.0)
+            .await
+            .map_err(e)?
+            .ok_or_else(|| "workspace not found".to_string())?;
+        let cwd = crate::paths::run_home(&workspace.slug, &thread.slug, &dir.slug).map_err(e)?;
+        let latest = repo::latest_session_for(db, direction_id, 0)
+            .await
+            .map_err(e)?;
+        return Ok(Some(ObserveRef {
+            worktree: cwd.to_string_lossy().to_string(),
+            branch: String::new(),
+            tool: dir.tool,
+            session_id: latest.as_ref().map(|s| s.id),
+            native_id: latest.as_ref().and_then(|s| s.native_session_id.clone()),
+            status: latest.as_ref().map(|s| s.status.clone()),
+        }));
+    }
+
+    let wt = match repo::worktree_for(db, direction_id, repo_id)
         .await
         .map_err(e)?
     {
         Some(w) => w,
         None => return Ok(None),
     };
-    let dir = match repo::get_direction(&db, direction_id).await.map_err(e)? {
-        Some(d) => d,
-        None => return Ok(None),
-    };
-    let latest = repo::latest_session_for(&db, direction_id, repo_id)
+    let latest = repo::latest_session_for(db, direction_id, repo_id)
         .await
         .map_err(e)?;
     Ok(Some(ObserveRef {
@@ -1036,4 +1067,79 @@ pub async fn im_route_for_thread(db: State<'_, Db>, thread_id: i32) -> R<Option<
 pub async fn im_list_routes(db: State<'_, Db>) -> R<Vec<ImRouteView>> {
     let rows = repo::list_im_routes(&db).await.map_err(e)?;
     Ok(rows.into_iter().map(route_view).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::Db;
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+
+    struct WeftHomeGuard {
+        old: Option<OsString>,
+        tmp: PathBuf,
+    }
+
+    impl WeftHomeGuard {
+        fn new(name: &str) -> Self {
+            let old = std::env::var_os("WEFT_HOME");
+            let tmp = std::env::temp_dir().join(format!(
+                "weft-commands-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::env::set_var("WEFT_HOME", &tmp);
+            Self { old, tmp }
+        }
+
+        fn path(&self) -> &Path {
+            &self.tmp
+        }
+    }
+
+    impl Drop for WeftHomeGuard {
+        fn drop(&mut self) {
+            if let Some(old) = self.old.take() {
+                std::env::set_var("WEFT_HOME", old);
+            } else {
+                std::env::remove_var("WEFT_HOME");
+            }
+            let _ = std::fs::remove_dir_all(&self.tmp);
+        }
+    }
+
+    #[tokio::test]
+    async fn session_for_repo_less_direction_returns_run_home_without_session() {
+        let _lock = crate::paths::ENV_LOCK.lock().unwrap();
+        let home = WeftHomeGuard::new("repo-less-session-for");
+        let db = Db::connect("sqlite::memory:").await.unwrap();
+        let ws = repo::create_workspace(&db, "People Ops").await.unwrap();
+        let thread = repo::create_thread(&db, ws.id, "Draft Offer", "task", "codex")
+            .await
+            .unwrap();
+        let dir = repo::create_direction(&db, thread.id, "Main Run", "codex", 0, "", "plan+impl")
+            .await
+            .unwrap();
+
+        let got = session_for_inner(&db, dir.id, 0).await.unwrap().unwrap();
+
+        let expected = home
+            .path()
+            .join("workspaces")
+            .join("people-ops")
+            .join("tasks")
+            .join("draft-offer")
+            .join("runs")
+            .join("main-run");
+        assert_eq!(got.worktree, expected.to_string_lossy().to_string());
+        assert_eq!(got.branch, "");
+        assert_eq!(got.tool, "codex");
+        assert_eq!(got.session_id, None);
+        assert_eq!(got.native_id, None);
+        assert_eq!(got.status, None);
+    }
 }

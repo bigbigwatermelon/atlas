@@ -61,6 +61,7 @@ export interface Direction {
   slug: string;
   tool: string;
   branch: string;
+  repo_id: number;
   /** agent/human-driven lifecycle: queued | planning | working | review | done. */
   status: string;
   /** worker mandate: "plan+impl" (plans its direction first) | "impl-only". */
@@ -81,6 +82,7 @@ export interface SessionInfo {
   session_id: number;
   repo: string;
   worktree: string;
+  cwd: string;
   branch: string;
   tool: string;
   resumed: boolean;

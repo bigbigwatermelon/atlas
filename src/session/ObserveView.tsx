@@ -20,6 +20,7 @@ export function ObserveView() {
   const {
     viewing,
     driveDirection,
+    driveRun,
     sessions,
     needs,
     asks,
@@ -106,13 +107,18 @@ export function ObserveView() {
   const uiStatus: SessionStatus =
     (liveSession?.status as SessionStatus) ??
     (ref?.status === "running" ? "running" : "idle");
+  const canShowDiff = !!ref && repoId !== 0 && ref.branch.trim() !== "";
 
   const onDrive = async () => {
     if (directionId == null || repoId == null) return;
     setDriving(true);
     setDriveError(null);
     try {
-      await driveDirection(directionId, repoId, true);
+      if (repoId === 0) {
+        await driveRun(directionId, true);
+      } else {
+        await driveDirection(directionId, repoId, true);
+      }
     } catch (e) {
       setDriveError(String(e));
     } finally {
@@ -133,7 +139,7 @@ export function ObserveView() {
                 {toolFullName(ref.tool)}
               </span>
             )}
-            {ref && (
+            {canShowDiff && (
               <button
                 onClick={() => setShowDiff(true)}
                 title={t("diff.tab")}
@@ -211,15 +217,17 @@ export function ObserveView() {
               extraActions={
                 ref && (
                   <>
-                    <Tooltip label={t("diff.tab")}>
-                      <button
-                        onClick={() => setShowDiff(true)}
-                        aria-label={t("diff.tab")}
-                        className="grid h-7 w-7 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
-                      >
-                        <GitCompare size={13} />
-                      </button>
-                    </Tooltip>
+                    {canShowDiff && (
+                      <Tooltip label={t("diff.tab")}>
+                        <button
+                          onClick={() => setShowDiff(true)}
+                          aria-label={t("diff.tab")}
+                          className="grid h-7 w-7 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
+                        >
+                          <GitCompare size={13} />
+                        </button>
+                      </Tooltip>
+                    )}
                     <Inspect
                       path={ref.worktree}
                       branch={ref.branch}
@@ -242,7 +250,7 @@ export function ObserveView() {
         )}
       </section>
 
-      {ref && (
+      {ref && canShowDiff && (
         <DiffPanel
           cwd={ref.worktree}
           open={showDiff}

@@ -188,11 +188,18 @@ interface Store {
     repoId: number,
     reason: string,
   ) => Promise<void>;
+  createRun: (
+    threadId: number,
+    name: string,
+    tool: string,
+    reason?: string,
+  ) => Promise<void>;
   deleteThread: (threadId: number) => Promise<void>;
 
   viewing: { directionId: number; repoId: number; diff?: boolean } | null;
   viewDirection: (directionId: number, repoId: number, opts?: { diff?: boolean }) => void;
   driveDirection: (directionId: number, repoId: number, focus: boolean) => Promise<void>;
+  driveRun: (directionId: number, focus: boolean) => Promise<void>;
   reviveDirection: (directionId: number) => Promise<void>;
   closeObserve: () => void;
   /** Set a task's lifecycle status (human override). */
@@ -731,6 +738,51 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [activeThreadId],
   );
 
+  const driveRun = useCallback(
+    async (directionId: number, focus: boolean) => {
+      const existing = Object.values(sessionsRef.current).find(
+        (s) =>
+          s.directionId === directionId &&
+          s.repoId === 0 &&
+          s.status !== "exited",
+      );
+      if (existing) {
+        if (focus) {
+          setActiveSessionId(existing.info.session_id);
+          setShowNeeds(false);
+          setHomeTab("board");
+        }
+        return;
+      }
+      const info = await api.chatOpenRun(directionId, currentLang());
+      autoCheckedRef.current.delete(directionId);
+      setSessions((m) => {
+        const pruned = Object.fromEntries(
+          Object.entries(m).filter(
+            ([, s]) => !(s.directionId === directionId && s.repoId === 0 && s.status === "exited"),
+          ),
+        );
+        return {
+          ...pruned,
+          [info.session_id]: {
+            info,
+            status: "running",
+            directionId,
+            repoId: 0,
+            threadId: activeThreadId ?? -1,
+            nativeId: info.native_id,
+          },
+        };
+      });
+      if (focus) {
+        setActiveSessionId(info.session_id);
+        setShowNeeds(false);
+        setHomeTab("board");
+      }
+    },
+    [activeThreadId],
+  );
+
   // Automation-first (§4 principle 7): once a task is materialized, dispatch its
   // worker(s) right away — every write worktree gets an agent, no human click.
   const dispatchDirection = useCallback(
@@ -759,11 +811,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch {
         return;
       }
+      if (wts.length === 0) {
+        const direction = Object.values(directionsByThread)
+          .flat()
+          .find((d) => d.id === directionId);
+        if (direction?.repo_id === 0) {
+          await driveRun(directionId, false);
+        }
+        return;
+      }
       for (const w of wts) {
         await driveDirection(directionId, w.repo_id, false);
       }
     },
-    [driveDirection],
+    [directionsByThread, driveDirection, driveRun],
   );
 
   const createDirection = useCallback(
@@ -779,6 +840,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       void dispatchDirection(dir.id);
     },
     [loadThreadChildren, dispatchDirection],
+  );
+
+  const createRun = useCallback(
+    async (threadId: number, name: string, tool: string, reason?: string) => {
+      const run = await api.createRun(threadId, name, tool, reason);
+      await loadThreadChildren(threadId);
+      await driveRun(run.id, false);
+    },
+    [loadThreadChildren, driveRun],
   );
 
   // ── Lead chat (weft-owned conversation; engine pushes via `lead-chat`) ──
@@ -1001,7 +1071,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         (s) => s.directionId === directionId && s.repoId === repoId && s.status !== "exited",
       );
       if (!sess) {
-        await driveDirection(directionId, repoId, false);
+        if (repoId === 0) {
+          await driveRun(directionId, false);
+        } else {
+          await driveDirection(directionId, repoId, false);
+        }
         sess = Object.values(sessionsRef.current).find(
           (s) => s.directionId === directionId && s.repoId === repoId && s.status !== "exited",
         );
@@ -1009,7 +1083,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!sess) return;
       await api.chatSend(sess.info.session_id, text);
     },
-    [driveDirection],
+    [driveDirection, driveRun],
   );
 
   const requestSkillReview = useCallback(
@@ -1495,10 +1569,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createRepo,
     createThread,
     createDirection,
+    createRun,
     deleteThread,
     viewing,
     viewDirection,
     driveDirection,
+    driveRun,
     reviveDirection,
     closeObserve,
     setTaskStatus,
