@@ -92,9 +92,6 @@ pub fn import_from(source: &Path) -> Result<SqlCipherKey> {
 mod tests {
     use super::*;
     use base64::Engine;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn iso_key_env() {
         let raw = [0x77u8; 48];
@@ -104,7 +101,9 @@ mod tests {
 
     #[test]
     fn export_then_import_roundtrip() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = crate::backup::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         iso_key_env();
         let tmp = tempfile::tempdir().unwrap();
         let p = tmp.path().join("rk.json");
@@ -117,7 +116,9 @@ mod tests {
 
     #[test]
     fn rejects_existing_export_target() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = crate::backup::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         iso_key_env();
         let tmp = tempfile::tempdir().unwrap();
         let p = tmp.path().join("rk.json");
@@ -127,7 +128,9 @@ mod tests {
 
     #[test]
     fn rejects_unknown_version() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = crate::backup::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         iso_key_env();
         let tmp = tempfile::tempdir().unwrap();
         let p = tmp.path().join("rk.json");

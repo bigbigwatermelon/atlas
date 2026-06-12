@@ -51,12 +51,6 @@ fn now_unix_secs() -> String {
 mod tests {
     use super::*;
     use base64::Engine;
-    use std::sync::Mutex;
-
-    // Cargo runs lib tests in parallel inside one process; `WEFT_HOME` and
-    // `WEFT_TEST_DB_KEY_B64` are process-global, so a second test stomping
-    // them mid-`open_default` corrupts the first. Serialize.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn iso_env(home: &std::path::Path) {
         std::env::set_var("WEFT_HOME", home);
@@ -67,7 +61,9 @@ mod tests {
 
     #[tokio::test]
     async fn writes_snapshot_and_meta() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = crate::backup::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         iso_env(tmp.path());
         let db = Db::open_default().await.unwrap();
@@ -89,7 +85,9 @@ mod tests {
 
     #[tokio::test]
     async fn overwrites_previous_snapshot() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = crate::backup::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         iso_env(tmp.path());
         let db = Db::open_default().await.unwrap();
