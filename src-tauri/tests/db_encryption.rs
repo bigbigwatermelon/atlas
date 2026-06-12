@@ -34,32 +34,6 @@ async fn open_default_creates_encrypted_db() {
     let tmp = tempfile::tempdir().unwrap();
     set_isolated_env(tmp.path());
 
-    // DEBUG: verify sqlcipher is actually linked.
-    {
-        use sea_orm::ConnectionTrait;
-        let conn = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
-        let row = conn
-            .query_one(sea_orm::Statement::from_string(
-                sea_orm::DbBackend::Sqlite,
-                "PRAGMA cipher_version;".to_owned(),
-            ))
-            .await
-            .unwrap();
-        let v: Option<String> = row.and_then(|r| {
-            r.try_get_by_index::<String>(0)
-                .ok()
-                .or_else(|| r.try_get::<String>("", "cipher_version").ok())
-        });
-        eprintln!("DEBUG cipher_version: {:?}", v);
-
-        // Also try the raw PRAGMA key directly to see what error message vanilla parser gives.
-        let url = format!("sqlite://{}/probe.db?mode=rwc", tmp.path().to_string_lossy());
-        let mut opt = sea_orm::ConnectOptions::new(url);
-        opt.sqlcipher_key("x'42424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242'");
-        let probe = sea_orm::Database::connect(opt).await;
-        eprintln!("DEBUG probe connect: {:?}", probe.map(|_| "ok"));
-    }
-
     let db = weft_app_lib::store::Db::open_default().await.unwrap();
 
     let p = db_path(tmp.path());
