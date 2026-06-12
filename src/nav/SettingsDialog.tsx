@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Bot,
   Boxes,
+  Database,
   FolderOpen,
   MessageSquare,
   Moon,
@@ -16,6 +17,7 @@ import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Toggle } from "../components/ui/Toggle";
 import { SkillsSettings } from "../components/SkillsSettings";
+import { BackupSettings } from "../settings/Backup";
 import { toolFullName } from "../components/ToolIcon";
 import { currentLang, setLang, type Lang } from "../i18n";
 import { api } from "../lib/api";
@@ -29,7 +31,7 @@ import {
 import { useStore } from "../state/store";
 import { useTheme } from "../state/theme";
 
-type SettingsPage = "general" | "appearance" | "automation" | "skills" | "im";
+type SettingsPage = "general" | "appearance" | "automation" | "skills" | "im" | "backup";
 
 type NavItem = {
   id: SettingsPage;
@@ -52,6 +54,7 @@ const NAV_GROUPS: { labelKey: string; items: NavItem[] }[] = [
     items: [
       { id: "skills", icon: Boxes, labelKey: "settings.skills", implemented: true },
       { id: "im", icon: MessageSquare, labelKey: "settings.im", implemented: true },
+      { id: "backup", icon: Database, labelKey: "settings.backup", implemented: true },
     ],
   },
 ];
@@ -129,6 +132,8 @@ export function SettingsScreen() {
               <AutomationSettings />
             ) : active === "im" ? (
               <ImSettings />
+            ) : active === "backup" ? (
+              <BackupSettings />
             ) : (
               <SkillsSettings />
             )}
