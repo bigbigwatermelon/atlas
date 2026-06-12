@@ -49,6 +49,58 @@ impl Db {
         Migrator::up(&conn, None).await?;
         Ok(Db(conn))
     }
+
+    /// Export the live SQLCipher database to `target`, encrypted with the same
+    /// key. Uses SQLCipher's `sqlcipher_export` (ATTACH … KEY …; SELECT
+    /// sqlcipher_export(…); DETACH …) to produce a transactionally consistent
+    /// copy — safer than a raw file copy under WAL. Refuses to overwrite an
+    /// existing file; if the export fails partway, the partial target is
+    /// removed so the caller never sees a corrupt file.
+    pub async fn snapshot_to(&self, target: &std::path::Path) -> anyhow::Result<()> {
+        use sea_orm::ConnectionTrait;
+
+        if target.exists() {
+            return Err(anyhow::anyhow!(
+                "snapshot target already exists: {}",
+                target.display()
+            ));
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let key = crate::store::key::get_or_create()?;
+        let key_lit = crate::store::key::format_for_pragma(&key);
+        // Defensive escape: SQL string-literal-style single-quote doubling for
+        // the file path. Normal paths don't contain single quotes; this guards
+        // the edge.
+        let target_str = target.to_string_lossy().replace('\'', "''");
+
+        let attach = format!(
+            "ATTACH DATABASE '{}' AS weft_snap KEY {};",
+            target_str, key_lit
+        );
+
+        let r = async {
+            self.0.execute_unprepared(&attach).await?;
+            self.0
+                .execute_unprepared("SELECT sqlcipher_export('weft_snap');")
+                .await?;
+            self.0
+                .execute_unprepared("DETACH DATABASE weft_snap;")
+                .await?;
+            Ok::<(), sea_orm::DbErr>(())
+        }
+        .await;
+
+        if let Err(e) = r {
+            if target.exists() {
+                let _ = std::fs::remove_file(target);
+            }
+            return Err(e.into());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
