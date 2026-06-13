@@ -439,9 +439,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshWorkspaces = useCallback(async () => {
+    const defaultWorkspaceId = await api.ensureDefaultWorkspace();
     const ws = await api.listWorkspaces();
     setWorkspaces(ws);
-    setActiveWorkspaceId((cur) => cur ?? ws[0]?.id ?? null);
+    setActiveWorkspaceId((cur) => cur ?? defaultWorkspaceId);
   }, []);
 
   const selectWorkspace = useCallback(async (id: number) => {

@@ -10,7 +10,6 @@ import { DangerToast } from "./components/DangerToast";
 import { Toasts } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import { NeedsDock } from "./components/NeedsDock";
-import { FirstRunOnboarding } from "./components/FirstRunOnboarding";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SettingsScreen } from "./nav/SettingsDialog";
 import { useAppShortcuts } from "./state/shortcuts";
@@ -78,7 +77,6 @@ function Shell() {
       <DangerToast />
       <Toasts />
       <CommandPalette />
-      <FirstRunOnboarding />
     </div>
   );
 }

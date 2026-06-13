@@ -6,7 +6,6 @@ import {
   HelpCircle,
   LayoutDashboard,
   PanelLeft,
-  Plus,
   Search,
   Settings,
   SquarePen,
@@ -14,7 +13,7 @@ import {
 } from "lucide-react";
 import { useStore } from "../state/store";
 import { useTheme } from "../state/theme";
-import { CreateThreadDialog, CreateWorkspaceDialog } from "../nav/dialogs";
+import { CreateThreadDialog } from "../nav/dialogs";
 import { cn } from "../lib/cn";
 
 type Command = {
@@ -34,7 +33,7 @@ export function openCommandPalette() {
 
 /**
  * ⌘K / Ctrl+K command palette — the silky cross-app jump (§ navigation unify).
- * One keystroke to reach any task or workspace surface without hunting the
+ * One keystroke to reach any task or app surface without hunting the
  * sidebar. Self-contained: a capture-phase window listener owns the hotkey (so
  * it beats any focused input), arrow/Enter drive selection.
  */
@@ -56,7 +55,7 @@ export function CommandPalette() {
   const [selected, setSelected] = useState(0);
   // The palette owns its dialogs (it's always mounted, unlike the rail which
   // unmounts when collapsed), so actions work regardless of sidebar state.
-  const [dialog, setDialog] = useState<null | "ws" | "thread">(null);
+  const [dialog, setDialog] = useState<null | "thread">(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
 
@@ -137,13 +136,6 @@ export function CommandPalette() {
             },
           ]
         : []),
-      {
-        key: "act-workspace",
-        group: t("palette.action"),
-        label: t("nav.newWorkspace"),
-        icon: <Plus size={14} />,
-        run: () => setDialog("ws"),
-      },
       {
         key: "act-theme",
         group: t("palette.action"),
@@ -300,7 +292,6 @@ export function CommandPalette() {
       )}
 
       <CreateThreadDialog open={dialog === "thread"} onOpenChange={(o) => !o && setDialog(null)} />
-      <CreateWorkspaceDialog open={dialog === "ws"} onOpenChange={(o) => !o && setDialog(null)} />
     </>
   );
 }

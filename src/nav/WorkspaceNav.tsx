@@ -1,10 +1,7 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import * as DM from "@radix-ui/react-dropdown-menu";
 import {
-  Check,
-  ChevronDown,
   HelpCircle,
   LayoutGrid,
   Pencil,
@@ -18,18 +15,14 @@ import { useStore } from "../state/store";
 import type { Thread } from "../lib/types";
 import { cn } from "../lib/cn";
 import { openCommandPalette } from "../components/CommandPalette";
-import { CreateThreadDialog, CreateWorkspaceDialog, RenameDialog } from "./dialogs";
+import { CreateThreadDialog, RenameDialog } from "./dialogs";
 
 export function WorkspaceNav() {
   const {
-    workspaces,
     activeWorkspaceId,
     threads,
-    selectWorkspace,
-    renameWorkspace,
     renameThread,
     backToWorkspace,
-    needsByWorkspace,
     homeTab,
     setHomeTab,
     activeThreadId,
@@ -40,21 +33,14 @@ export function WorkspaceNav() {
   } = useStore();
   // Live workspace-wide pending count for the Needs-you focal entry.
   const needsCount = needs.length + asks.length;
-  const [dlg, setDlg] = useState<null | "ws" | "thread">(null);
+  const [dlg, setDlg] = useState<null | "thread">(null);
   // Both rename surfaces store only an id and derive `initial` from the live
   // slice — so concurrent updates flow through instead of being captured.
-  const [renamingWsId, setRenamingWsId] = useState<number | null>(null);
   const [renamingThreadId, setRenamingThreadId] = useState<number | null>(null);
-  const active = workspaces.find((w) => w.id === activeWorkspaceId);
-  const renamingWs =
-    renamingWsId != null ? workspaces.find((w) => w.id === renamingWsId) ?? null : null;
+  const hasTaskContainer = activeWorkspaceId != null;
   const renamingThread =
     renamingThreadId != null ? threads.find((th) => th.id === renamingThreadId) ?? null : null;
   const { t } = useTranslation();
-  // Any OTHER workspace waiting on the human → flag it on the switcher.
-  const otherNeeds = workspaces.some(
-    (w) => w.id !== activeWorkspaceId && (needsByWorkspace[w.id] ?? 0) > 0,
-  );
   // On the workspace home (no thread / session open) — for highlighting the views.
   const onHome = activeThreadId == null && !showNeeds;
 
@@ -69,17 +55,6 @@ export function WorkspaceNav() {
           <img src="/weft-mark.svg" alt="" className="h-[18px] w-[18px]" draggable={false} />
           <span className="text-[15px] font-semibold tracking-[-0.01em] text-ink">weft</span>
         </button>
-        <div className="rounded-[var(--radius-md)] border border-border bg-bg/55 p-1">
-          <WorkspacePicker
-            workspaces={workspaces}
-            activeId={activeWorkspaceId}
-            needsByWorkspace={needsByWorkspace}
-            otherNeeds={otherNeeds}
-            onSelect={(id) => void selectWorkspace(id)}
-            onNew={() => setDlg("ws")}
-            onRename={(w) => setRenamingWsId(w.id)}
-          />
-        </div>
       </div>
 
       <div className="mx-2 mb-1 border-t border-border" />
@@ -99,7 +74,7 @@ export function WorkspaceNav() {
       </div>
 
       {/* primary actions */}
-      {active ? (
+      {hasTaskContainer ? (
         <>
           <div className="flex flex-col gap-0.5 px-2 py-1">
             <button
@@ -159,15 +134,9 @@ export function WorkspaceNav() {
         </>
       ) : (
         <>
-          <div className="px-2 py-1">
-            <button
-              onClick={() => setDlg("ws")}
-              className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-[13px] font-medium text-ink transition-colors hover:bg-brand-ghost"
-            >
-              <Plus size={14} className="text-brand" />
-              {t("nav.newWorkspace")}
-            </button>
-          </div>
+          <p className="px-4 py-3 text-[12px] leading-relaxed text-ink-faint">
+            {t("nav.preparingTasks")}
+          </p>
           <div className="flex-1" />
         </>
       )}
@@ -191,18 +160,7 @@ export function WorkspaceNav() {
         </button>
       </footer>
 
-      <CreateWorkspaceDialog open={dlg === "ws"} onOpenChange={(o) => !o && setDlg(null)} />
       <CreateThreadDialog open={dlg === "thread"} onOpenChange={(o) => !o && setDlg(null)} />
-      {renamingWs && (
-        <RenameDialog
-          open={renamingWsId != null}
-          onOpenChange={(o) => !o && setRenamingWsId(null)}
-          title={t("nav.renameWorkspace")}
-          label={t("dialog.workspaceName")}
-          initial={renamingWs.name}
-          onSubmit={(v) => renameWorkspace(renamingWs.id, v)}
-        />
-      )}
       {renamingThread && (
         <RenameDialog
           open={renamingThreadId != null}
@@ -358,102 +316,5 @@ function ThreadRow({ thread, onRename }: { thread: Thread; onRename: (id: number
         <Trash2 size={12} />
       </button>
     </li>
-  );
-}
-
-function WorkspacePicker({
-  workspaces,
-  activeId,
-  needsByWorkspace,
-  otherNeeds,
-  onSelect,
-  onNew,
-  onRename,
-}: {
-  workspaces: { id: number; name: string }[];
-  activeId: number | null;
-  needsByWorkspace: Record<number, number>;
-  otherNeeds: boolean;
-  onSelect: (id: number) => void;
-  onNew: () => void;
-  onRename: (w: { id: number; name: string }) => void;
-}) {
-  const active = workspaces.find((w) => w.id === activeId);
-  const { t } = useTranslation();
-  return (
-    <DM.Root>
-      <DM.Trigger className="flex w-full min-w-0 items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[13px] font-medium text-ink outline-none transition-colors hover:bg-brand-ghost data-[state=open]:bg-brand-ghost">
-        <span className="min-w-0 flex-1 truncate text-left">{active?.name ?? t("nav.noWorkspace")}</span>
-        {otherNeeds && (
-          <span title={t("nav.otherWorkspaceNeeds")} className="h-1.5 w-1.5 shrink-0 rounded-full bg-waiting" />
-        )}
-        <ChevronDown size={13} className="shrink-0 text-ink-faint" />
-      </DM.Trigger>
-      <DM.Portal>
-        <DM.Content
-          align="start"
-          sideOffset={5}
-          className="weft-pop z-[60] w-56 rounded-[var(--radius-md)] border border-border bg-raised p-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)]"
-        >
-          {workspaces.map((w) => {
-            const count = needsByWorkspace[w.id] ?? 0;
-            const isActive = w.id === activeId;
-            return (
-              <DM.Item
-                key={w.id}
-                onSelect={() => onSelect(w.id)}
-                className={cn(
-                  "group flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink",
-                  isActive ? "text-ink" : "text-ink-muted",
-                )}
-              >
-                <Check size={13} className={cn("shrink-0", isActive ? "text-brand" : "text-transparent")} />
-                <span className="min-w-0 flex-1 truncate">{w.name}</span>
-                {/* only flag OTHER workspaces — the current one is shown in-app */}
-                {!isActive && count > 0 && (
-                  <span className="rounded-full bg-waiting/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-waiting">
-                    {count}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  // Mouse-only affordance: keyboard users have a dedicated
-                  // "Rename current workspace" menu item below the list. We
-                  // hide this from keyboard/AT so we don't nest a focusable
-                  // button inside a DM.Item (role=menuitem).
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  title={t("nav.renameWorkspace")}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onPointerUp={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRename(w);
-                  }}
-                  className="grid h-5 w-5 shrink-0 place-items-center rounded text-ink-faint opacity-0 transition-opacity hover:text-ink group-hover:opacity-100 group-data-[highlighted]:opacity-100"
-                >
-                  <Pencil size={12} />
-                </button>
-              </DM.Item>
-            );
-          })}
-          <DM.Separator className="my-1 h-px bg-border" />
-          {active && (
-            <DM.Item
-              onSelect={() => onRename(active)}
-              className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] text-ink-muted outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink"
-            >
-              <Pencil size={13} /> {t("nav.renameWorkspace")}
-            </DM.Item>
-          )}
-          <DM.Item
-            onSelect={onNew}
-            className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] text-ink-muted outline-none data-[highlighted]:bg-brand-ghost data-[highlighted]:text-ink"
-          >
-            <Plus size={13} /> {t("nav.newWorkspace")}
-          </DM.Item>
-        </DM.Content>
-      </DM.Portal>
-    </DM.Root>
   );
 }
