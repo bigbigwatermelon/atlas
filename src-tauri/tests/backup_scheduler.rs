@@ -30,6 +30,24 @@ fn make_bare(parent: &std::path::Path) -> String {
     format!("file://{}", bare.to_string_lossy())
 }
 
+#[test]
+fn spawn_does_not_require_current_tokio_reactor() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    iso_env(tmp.path());
+    let db = tauri::async_runtime::block_on(async { Db::open_default().await.unwrap() });
+    let svc = BackupService::new(db, tmp.path().to_path_buf());
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        scheduler::spawn(svc);
+    }));
+
+    assert!(
+        result.is_ok(),
+        "scheduler startup should use Tauri's runtime instead of requiring a current Tokio reactor"
+    );
+}
+
 #[tokio::test]
 async fn scheduler_fires_at_least_once_when_interval_short() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());

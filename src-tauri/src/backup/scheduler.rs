@@ -14,10 +14,10 @@ use tokio::time::{Instant, sleep_until};
 use crate::backup::{BackupService, config};
 
 /// Spawn the long-lived scheduler task. The handle is intentionally discarded
-/// — the task lives for the lifetime of the tokio runtime, which dies with
+/// — the task lives for the lifetime of Tauri's async runtime, which dies with
 /// the Tauri app process, so there's nothing to join.
 pub fn spawn(svc: BackupService) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         loop {
             let next_in = match next_delay(&svc).await {
                 Ok(d) => d,
