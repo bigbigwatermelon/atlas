@@ -22,7 +22,7 @@ pub fn spawn(svc: BackupService) {
             let next_in = match next_delay(&svc).await {
                 Ok(d) => d,
                 Err(e) => {
-                    eprintln!("[weft][backup] scheduler tick read config failed: {e:#}");
+                    eprintln!("[atlas][backup] scheduler tick read config failed: {e:#}");
                     Duration::from_secs(60)
                 }
             };
@@ -77,7 +77,7 @@ pub async fn run_on_exit(svc: &BackupService) {
     let fut = svc.run_now();
     match tokio::time::timeout(Duration::from_secs(10), fut).await {
         Ok(Ok(_)) => {}
-        Ok(Err(e)) => eprintln!("[weft][backup] on-exit backup failed: {e:#}"),
+        Ok(Err(e)) => eprintln!("[atlas][backup] on-exit backup failed: {e:#}"),
         Err(_) => {
             let _ = config::record_failure(svc.db(), "timeout on exit").await;
         }

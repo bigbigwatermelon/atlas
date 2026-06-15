@@ -1,4 +1,4 @@
-use weft_app_lib::lead_chat::commands::lead_prompt;
+use atlas_app_lib::lead_chat::commands::lead_prompt;
 
 #[test]
 fn lead_prompt_is_generic_agent_app_copy() {

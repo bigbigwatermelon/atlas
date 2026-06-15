@@ -60,7 +60,7 @@ pub fn router(bus: BusRegistry, db: Db, asks: AskRegistry) -> Router {
         .with_state(ServerState { bus, db, asks })
 }
 
-/// How long weft holds a permission Ask before letting the tool fall back to its
+/// How long atlas holds a permission Ask before letting the tool fall back to its
 /// own prompt. Kept under the hook's own timeout so the fallback is clean.
 // Hold the tool call until the human answers in Needs-you. Long by design
 // (automation-first): a permission decision is the human's to make, so we wait
@@ -69,7 +69,7 @@ pub fn router(bus: BusRegistry, db: Db, asks: AskRegistry) -> Router {
 const ASK_WAIT: Duration = Duration::from_secs(3600);
 
 /// The Ask Bridge endpoint. A tool's permission hook POSTs its PreToolUse-style
-/// payload here and BLOCKS until the human answers in weft (→ allow/deny) or the
+/// payload here and BLOCKS until the human answers in atlas (→ allow/deny) or the
 /// wait elapses (→ empty body, so the tool runs its own prompt — never a
 /// silent stall). Identity (thread/dir) comes from the URL path, not the body.
 async fn handle_ask(
@@ -87,7 +87,7 @@ async fn handle_ask(
 
     // A standing rule (full access / always-allow) decides without surfacing.
     if asks.auto_decision(thread, &dir, &summary) == Some(Decision::Allow) {
-        return hook_decision("allow", "Auto-approved by a weft rule");
+        return hook_decision("allow", "Auto-approved by a atlas rule");
     }
 
     let (id, rx) = asks.request(thread, &dir, tool, &summary, &detail);
@@ -95,8 +95,8 @@ async fn handle_ask(
     match tokio::time::timeout(ASK_WAIT, rx).await {
         Ok(Ok(decision)) => {
             let (d, reason) = match decision {
-                Decision::Allow => ("allow", "Approved in weft"),
-                Decision::Deny => ("deny", "Denied in weft"),
+                Decision::Allow => ("allow", "Approved in atlas"),
+                Decision::Deny => ("deny", "Denied in atlas"),
             };
             hook_decision(d, reason)
         }
@@ -178,7 +178,7 @@ async fn handle(
         "initialize" => json!({
             "protocolVersion": "2024-11-05",
             "capabilities": { "tools": { "listChanged": false } },
-            "serverInfo": { "name": "weft_bus", "version": "1.0.0" }
+            "serverInfo": { "name": "atlas_bus", "version": "1.0.0" }
         }),
         "tools/list" => json!({ "tools": tool_specs() }),
         "tools/call" => {
@@ -284,7 +284,7 @@ async fn handle_planner(
         "initialize" => json!({
             "protocolVersion": "2024-11-05",
             "capabilities": { "tools": { "listChanged": false } },
-            "serverInfo": { "name": "weft_planner", "version": "1.0.0" }
+            "serverInfo": { "name": "atlas_planner", "version": "1.0.0" }
         }),
         "tools/list" => json!({ "tools": planner_specs() }),
         "tools/call" => {
@@ -355,7 +355,7 @@ fn tool_specs() -> Value {
         },
         {
             "name": "ask_human",
-            "description": "Ask the human operator a question that only they can decide (a judgment call, a missing requirement, an approval). Surfaces in weft's Needs-you inbox; their answer returns via bus_inbox. Non-blocking — keep working and check your inbox.",
+            "description": "Ask the human operator a question that only they can decide (a judgment call, a missing requirement, an approval). Surfaces in atlas's Needs-you inbox; their answer returns via bus_inbox. Non-blocking — keep working and check your inbox.",
             "inputSchema": { "type": "object",
                 "properties": { "text": str_prop() }, "required": ["text"] }
         },

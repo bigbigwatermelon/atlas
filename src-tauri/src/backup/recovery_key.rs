@@ -10,7 +10,7 @@ use std::path::Path;
 use crate::store::key::SqlCipherKey;
 
 const FORMAT_VERSION: u32 = 1;
-const KEYCHAIN_SERVICE: &str = "weft";
+const KEYCHAIN_SERVICE: &str = "atlas";
 const KEYCHAIN_ACCOUNT: &str = "db-key-v1";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -24,7 +24,7 @@ struct RecoveryKeyFile {
 }
 
 const NOTE: &str =
-    "Keep this file safe. Anyone with this file AND your backup repo can decrypt your Weft data.";
+    "Keep this file safe. Anyone with this file AND your backup repo can decrypt your Atlas data.";
 
 /// Read the live key out of the Keychain (or env bypass) and write it to
 /// `target` (must not exist) as pretty-printed JSON.
@@ -55,7 +55,7 @@ pub fn export_to(target: &Path) -> Result<()> {
 }
 
 /// Read `source`, validate format, and write the key back into the Keychain
-/// (overwriting any existing entry). When `WEFT_TEST_DB_KEY_B64` is set, we
+/// (overwriting any existing entry). When `ATLAS_TEST_DB_KEY_B64` is set, we
 /// only validate format and return the parsed key without touching the OS
 /// Keychain — same bypass policy as `store::key`.
 pub fn import_from(source: &Path) -> Result<SqlCipherKey> {
@@ -75,7 +75,7 @@ pub fn import_from(source: &Path) -> Result<SqlCipherKey> {
         .map_err(|e| anyhow!("decode key_b64: {e}"))?;
     let key = SqlCipherKey::from_bytes(&raw)?;
 
-    if std::env::var("WEFT_TEST_DB_KEY_B64").is_ok() {
+    if std::env::var("ATLAS_TEST_DB_KEY_B64").is_ok() {
         return Ok(key);
     }
 
@@ -96,12 +96,12 @@ mod tests {
     fn iso_key_env() {
         let raw = [0x77u8; 48];
         let b64 = base64::engine::general_purpose::STANDARD.encode(raw);
-        std::env::set_var("WEFT_TEST_DB_KEY_B64", &b64);
+        std::env::set_var("ATLAS_TEST_DB_KEY_B64", &b64);
     }
 
     #[test]
     fn export_then_import_roundtrip() {
-        let _g = crate::backup::TEST_ENV_LOCK
+        let _g = crate::paths::ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         iso_key_env();
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn rejects_existing_export_target() {
-        let _g = crate::backup::TEST_ENV_LOCK
+        let _g = crate::paths::ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         iso_key_env();
@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_version() {
-        let _g = crate::backup::TEST_ENV_LOCK
+        let _g = crate::paths::ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         iso_key_env();
@@ -136,7 +136,7 @@ mod tests {
         let p = tmp.path().join("rk.json");
         std::fs::write(
             &p,
-            br#"{"version":99,"service":"weft","account":"db-key-v1","key_b64":"AA==","exported_at":"0","note":""}"#,
+            br#"{"version":99,"service":"atlas","account":"db-key-v1","key_b64":"AA==","exported_at":"0","note":""}"#,
         )
         .unwrap();
         assert!(import_from(&p).is_err());

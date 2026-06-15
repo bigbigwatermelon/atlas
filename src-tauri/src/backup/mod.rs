@@ -1,7 +1,7 @@
 //! Git-remote backup of the local SQLCipher database.
 //!
 //! - `config`: singleton backup_config repo
-//! - `snapshot`: writes `weft.db` + meta json to a staging dir
+//! - `snapshot`: writes `atlas.db` + meta json to a staging dir
 //! - `git_remote`: shells out to the system `git` CLI
 //! - `recovery_key`: Recovery Key file format
 //! - `scheduler`: hourly tick + on-exit hook
@@ -20,12 +20,6 @@ pub mod git_remote;
 pub mod recovery_key;
 pub mod scheduler;
 pub mod snapshot;
-
-// Shared env-mutation lock for in-process backup tests. Every submodule that
-// pokes `WEFT_HOME` / `WEFT_TEST_DB_KEY_B64` must take this same mutex, or
-// parallel tests will trample each other mid-`open_default`.
-#[cfg(test)]
-pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// App-level backup handle. Held in Tauri state; scheduler and commands both
 /// share the same instance so they cannot race.
@@ -115,20 +109,20 @@ impl BackupService {
     }
 
     /// Pull a backup snapshot down from `remote_url`, validate it against this
-    /// build's schema, and lay `weft.db` back into `<home>/weft.db`. Also
+    /// build's schema, and lay `atlas.db` back into `<home>/atlas.db`. Also
     /// writes the key in `recovery_key_path` back into the Keychain so the
     /// next `Db::open_default` can decrypt it.
     ///
-    /// Safety: refuses to run when `<home>/weft.db` already exists — restore
+    /// Safety: refuses to run when `<home>/atlas.db` already exists — restore
     /// is a destructive operation; the caller must move/delete the old db
     /// deliberately. The caller is expected to prompt the user to restart
-    /// Weft after this succeeds.
+    /// Atlas after this succeeds.
     pub async fn restore_from(
         &self,
         remote_url: &str,
         recovery_key_path: &std::path::Path,
     ) -> Result<()> {
-        let db_path = self.home.join("weft.db");
+        let db_path = self.home.join("atlas.db");
         if db_path.exists() {
             return Err(anyhow::anyhow!(
                 "refusing to restore: {} already exists; remove it first",
@@ -145,7 +139,7 @@ impl BackupService {
         }
         git_remote::clone_to(&tmp, remote_url)?;
 
-        let meta_path = tmp.join(".weft-backup-meta.json");
+        let meta_path = tmp.join(".atlas-backup-meta.json");
         let meta_bytes = std::fs::read(&meta_path)
             .map_err(|e| anyhow::anyhow!("read backup meta {}: {e}", meta_path.display()))?;
         let meta: serde_json::Value = serde_json::from_slice(&meta_bytes)?;
@@ -155,15 +149,15 @@ impl BackupService {
         if backup_version > current_version {
             let _ = std::fs::remove_dir_all(&tmp);
             return Err(anyhow::anyhow!(
-                "backup schema {backup_version} is newer than this Weft ({current_version}); upgrade Weft first"
+                "backup schema {backup_version} is newer than this Atlas ({current_version}); upgrade Atlas first"
             ));
         }
 
-        let snap = tmp.join("weft.db");
+        let snap = tmp.join("atlas.db");
         if !snap.exists() {
             let _ = std::fs::remove_dir_all(&tmp);
             return Err(anyhow::anyhow!(
-                "backup repo missing weft.db: {}",
+                "backup repo missing atlas.db: {}",
                 snap.display()
             ));
         }
@@ -189,15 +183,17 @@ mod tests {
     use base64::Engine;
 
     fn iso_env(home: &std::path::Path) {
-        std::env::set_var("WEFT_HOME", home);
+        std::env::set_var("ATLAS_HOME", home);
         let raw = [0xA1u8; 48];
         let b64 = base64::engine::general_purpose::STANDARD.encode(raw);
-        std::env::set_var("WEFT_TEST_DB_KEY_B64", &b64);
+        std::env::set_var("ATLAS_TEST_DB_KEY_B64", &b64);
     }
 
     #[tokio::test]
     async fn run_now_returns_disabled_when_unconfigured() {
-        let _g = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = crate::paths::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         iso_env(tmp.path());
         let db = Db::open_default().await.unwrap();
@@ -208,7 +204,9 @@ mod tests {
 
     #[tokio::test]
     async fn staging_dir_is_deterministic_per_url() {
-        let _g = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = crate::paths::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         iso_env(tmp.path());
         let db = Db::open_default().await.unwrap();

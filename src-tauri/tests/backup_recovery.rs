@@ -4,15 +4,15 @@
 use base64::Engine;
 use std::process::Command;
 use std::sync::Mutex;
-use weft_app_lib::backup::{BackupService, config, recovery_key};
-use weft_app_lib::store::Db;
+use atlas_app_lib::backup::{BackupService, config, recovery_key};
+use atlas_app_lib::store::Db;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn iso_env_with(home: &std::path::Path, key: [u8; 48]) {
-    std::env::set_var("WEFT_HOME", home);
+    std::env::set_var("ATLAS_HOME", home);
     let b64 = base64::engine::general_purpose::STANDARD.encode(key);
-    std::env::set_var("WEFT_TEST_DB_KEY_B64", &b64);
+    std::env::set_var("ATLAS_TEST_DB_KEY_B64", &b64);
 }
 
 fn make_bare(parent: &std::path::Path) -> String {
@@ -61,7 +61,7 @@ async fn backup_then_restore_roundtrip() {
         let r = svc.run_now().await.unwrap();
         assert!(matches!(
             r,
-            weft_app_lib::backup::RunOutcome::Success { .. }
+            atlas_app_lib::backup::RunOutcome::Success { .. }
         ));
     }
 
@@ -70,10 +70,10 @@ async fn backup_then_restore_roundtrip() {
 
     // Simulate "new machine": wipe the local db file so restore_from accepts
     // the operation.
-    std::fs::remove_file(home.join("weft.db")).unwrap();
+    std::fs::remove_file(home.join("atlas.db")).unwrap();
     // Also remove WAL/journal sidecars if SQLCipher left any.
-    let _ = std::fs::remove_file(home.join("weft.db-wal"));
-    let _ = std::fs::remove_file(home.join("weft.db-shm"));
+    let _ = std::fs::remove_file(home.join("atlas.db-wal"));
+    let _ = std::fs::remove_file(home.join("atlas.db-shm"));
 
     // restore_from only touches files + Keychain; the Db handle it holds is
     // unused, so a throwaway in-memory db is fine.
