@@ -1,0 +1,8 @@
+{
+  "name": "open-computer-use",
+  "upstream": "https://github.com/iFurySt/open-codex-computer-use",
+  "license": "MIT",
+  "pinnedRef": "b753b790cace188152ffb755cd13b2ac9ff6ebf7",
+  "binary": "open-computer-use",
+  "notes": "Pinned to upstream main commit b753b790cace188152ffb755cd13b2ac9ff6ebf7, resolved on 2026-06-16 for the first Atlas integration plan."
+}
