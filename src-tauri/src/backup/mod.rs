@@ -135,9 +135,6 @@ impl BackupService {
     /// connection.
     pub async fn restore_from(&self, remote_url: &str, recovery_key_path: &Path) -> Result<()> {
         let _guard = self.lock.lock().await;
-        let db_path = self.home.join("atlas.db");
-        self.ensure_restore_target_is_shell(&db_path).await?;
-
         let imported = recovery_key::read_from(recovery_key_path)?;
         let tmp = self.home.join("backup-restore-tmp");
         if tmp.exists() {
@@ -163,6 +160,8 @@ impl BackupService {
                 ));
             }
             verify_snapshot_with_key(&snap, &imported).await?;
+            let db_path = self.home.join("atlas.db");
+            self.ensure_restore_target_is_shell(&db_path).await?;
             self.stage_pending_restore(&snap, recovery_key_path, backup_version)?;
             Ok(())
         }
@@ -288,7 +287,16 @@ fn read_backup_schema_version(clone_dir: &Path) -> Result<usize> {
     let meta_bytes = std::fs::read(&meta_path)
         .map_err(|e| anyhow::anyhow!("read backup meta {}: {e}", meta_path.display()))?;
     let meta: serde_json::Value = serde_json::from_slice(&meta_bytes)?;
-    Ok(meta["schema_version"].as_u64().unwrap_or(0) as usize)
+    let schema_version = meta
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "backup meta {} missing numeric schema_version",
+                meta_path.display()
+            )
+        })?;
+    Ok(schema_version as usize)
 }
 
 fn current_schema_version() -> usize {

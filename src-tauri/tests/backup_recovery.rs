@@ -135,6 +135,45 @@ async fn make_backup(
     (url, rk_path)
 }
 
+async fn make_backup_with_meta_override(
+    root: &Path,
+    key: [u8; 48],
+    workspace: &str,
+    meta: &str,
+) -> (String, PathBuf) {
+    let source_home = root.join(format!("{workspace}-home"));
+    let (url, rk_path) = make_backup(root, &source_home, key, workspace).await;
+    let work = root.join(format!("{workspace}-meta-work"));
+    sh(
+        root,
+        &[
+            "git",
+            "clone",
+            "--branch",
+            "main",
+            &url,
+            work.to_str().unwrap(),
+        ],
+    );
+    std::fs::write(work.join(".atlas-backup-meta.json"), meta).unwrap();
+    sh(&work, &["git", "add", ".atlas-backup-meta.json"]);
+    sh(
+        &work,
+        &[
+            "git",
+            "-c",
+            "user.email=atlas@local",
+            "-c",
+            "user.name=Atlas",
+            "commit",
+            "-m",
+            "corrupt backup meta",
+        ],
+    );
+    sh(&work, &["git", "push", "origin", "HEAD:refs/heads/main"]);
+    (url, rk_path)
+}
+
 #[tokio::test]
 async fn backup_then_restore_roundtrip() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -223,28 +262,35 @@ async fn restore_allows_auto_default_workspace_shell() {
 async fn restore_refuses_when_db_has_non_default_workspace() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
-    iso_env_with(tmp.path(), [0x12u8; 48]);
+    let key = [0x12u8; 48];
+    let source_home = tmp.path().join("source-home");
+    let (url, rk) = make_backup(tmp.path(), &source_home, key, "valid-source").await;
+
+    let target_home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&target_home).unwrap();
+    iso_env_with(&target_home, key);
     let db = Db::open_default().await.unwrap();
     insert_workspace(&db, "keep-me").await;
-    let svc = BackupService::new(db, tmp.path().to_path_buf());
-    let rk = tmp.path().join("rk.json");
-    std::fs::write(&rk, b"{}").unwrap();
-    let err = svc
-        .restore_from("file:///nonexistent", &rk)
-        .await
-        .err()
-        .expect("must error");
+    let svc = BackupService::new(db, target_home.clone());
+    let err = svc.restore_from(&url, &rk).await.err().expect("must error");
     assert!(
         err.to_string().contains("contains existing Atlas data"),
         "got: {err:#}"
     );
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&target_home));
 }
 
 #[tokio::test]
 async fn restore_refuses_when_default_workspace_has_repo() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
-    iso_env_with(tmp.path(), [0x13u8; 48]);
+    let key = [0x13u8; 48];
+    let source_home = tmp.path().join("source-home");
+    let (url, rk) = make_backup(tmp.path(), &source_home, key, "valid-source").await;
+
+    let target_home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&target_home).unwrap();
+    iso_env_with(&target_home, key);
     let db = Db::open_default().await.unwrap();
     let default_id = ensure_default_workspace_inner(&db).await.unwrap();
     db.0.execute_unprepared(
@@ -256,18 +302,13 @@ async fn restore_refuses_when_default_workspace_has_repo() {
     .unwrap();
     assert_eq!(default_id, 1);
 
-    let svc = BackupService::new(db, tmp.path().to_path_buf());
-    let rk = tmp.path().join("rk.json");
-    std::fs::write(&rk, b"{}").unwrap();
-    let err = svc
-        .restore_from("file:///nonexistent", &rk)
-        .await
-        .err()
-        .expect("must error");
+    let svc = BackupService::new(db, target_home.clone());
+    let err = svc.restore_from(&url, &rk).await.err().expect("must error");
     assert!(
         err.to_string().contains("contains existing Atlas data"),
         "got: {err:#}"
     );
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&target_home));
 }
 
 #[tokio::test]
@@ -334,6 +375,53 @@ async fn invalid_remote_or_meta_does_not_delete_current_db_or_stage_restore() {
     assert!(home.join("atlas.db").exists());
     assert!(!atlas_app_lib::backup::pending_restore_exists(&home));
     assert_eq!(workspace_count(&db).await, 0);
+}
+
+#[tokio::test]
+async fn malformed_meta_with_snapshot_does_not_stage_restore() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let key = [0x33u8; 48];
+
+    let missing_schema_root = tmp.path().join("missing-schema");
+    std::fs::create_dir_all(&missing_schema_root).unwrap();
+    let (missing_schema_url, missing_schema_rk) =
+        make_backup_with_meta_override(&missing_schema_root, key, "missing-schema", "{}").await;
+
+    let non_numeric_root = tmp.path().join("non-numeric-schema");
+    std::fs::create_dir_all(&non_numeric_root).unwrap();
+    let (non_numeric_url, non_numeric_rk) = make_backup_with_meta_override(
+        &non_numeric_root,
+        key,
+        "non-numeric-schema",
+        r#"{"schema_version":"1"}"#,
+    )
+    .await;
+
+    let home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&home).unwrap();
+    iso_env_with(&home, key);
+    let db = Db::open_default().await.unwrap();
+    let _ = config::load(&db).await.unwrap();
+    let svc = BackupService::new(db.clone(), home.clone());
+
+    for (url, rk) in [
+        (missing_schema_url, missing_schema_rk),
+        (non_numeric_url, non_numeric_rk),
+    ] {
+        let err = svc
+            .restore_from(&url, &rk)
+            .await
+            .err()
+            .expect("must reject malformed schema_version");
+        assert!(
+            err.to_string().contains("missing numeric schema_version"),
+            "got: {err:#}"
+        );
+        assert!(home.join("atlas.db").exists());
+        assert!(!atlas_app_lib::backup::pending_restore_exists(&home));
+        assert_eq!(workspace_count(&db).await, 0);
+    }
 }
 
 #[tokio::test]
