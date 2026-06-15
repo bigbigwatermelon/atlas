@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "preflight": "scripts/preflight.sh",
+    "preflight:quick": "scripts/preflight.sh --quick",
     "tauri": "tauri"
   },
   "dependencies": {

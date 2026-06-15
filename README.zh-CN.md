@@ -106,11 +106,13 @@ worker 产生的权限请求和 agent 提问可以镜像到飞书/Lark 交互卡
 ## 本地开发
 
 ```bash
-npm install
-npm run dev          # Vite 前端
-npm run build        # TypeScript 检查 + 生产前端 bundle
-npm run tauri dev    # 完整桌面应用
-npm run tauri build  # release app bundle
+pnpm install
+pnpm dev             # Vite 前端
+pnpm build           # TypeScript 检查 + 生产前端 bundle
+pnpm preflight:quick # 快速本地 PR 前检查
+pnpm preflight       # 完整本地 PR 前检查
+pnpm tauri dev       # 完整桌面应用
+pnpm tauri build     # release app bundle
 cd src-tauri && cargo test
 git diff --check
 ```

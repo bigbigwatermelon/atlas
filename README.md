@@ -118,11 +118,13 @@ long-running semantic Curator.
 ## Development
 
 ```bash
-npm install
-npm run dev          # Vite frontend
-npm run build        # TypeScript check + production frontend bundle
-npm run tauri dev    # full desktop app
-npm run tauri build  # release app bundle
+pnpm install
+pnpm dev             # Vite frontend
+pnpm build           # TypeScript check + production frontend bundle
+pnpm preflight:quick # fast local pre-PR gate
+pnpm preflight       # full local pre-PR gate
+pnpm tauri dev       # full desktop app
+pnpm tauri build     # release app bundle
 cd src-tauri && cargo test
 git diff --check
 ```
