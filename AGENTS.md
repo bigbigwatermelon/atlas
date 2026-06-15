@@ -35,7 +35,7 @@ History uses short conventional prefixes such as `feat(plan): ...`, `fix(store):
 
 PRs should include a concise summary, verification commands and results, linked issue/task when applicable, and screenshots or short recordings for visible UI changes.
 
-## Codex Automated Review Guidelines
+## Review guidelines
 
 When Codex reviews a pull request, review the PR diff against its base branch and focus on correctness, security, data safety, regression risk, and missing tests. Lead with actionable findings ordered by severity and include exact file and line references where possible. Avoid style-only comments unless they mask a real bug.
 
