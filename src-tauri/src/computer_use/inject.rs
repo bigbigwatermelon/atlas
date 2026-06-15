@@ -1,1 +1,223 @@
-// Placeholder for injecting Computer Use tools into agent sessions.
+#![allow(dead_code)]
+
+use crate::bus::inject::Injection;
+use std::path::{Path, PathBuf};
+
+const SERVER: &str = "open_computer_use";
+const STEM: &str = "computer-use";
+const CLAUDE_CONFIG: &str = ".atlas-computer-use.mcp.json";
+const OPENCODE_SCHEMA: &str = "https://opencode.ai/config.json";
+
+pub fn build_stdio_injection(tool: &str, cwd: &Path, helper: &Path) -> Injection {
+    match tool {
+        "claude" => inject_claude(cwd, helper),
+        "codex" => inject_codex(helper),
+        "opencode" => {
+            merge_opencode_config(cwd, helper);
+            Injection { args: vec![] }
+        }
+        _ => Injection { args: vec![] },
+    }
+}
+
+pub async fn maybe_inject(
+    app: &tauri::AppHandle,
+    db: &crate::store::Db,
+    tool: &str,
+    cwd: &Path,
+) -> Injection {
+    if !cfg!(target_os = "macos") {
+        return Injection { args: vec![] };
+    }
+    if !crate::computer_use::settings::enabled(db)
+        .await
+        .unwrap_or(false)
+    {
+        return Injection { args: vec![] };
+    }
+    let info = crate::computer_use::helper::resolve_helper_path(Some(app));
+    if info.state != crate::computer_use::helper::HelperState::Found {
+        return Injection { args: vec![] };
+    }
+    match info.path {
+        Some(path) => build_stdio_injection(tool, cwd, &PathBuf::from(path)),
+        None => Injection { args: vec![] },
+    }
+}
+
+fn inject_claude(cwd: &Path, helper: &Path) -> Injection {
+    let cfg = claude_config_path(cwd);
+    let json = serde_json::json!({
+        "mcpServers": {
+            SERVER: {
+                "command": helper.to_string_lossy(),
+                "args": ["mcp"],
+            }
+        }
+    });
+    if let Ok(bytes) = serde_json::to_vec_pretty(&json) {
+        let _ = std::fs::write(&cfg, bytes);
+    }
+    crate::git::git_exclude(cwd, CLAUDE_CONFIG);
+    Injection {
+        args: vec!["--mcp-config".into(), cfg.to_string_lossy().to_string()],
+    }
+}
+
+fn inject_codex(helper: &Path) -> Injection {
+    Injection {
+        args: vec![
+            "-c".into(),
+            format!(
+                "mcp_servers.{SERVER}.command={}",
+                toml_quote(&helper.to_string_lossy())
+            ),
+            "-c".into(),
+            format!("mcp_servers.{SERVER}.args=[\"mcp\"]"),
+        ],
+    }
+}
+
+fn merge_opencode_config(cwd: &Path, helper: &Path) {
+    let path = cwd.join("opencode.json");
+    let mut root: serde_json::Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !root.is_object() {
+        root = serde_json::json!({});
+    }
+    let Some(obj) = root.as_object_mut() else {
+        return;
+    };
+    obj.entry("$schema".to_string())
+        .or_insert_with(|| serde_json::json!(OPENCODE_SCHEMA));
+
+    let mcp = obj
+        .entry("mcp".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !mcp.is_object() {
+        *mcp = serde_json::json!({});
+    }
+    if let Some(mcp_obj) = mcp.as_object_mut() {
+        mcp_obj.insert(
+            SERVER.to_string(),
+            serde_json::json!({
+                "type": "local",
+                "command": [helper.to_string_lossy(), "mcp"],
+                "enabled": true,
+            }),
+        );
+    }
+
+    if let Ok(bytes) = serde_json::to_vec_pretty(&root) {
+        let _ = std::fs::write(&path, bytes);
+    }
+    crate::git::git_exclude(cwd, "opencode.json");
+}
+
+fn claude_config_path(cwd: &Path) -> PathBuf {
+    cwd.join(format!(".atlas-{STEM}.mcp.json"))
+}
+
+fn toml_quote(value: &str) -> String {
+    toml::Value::String(value.to_string()).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use serde_json::Value;
+
+    use super::*;
+
+    #[test]
+    fn claude_injection_writes_stdio_mcp_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let helper = tmp.path().join("open-computer-use");
+
+        let injection = build_stdio_injection("claude", tmp.path(), &helper);
+
+        assert_eq!(injection.args[0], "--mcp-config");
+        assert_eq!(
+            injection.args[1],
+            tmp.path()
+                .join(".atlas-computer-use.mcp.json")
+                .to_string_lossy()
+        );
+
+        let raw = std::fs::read_to_string(tmp.path().join(".atlas-computer-use.mcp.json")).unwrap();
+        let config: Value = serde_json::from_str(&raw).unwrap();
+        let server = &config["mcpServers"]["open_computer_use"];
+        assert_eq!(server["command"], helper.to_string_lossy().as_ref());
+        assert_eq!(server["args"], serde_json::json!(["mcp"]));
+    }
+
+    #[test]
+    fn codex_injection_uses_inline_stdio_config() {
+        let helper = Path::new("/tmp/open-computer-use");
+
+        let injection = build_stdio_injection("codex", Path::new("/unused"), helper);
+
+        assert_eq!(
+            injection.args,
+            vec![
+                "-c".to_string(),
+                "mcp_servers.open_computer_use.command=\"/tmp/open-computer-use\"".to_string(),
+                "-c".to_string(),
+                "mcp_servers.open_computer_use.args=[\"mcp\"]".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn opencode_injection_preserves_existing_config_and_adds_local_mcp() {
+        let tmp = tempfile::tempdir().unwrap();
+        let helper = tmp.path().join("open-computer-use");
+        std::fs::write(
+            tmp.path().join("opencode.json"),
+            serde_json::json!({
+                "theme": "system",
+                "mcp": {
+                    "existing": {
+                        "type": "remote",
+                        "url": "http://127.0.0.1:9/mcp",
+                        "enabled": false
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let injection = build_stdio_injection("opencode", tmp.path(), &helper);
+
+        assert!(injection.args.is_empty());
+        let raw = std::fs::read_to_string(tmp.path().join("opencode.json")).unwrap();
+        let config: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(config["$schema"], "https://opencode.ai/config.json");
+        assert_eq!(config["theme"], "system");
+        assert_eq!(config["mcp"]["existing"]["url"], "http://127.0.0.1:9/mcp");
+        assert_eq!(config["mcp"]["existing"]["enabled"], false);
+
+        let server = &config["mcp"]["open_computer_use"];
+        assert_eq!(server["type"], "local");
+        assert_eq!(
+            server["command"],
+            serde_json::json!([helper.to_string_lossy(), "mcp"])
+        );
+        assert_eq!(server["enabled"], true);
+    }
+
+    #[test]
+    fn unknown_tool_gets_no_injection() {
+        let tmp = tempfile::tempdir().unwrap();
+        let injection =
+            build_stdio_injection("unknown", tmp.path(), Path::new("/tmp/open-computer-use"));
+
+        assert!(injection.args.is_empty());
+        assert!(!tmp.path().join(".atlas-computer-use.mcp.json").exists());
+        assert!(!tmp.path().join("opencode.json").exists());
+    }
+}
