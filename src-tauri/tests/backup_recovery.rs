@@ -5,6 +5,7 @@ use base64::Engine;
 use std::process::Command;
 use std::sync::Mutex;
 use atlas_app_lib::backup::{BackupService, config, recovery_key};
+use atlas_app_lib::commands::ensure_default_workspace_inner;
 use atlas_app_lib::store::Db;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -161,7 +162,70 @@ async fn restore_allows_empty_startup_db() {
 }
 
 #[tokio::test]
-async fn restore_refuses_when_db_has_user_data() {
+async fn restore_allows_auto_default_workspace_shell() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let source_home = tmp.path().join("source-home");
+    std::fs::create_dir_all(&source_home).unwrap();
+    iso_env_with(&source_home, [0x45u8; 48]);
+
+    let url = make_bare(tmp.path());
+
+    {
+        let db = Db::open_default().await.unwrap();
+        config::save_prefs(
+            &db,
+            config::UpdatePrefs {
+                enabled: true,
+                remote_url: url.clone(),
+                auto_backup_enabled: false,
+                backup_on_exit: false,
+            },
+        )
+        .await
+        .unwrap();
+        use sea_orm::ConnectionTrait;
+        db.0.execute_unprepared(
+            "INSERT INTO workspace (id, name, slug, created_at) \
+             VALUES (1, 'restore-default-target', 'restore-default-target', '1234567890')",
+        )
+        .await
+        .unwrap();
+        let svc = BackupService::new(db.clone(), source_home.clone());
+        svc.run_now().await.unwrap();
+    }
+
+    let rk = tmp.path().join("rk-default-target.json");
+    recovery_key::export_to(&rk).unwrap();
+
+    let target_home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&target_home).unwrap();
+    iso_env_with(&target_home, [0x45u8; 48]);
+    {
+        let db = Db::open_default().await.unwrap();
+        let default_id = ensure_default_workspace_inner(&db).await.unwrap();
+        assert_eq!(default_id, 1);
+        let svc = BackupService::new(db, target_home.clone());
+        svc.restore_from(&url, &rk).await.unwrap();
+    }
+
+    let db = Db::open_default().await.unwrap();
+    use sea_orm::ConnectionTrait;
+    let row = db
+        .0
+        .query_one(sea_orm::Statement::from_string(
+            sea_orm::DbBackend::Sqlite,
+            "SELECT name FROM workspace WHERE id = 1".to_owned(),
+        ))
+        .await
+        .unwrap()
+        .expect("row exists");
+    let name: String = row.try_get("", "name").unwrap();
+    assert_eq!(name, "restore-default-target");
+}
+
+#[tokio::test]
+async fn restore_refuses_when_db_has_non_default_workspace() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
     iso_env_with(tmp.path(), [0x12u8; 48]);
@@ -173,6 +237,37 @@ async fn restore_refuses_when_db_has_user_data() {
     )
     .await
     .unwrap();
+    let svc = BackupService::new(db, tmp.path().to_path_buf());
+    let rk = tmp.path().join("rk.json");
+    std::fs::write(&rk, b"{}").unwrap();
+    let err = svc
+        .restore_from("file:///nonexistent", &rk)
+        .await
+        .err()
+        .expect("must error");
+    assert!(
+        err.to_string().contains("contains existing Atlas data"),
+        "got: {err:#}"
+    );
+}
+
+#[tokio::test]
+async fn restore_refuses_when_default_workspace_has_repo() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    iso_env_with(tmp.path(), [0x13u8; 48]);
+    let db = Db::open_default().await.unwrap();
+    let default_id = ensure_default_workspace_inner(&db).await.unwrap();
+    use sea_orm::ConnectionTrait;
+    db.0.execute_unprepared(
+        "INSERT INTO repo_ref \
+         (id, workspace_id, name, slug, local_git_path, base_ref) \
+         VALUES (1, 1, 'real repo', 'real-repo', '/tmp/real-repo', 'main')",
+    )
+    .await
+    .unwrap();
+    assert_eq!(default_id, 1);
+
     let svc = BackupService::new(db, tmp.path().to_path_buf());
     let rk = tmp.path().join("rk.json");
     std::fs::write(&rk, b"{}").unwrap();

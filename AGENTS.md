@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Weft is a Tauri v2 desktop app with a React frontend and Rust backend.
+Atlas is a Tauri v2 desktop app with a React frontend and Rust backend.
 
 - `src/`: React + TypeScript UI. Key areas: `board/` for workspace/issue boards, `session/` for chat/observe/diff surfaces, `components/` for shared UI, `i18n/` for English/Chinese strings.
 - `src-tauri/src/`: Rust backend. Key modules: `lead_chat/` for headless agent sessions, `store/` for SQLite/SeaORM entities and migrations, `bus/` for local MCP/thread bus, `git.rs` and `materialize.rs` for worktree handling.
@@ -23,7 +23,7 @@ Weft is a Tauri v2 desktop app with a React frontend and Rust backend.
 
 Use TypeScript for frontend code and Rust 2021 for backend code. Keep modules focused and follow the existing directory boundaries. Component files use `PascalCase.tsx`; helpers and state modules use lower camel or kebab style already present in the folder. User-facing strings must go through `src/i18n/en.ts` and `src/i18n/zh.ts`.
 
-Rust production paths deny `unwrap`, `expect`, and `panic`; return `Result` and surface errors clearly. Avoid adding embedded terminal/TUI dependencies; Weft renders its own chat UI and uses terminal takeover only as an escape hatch.
+Rust production paths deny `unwrap`, `expect`, and `panic`; return `Result` and surface errors clearly. Avoid adding embedded terminal/TUI dependencies; Atlas renders its own chat UI and uses terminal takeover only as an escape hatch.
 
 ## Testing Guidelines
 
@@ -37,4 +37,4 @@ PRs should include a concise summary, verification commands and results, linked 
 
 ## Architecture & Configuration Notes
 
-Do not write cross-repo wiring into canonical repositories. Use temporary launch flags, worktree-local ignored files, or Weft-managed state. Current delivery reaches reviewable worktree diffs with pre-PR checks; PR creation, CI/CD observation, and deployment orchestration are roadmap work.
+Do not write cross-repo wiring into canonical repositories. Use temporary launch flags, worktree-local ignored files, or Atlas-managed state. Current delivery reaches reviewable worktree diffs with pre-PR checks; PR creation, CI/CD observation, and deployment orchestration are roadmap work.

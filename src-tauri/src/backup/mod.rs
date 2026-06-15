@@ -188,7 +188,7 @@ impl BackupService {
         use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
         const USER_TABLES: &[&str] = &[
-            "workspace",
+            "app_setting",
             "repo_ref",
             "repo_profile",
             "thread",
@@ -216,7 +216,61 @@ impl BackupService {
             let count: i64 = row.try_get("", "n")?;
             total += count;
         }
+        total += self.non_shell_workspace_row_count().await?;
+        total += self.non_shell_backup_config_row_count().await?;
         Ok(total)
+    }
+
+    async fn non_shell_workspace_row_count(&self) -> Result<i64> {
+        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+        let rows = self
+            .db
+            .0
+            .query_all(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "SELECT name, slug FROM workspace".to_string(),
+            ))
+            .await?;
+        match rows.as_slice() {
+            [] => Ok(0),
+            [row] => {
+                let name: String = row.try_get("", "name")?;
+                let slug: String = row.try_get("", "slug")?;
+                if name == "Default" && slug == "default" {
+                    Ok(0)
+                } else {
+                    Ok(1)
+                }
+            }
+            _ => Ok(rows.len() as i64),
+        }
+    }
+
+    async fn non_shell_backup_config_row_count(&self) -> Result<i64> {
+        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+        let row = self
+            .db
+            .0
+            .query_one(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "SELECT COUNT(*) AS n FROM backup_config \
+                 WHERE NOT (id = 1 \
+                   AND enabled = 0 \
+                   AND remote_url = '' \
+                   AND auto_backup_enabled = 1 \
+                   AND interval_seconds = 3600 \
+                   AND backup_on_exit = 1 \
+                   AND last_backup_at IS NULL \
+                   AND last_backup_commit_sha IS NULL \
+                   AND last_backup_bytes IS NULL \
+                   AND last_error IS NULL)"
+                    .to_string(),
+            ))
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("count backup_config: no row"))?;
+        Ok(row.try_get("", "n")?)
     }
 }
 
