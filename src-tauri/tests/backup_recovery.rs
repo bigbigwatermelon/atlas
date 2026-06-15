@@ -120,6 +120,32 @@ async fn repo_count(db: &Db) -> i64 {
     row.try_get("", "n").unwrap()
 }
 
+async fn insert_real_repo(db: &Db) {
+    let default_id = ensure_default_workspace_inner(db).await.unwrap();
+    assert_eq!(default_id, 1);
+    db.0.execute_unprepared(
+        "INSERT INTO repo_ref \
+             (id, workspace_id, name, slug, local_git_path, base_ref) \
+             VALUES (1, 1, 'real repo', 'real-repo', '/tmp/real-repo', 'main')",
+    )
+    .await
+    .unwrap();
+}
+
+async fn seed_current_default_repo(home: &Path, key: [u8; 48]) {
+    iso_env_with(home, key);
+    let db = Db::open_default().await.unwrap();
+    insert_real_repo(&db).await;
+    db.0.close().await.unwrap();
+}
+
+async fn assert_current_default_repo(home: &Path, key: [u8; 48]) {
+    iso_env_with(home, key);
+    let db = Db::open_default().await.unwrap();
+    assert_eq!(workspace_name(&db, 1).await, "Default");
+    assert_eq!(repo_count(&db).await, 1);
+}
+
 fn failed_restore_dirs(home: &Path) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(home)
         .unwrap()
@@ -206,6 +232,44 @@ async fn make_backup_with_meta_override(
             "commit",
             "-m",
             "corrupt backup meta",
+        ],
+    );
+    sh(&work, &["git", "push", "origin", "HEAD:refs/heads/main"]);
+    (url, rk_path)
+}
+
+async fn make_backup_with_extra_snapshot_migration(
+    root: &Path,
+    key: [u8; 48],
+    workspace: &str,
+) -> (String, PathBuf) {
+    let source_home = root.join(format!("{workspace}-home"));
+    let (url, rk_path) = make_backup(root, &source_home, key, workspace).await;
+    let work = root.join(format!("{workspace}-extra-migration-work"));
+    sh(
+        root,
+        &[
+            "git",
+            "clone",
+            "--branch",
+            "main",
+            &url,
+            work.to_str().unwrap(),
+        ],
+    );
+    insert_snapshot_migration(&work.join("atlas.db"), key, "m9999_future").await;
+    sh(&work, &["git", "add", "atlas.db"]);
+    sh(
+        &work,
+        &[
+            "git",
+            "-c",
+            "user.email=atlas@local",
+            "-c",
+            "user.name=Atlas",
+            "commit",
+            "-m",
+            "add future migration",
         ],
     );
     sh(&work, &["git", "push", "origin", "HEAD:refs/heads/main"]);
@@ -324,6 +388,18 @@ async fn write_non_atlas_encrypted_db(path: &Path, key: [u8; 48]) {
     conn.execute_unprepared("CREATE TABLE not_atlas (id INTEGER PRIMARY KEY);")
         .await
         .unwrap();
+}
+
+async fn insert_snapshot_migration(path: &Path, key: [u8; 48], version: &str) {
+    let k = SqlCipherKey::from_bytes(&key).unwrap();
+    let mut opt = sea_orm::ConnectOptions::new(format!("sqlite://{}?mode=rw", path.display()));
+    opt.sqlcipher_key(format_for_pragma(&k));
+    let conn = sea_orm::Database::connect(opt).await.unwrap();
+    conn.execute_unprepared(&format!(
+        "INSERT INTO seaql_migrations (version, applied_at) VALUES ('{version}', 0);"
+    ))
+    .await
+    .unwrap();
 }
 
 async fn write_forged_core_tables_db(path: &Path, key: [u8; 48]) {
@@ -784,7 +860,7 @@ async fn older_schema_backup_does_not_stage_restore() {
 }
 
 #[tokio::test]
-async fn malicious_pending_manifest_filename_is_rejected() {
+async fn malicious_pending_manifest_filename_is_quarantined() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
     let key = [0x37u8; 48];
@@ -799,6 +875,7 @@ async fn malicious_pending_manifest_filename_is_rejected() {
         BackupService::new(db, target_home.clone())
     };
     svc.restore_from(&url, &rk).await.unwrap();
+    seed_current_default_repo(&target_home, key).await;
 
     let manifest_path = target_home.join("pending-restore").join("manifest.json");
     let manifest = serde_json::json!({
@@ -814,20 +891,65 @@ async fn malicious_pending_manifest_filename_is_rejected() {
     )
     .unwrap();
 
-    let err = atlas_app_lib::backup::apply_pending_restore_before_open(&target_home)
+    atlas_app_lib::backup::apply_pending_restore_before_open(&target_home)
         .await
-        .err()
-        .expect("must reject manifest path traversal");
-    assert!(
-        err.to_string().contains("snapshot must be atlas.db"),
-        "got: {err:#}"
-    );
-    assert!(atlas_app_lib::backup::pending_restore_exists(&target_home));
-    assert!(failed_restore_dirs(&target_home).is_empty());
+        .unwrap();
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&target_home));
+    let failed = failed_restore_dirs(&target_home);
+    assert_eq!(failed.len(), 1);
+    let note = std::fs::read_to_string(failed[0].join("restore-error.txt")).unwrap();
+    assert!(note.contains("snapshot must be atlas.db"), "got: {note}");
+    assert_current_default_repo(&target_home, key).await;
 }
 
 #[tokio::test]
-async fn older_pending_manifest_is_rejected() {
+async fn malicious_pending_recovery_key_filename_is_quarantined() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let key = [0x39u8; 48];
+    let source_home = tmp.path().join("source-home");
+    let (url, rk) = make_backup(tmp.path(), &source_home, key, "manifest-key-path").await;
+
+    let target_home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&target_home).unwrap();
+    iso_env_with(&target_home, key);
+    let svc = {
+        let db = Db::connect("sqlite::memory:").await.unwrap();
+        BackupService::new(db, target_home.clone())
+    };
+    svc.restore_from(&url, &rk).await.unwrap();
+    seed_current_default_repo(&target_home, key).await;
+
+    let manifest_path = target_home.join("pending-restore").join("manifest.json");
+    let manifest = serde_json::json!({
+        "version": 1,
+        "schema_version": current_schema_version(),
+        "staged_at": "0",
+        "snapshot": "atlas.db",
+        "recovery_key": "../recovery-key.json"
+    });
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    atlas_app_lib::backup::apply_pending_restore_before_open(&target_home)
+        .await
+        .unwrap();
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&target_home));
+    let failed = failed_restore_dirs(&target_home);
+    assert_eq!(failed.len(), 1);
+    let note = std::fs::read_to_string(failed[0].join("restore-error.txt")).unwrap();
+    assert!(
+        note.contains("recovery_key must be recovery-key.json"),
+        "got: {note}"
+    );
+    assert_current_default_repo(&target_home, key).await;
+}
+
+#[tokio::test]
+async fn older_pending_manifest_is_quarantined() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
     let key = [0x38u8; 48];
@@ -842,6 +964,7 @@ async fn older_pending_manifest_is_rejected() {
         BackupService::new(db, target_home.clone())
     };
     svc.restore_from(&url, &rk).await.unwrap();
+    seed_current_default_repo(&target_home, key).await;
 
     let manifest_path = target_home.join("pending-restore").join("manifest.json");
     let manifest = serde_json::json!({
@@ -857,17 +980,90 @@ async fn older_pending_manifest_is_rejected() {
     )
     .unwrap();
 
-    let err = atlas_app_lib::backup::apply_pending_restore_before_open(&target_home)
+    atlas_app_lib::backup::apply_pending_restore_before_open(&target_home)
         .await
-        .err()
-        .expect("must reject older pending restore");
+        .unwrap();
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&target_home));
+    let failed = failed_restore_dirs(&target_home);
+    assert_eq!(failed.len(), 1);
+    let note = std::fs::read_to_string(failed[0].join("restore-error.txt")).unwrap();
     assert!(
-        err.to_string()
-            .contains("older backup requires a matching Atlas version"),
-        "got: {err:#}"
+        note.contains("older backup requires a matching Atlas version"),
+        "got: {note}"
     );
-    assert!(atlas_app_lib::backup::pending_restore_exists(&target_home));
-    assert!(failed_restore_dirs(&target_home).is_empty());
+    assert_current_default_repo(&target_home, key).await;
+}
+
+#[tokio::test]
+async fn missing_pending_recovery_key_is_quarantined() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let key = [0x3Au8; 48];
+    let source_home = tmp.path().join("source-home");
+    let (url, rk) = make_backup(tmp.path(), &source_home, key, "missing-key").await;
+
+    let target_home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&target_home).unwrap();
+    iso_env_with(&target_home, key);
+    let svc = {
+        let db = Db::connect("sqlite::memory:").await.unwrap();
+        BackupService::new(db, target_home.clone())
+    };
+    svc.restore_from(&url, &rk).await.unwrap();
+    seed_current_default_repo(&target_home, key).await;
+    std::fs::remove_file(
+        target_home
+            .join("pending-restore")
+            .join("recovery-key.json"),
+    )
+    .unwrap();
+
+    atlas_app_lib::backup::apply_pending_restore_before_open(&target_home)
+        .await
+        .unwrap();
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&target_home));
+    let failed = failed_restore_dirs(&target_home);
+    assert_eq!(failed.len(), 1);
+    let note = std::fs::read_to_string(failed[0].join("restore-error.txt")).unwrap();
+    assert!(note.contains("read recovery key"), "got: {note}");
+    assert_current_default_repo(&target_home, key).await;
+}
+
+#[tokio::test]
+async fn corrupted_pending_snapshot_is_quarantined() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let key = [0x3Bu8; 48];
+    let source_home = tmp.path().join("source-home");
+    let (url, rk) = make_backup(tmp.path(), &source_home, key, "bad-snapshot").await;
+
+    let target_home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&target_home).unwrap();
+    iso_env_with(&target_home, key);
+    let svc = {
+        let db = Db::connect("sqlite::memory:").await.unwrap();
+        BackupService::new(db, target_home.clone())
+    };
+    svc.restore_from(&url, &rk).await.unwrap();
+    seed_current_default_repo(&target_home, key).await;
+    std::fs::write(
+        target_home.join("pending-restore").join("atlas.db"),
+        b"not an encrypted Atlas sqlite database",
+    )
+    .unwrap();
+
+    atlas_app_lib::backup::apply_pending_restore_before_open(&target_home)
+        .await
+        .unwrap();
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&target_home));
+    let failed = failed_restore_dirs(&target_home);
+    assert_eq!(failed.len(), 1);
+    let note = std::fs::read_to_string(failed[0].join("restore-error.txt")).unwrap();
+    assert!(
+        note.contains("pending restore validation failed before applying"),
+        "got: {note}"
+    );
+    assert_current_default_repo(&target_home, key).await;
 }
 
 #[tokio::test]
@@ -891,6 +1087,36 @@ async fn non_atlas_encrypted_snapshot_does_not_stage_restore() {
         .expect("must reject encrypted non-Atlas sqlite snapshot");
     assert!(
         err.to_string().contains("not an Atlas database"),
+        "got: {err:#}"
+    );
+    assert!(home.join("atlas.db").exists());
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&home));
+    assert_eq!(workspace_count(&db).await, 0);
+}
+
+#[tokio::test]
+async fn snapshot_with_extra_migration_does_not_stage_restore() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let key = [0x3Cu8; 48];
+    let (url, rk) =
+        make_backup_with_extra_snapshot_migration(tmp.path(), key, "future-migration").await;
+
+    let home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&home).unwrap();
+    iso_env_with(&home, key);
+    let db = Db::open_default().await.unwrap();
+    let _ = config::load(&db).await.unwrap();
+    let svc = BackupService::new(db.clone(), home.clone());
+
+    let err = svc
+        .restore_from(&url, &rk)
+        .await
+        .err()
+        .expect("must reject snapshot migration set mismatch");
+    assert!(
+        err.to_string().contains("migration set mismatch")
+            && err.to_string().contains("m9999_future"),
         "got: {err:#}"
     );
     assert!(home.join("atlas.db").exists());

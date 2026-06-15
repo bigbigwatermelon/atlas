@@ -220,26 +220,46 @@ impl BackupService {
 }
 
 /// Apply a staged restore before the shared app database connection is opened.
-/// If existing `atlas.db` contains real user data, this returns an error and
-/// leaves the pending restore intact for user intervention.
+/// Invalid pending restore payloads are quarantined when the current database
+/// can still be safely opened, so startup does not loop on the same failure.
+/// If the current database already equals the staged snapshot, pending is left
+/// in place so a mid-apply restart can retry key installation and cleanup.
 pub async fn apply_pending_restore_before_open(home: &Path) -> Result<()> {
     let pending = pending_restore_dir(home);
     if !pending.exists() {
         return Ok(());
     }
 
-    let manifest = read_pending_manifest(&pending)?;
+    let manifest = match read_pending_manifest(&pending) {
+        Ok(manifest) => manifest,
+        Err(e) => return quarantine_pending_validation_failure(home, &pending, None, e).await,
+    };
     let snapshot_path = pending.join(&manifest.snapshot);
     let recovery_key_path = pending.join(&manifest.recovery_key);
     if !snapshot_path.exists() {
-        return Err(anyhow::anyhow!(
-            "pending restore missing atlas.db: {}",
-            snapshot_path.display()
-        ));
+        return quarantine_pending_validation_failure(
+            home,
+            &pending,
+            Some(&snapshot_path),
+            anyhow::anyhow!(
+                "pending restore missing atlas.db: {}",
+                snapshot_path.display()
+            ),
+        )
+        .await;
     }
 
-    let imported = recovery_key::read_from(&recovery_key_path)?;
-    verify_snapshot_with_key(&snapshot_path, &imported).await?;
+    let imported = match recovery_key::read_from(&recovery_key_path) {
+        Ok(imported) => imported,
+        Err(e) => {
+            return quarantine_pending_validation_failure(home, &pending, Some(&snapshot_path), e)
+                .await;
+        }
+    };
+    if let Err(e) = verify_snapshot_with_key(&snapshot_path, &imported).await {
+        return quarantine_pending_validation_failure(home, &pending, Some(&snapshot_path), e)
+            .await;
+    }
 
     let db_path = home.join(snapshot::SNAPSHOT_NAME);
     if db_path.exists() {
@@ -281,6 +301,44 @@ pub async fn apply_pending_restore_before_open(home: &Path) -> Result<()> {
     recovery_key::install_key(&imported)?;
     verify_snapshot_with_key(&db_path, &imported).await?;
     cleanup_restored_pending(home, &pending)?;
+    Ok(())
+}
+
+async fn quarantine_pending_validation_failure(
+    home: &Path,
+    pending: &Path,
+    snapshot_path: Option<&Path>,
+    err: anyhow::Error,
+) -> Result<()> {
+    let err_text = format!("{err:#}");
+    let db_path = home.join(snapshot::SNAPSHOT_NAME);
+    if db_path.exists() {
+        if let Some(snapshot_path) = snapshot_path {
+            if snapshot_path.exists() && files_equal(&db_path, snapshot_path)? {
+                return Err(anyhow::anyhow!(
+                    "{err_text}: pending restore validation failed after atlas.db already matched the staged snapshot; leaving pending restore for retry"
+                ));
+            }
+        }
+
+        let current_key = crate::store::key::get_existing()?;
+        let conn = open_sqlcipher_existing(&db_path, &current_key)
+            .await
+            .map_err(|open_err| {
+                anyhow::anyhow!(
+                    "pending restore validation failed ({err_text}), but current {} is not safely openable; leaving pending restore for retry: {open_err}",
+                    db_path.display()
+                )
+            })?;
+        drop(conn);
+    }
+
+    let reason = format!("pending restore validation failed before applying: {err_text}");
+    let failed = quarantine_pending_restore(home, pending, &reason)?;
+    eprintln!(
+        "[atlas] pending restore quarantined at {}: {reason}",
+        failed.display()
+    );
     Ok(())
 }
 
@@ -373,8 +431,15 @@ fn read_backup_schema_version(clone_dir: &Path) -> Result<usize> {
 }
 
 fn current_schema_version() -> usize {
+    current_migration_versions().len()
+}
+
+fn current_migration_versions() -> Vec<String> {
     use sea_orm_migration::MigratorTrait;
-    crate::store::migration::Migrator::migrations().len()
+    crate::store::migration::Migrator::migrations()
+        .into_iter()
+        .map(|migration| migration.name().to_string())
+        .collect()
 }
 
 fn ensure_current_schema_version(schema_version: usize, context: &str) -> Result<()> {
@@ -400,37 +465,25 @@ async fn verify_snapshot_with_key(path: &Path, key: &SqlCipherKey) -> Result<()>
 
 async fn ensure_atlas_schema(conn: &sea_orm::DatabaseConnection, path: &Path) -> Result<()> {
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    use std::collections::BTreeSet;
 
     ensure_table_columns(conn, path, "seaql_migrations", &["version"]).await?;
 
-    let row = conn
-        .query_one(Statement::from_string(
+    let rows = conn
+        .query_all(Statement::from_string(
             DatabaseBackend::Sqlite,
-            "SELECT COUNT(*) AS n FROM seaql_migrations".to_string(),
+            "SELECT version FROM seaql_migrations".to_string(),
         ))
         .await?
-        .ok_or_else(|| anyhow::anyhow!("validate Atlas migrations: no row"))?;
-    let applied_count: i64 = row.try_get("", "n")?;
-    let current = current_schema_version() as i64;
-    if applied_count < current {
+        .into_iter()
+        .map(|row| row.try_get("", "version"))
+        .collect::<std::result::Result<BTreeSet<String>, sea_orm::DbErr>>()?;
+    let expected: BTreeSet<String> = current_migration_versions().into_iter().collect();
+    if rows != expected {
+        let missing: Vec<String> = expected.difference(&rows).cloned().collect();
+        let extra: Vec<String> = rows.difference(&expected).cloned().collect();
         return Err(anyhow::anyhow!(
-            "snapshot is not an Atlas database: {} migration row count {applied_count} is older than current {current}",
-            path.display()
-        ));
-    }
-
-    let row = conn
-        .query_one(Statement::from_string(
-            DatabaseBackend::Sqlite,
-            "SELECT COUNT(*) AS n FROM seaql_migrations WHERE version = 'm0016_backup_config'"
-                .to_string(),
-        ))
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("validate Atlas latest migration: no row"))?;
-    let latest_count: i64 = row.try_get("", "n")?;
-    if latest_count != 1 {
-        return Err(anyhow::anyhow!(
-            "snapshot is not an Atlas database: {} missing migration m0016_backup_config",
+            "snapshot is not an Atlas database: {} migration set mismatch missing={missing:?} extra={extra:?}",
             path.display()
         ));
     }
