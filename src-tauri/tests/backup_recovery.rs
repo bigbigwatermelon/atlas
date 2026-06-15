@@ -276,6 +276,44 @@ async fn make_backup_with_extra_snapshot_migration(
     (url, rk_path)
 }
 
+async fn make_backup_with_duplicate_snapshot_migration(
+    root: &Path,
+    key: [u8; 48],
+    workspace: &str,
+) -> (String, PathBuf, String) {
+    let source_home = root.join(format!("{workspace}-home"));
+    let (url, rk_path) = make_backup(root, &source_home, key, workspace).await;
+    let work = root.join(format!("{workspace}-duplicate-migration-work"));
+    sh(
+        root,
+        &[
+            "git",
+            "clone",
+            "--branch",
+            "main",
+            &url,
+            work.to_str().unwrap(),
+        ],
+    );
+    let duplicated = duplicate_snapshot_migration(&work.join("atlas.db"), key).await;
+    sh(&work, &["git", "add", "atlas.db"]);
+    sh(
+        &work,
+        &[
+            "git",
+            "-c",
+            "user.email=atlas@local",
+            "-c",
+            "user.name=Atlas",
+            "commit",
+            "-m",
+            "duplicate migration row",
+        ],
+    );
+    sh(&work, &["git", "push", "origin", "HEAD:refs/heads/main"]);
+    (url, rk_path, duplicated)
+}
+
 async fn make_non_atlas_backup(
     root: &Path,
     key: [u8; 48],
@@ -400,6 +438,47 @@ async fn insert_snapshot_migration(path: &Path, key: [u8; 48], version: &str) {
     ))
     .await
     .unwrap();
+}
+
+async fn duplicate_snapshot_migration(path: &Path, key: [u8; 48]) -> String {
+    let k = SqlCipherKey::from_bytes(&key).unwrap();
+    let mut opt = sea_orm::ConnectOptions::new(format!("sqlite://{}?mode=rw", path.display()));
+    opt.sqlcipher_key(format_for_pragma(&k));
+    let conn = sea_orm::Database::connect(opt).await.unwrap();
+    let row = conn
+        .query_one(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            "SELECT version FROM seaql_migrations ORDER BY version LIMIT 1".to_string(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let version: String = row.try_get("", "version").unwrap();
+    let escaped = version.replace('\'', "''");
+    conn.execute_unprepared(
+        "CREATE TABLE seaql_migrations_dup (version TEXT NOT NULL, applied_at INTEGER NOT NULL);",
+    )
+    .await
+    .unwrap();
+    conn.execute_unprepared(
+        "INSERT INTO seaql_migrations_dup (version, applied_at) \
+         SELECT version, applied_at FROM seaql_migrations;",
+    )
+    .await
+    .unwrap();
+    conn.execute_unprepared(&format!(
+        "INSERT INTO seaql_migrations_dup (version, applied_at) \
+         SELECT version, applied_at FROM seaql_migrations WHERE version = '{escaped}' LIMIT 1;"
+    ))
+    .await
+    .unwrap();
+    conn.execute_unprepared("DROP TABLE seaql_migrations;")
+        .await
+        .unwrap();
+    conn.execute_unprepared("ALTER TABLE seaql_migrations_dup RENAME TO seaql_migrations;")
+        .await
+        .unwrap();
+    version
 }
 
 async fn write_forged_core_tables_db(path: &Path, key: [u8; 48]) {
@@ -1117,6 +1196,36 @@ async fn snapshot_with_extra_migration_does_not_stage_restore() {
     assert!(
         err.to_string().contains("migration set mismatch")
             && err.to_string().contains("m9999_future"),
+        "got: {err:#}"
+    );
+    assert!(home.join("atlas.db").exists());
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&home));
+    assert_eq!(workspace_count(&db).await, 0);
+}
+
+#[tokio::test]
+async fn snapshot_with_duplicate_migration_row_does_not_stage_restore() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let key = [0x3Du8; 48];
+    let (url, rk, duplicated) =
+        make_backup_with_duplicate_snapshot_migration(tmp.path(), key, "duplicate-migration").await;
+
+    let home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&home).unwrap();
+    iso_env_with(&home, key);
+    let db = Db::open_default().await.unwrap();
+    let _ = config::load(&db).await.unwrap();
+    let svc = BackupService::new(db.clone(), home.clone());
+
+    let err = svc
+        .restore_from(&url, &rk)
+        .await
+        .err()
+        .expect("must reject duplicate snapshot migration rows");
+    assert!(
+        err.to_string().contains("duplicate migration rows")
+            && err.to_string().contains(&duplicated),
         "got: {err:#}"
     );
     assert!(home.join("atlas.db").exists());

@@ -469,7 +469,7 @@ async fn ensure_atlas_schema(conn: &sea_orm::DatabaseConnection, path: &Path) ->
 
     ensure_table_columns(conn, path, "seaql_migrations", &["version"]).await?;
 
-    let rows = conn
+    let versions = conn
         .query_all(Statement::from_string(
             DatabaseBackend::Sqlite,
             "SELECT version FROM seaql_migrations".to_string(),
@@ -477,14 +477,41 @@ async fn ensure_atlas_schema(conn: &sea_orm::DatabaseConnection, path: &Path) ->
         .await?
         .into_iter()
         .map(|row| row.try_get("", "version"))
-        .collect::<std::result::Result<BTreeSet<String>, sea_orm::DbErr>>()?;
-    let expected: BTreeSet<String> = current_migration_versions().into_iter().collect();
+        .collect::<std::result::Result<Vec<String>, sea_orm::DbErr>>()?;
+    let expected_versions = current_migration_versions();
+    let row_count = versions.len();
+    let rows: BTreeSet<String> = versions.iter().cloned().collect();
+    let expected: BTreeSet<String> = expected_versions.iter().cloned().collect();
     if rows != expected {
         let missing: Vec<String> = expected.difference(&rows).cloned().collect();
         let extra: Vec<String> = rows.difference(&expected).cloned().collect();
         return Err(anyhow::anyhow!(
             "snapshot is not an Atlas database: {} migration set mismatch missing={missing:?} extra={extra:?}",
             path.display()
+        ));
+    }
+    if row_count != expected_versions.len() {
+        let mut seen = BTreeSet::new();
+        let mut duplicates = BTreeSet::new();
+        for version in versions {
+            if !seen.insert(version.clone()) {
+                duplicates.insert(version);
+            }
+        }
+        if duplicates.is_empty() {
+            return Err(anyhow::anyhow!(
+                "snapshot is not an Atlas database: {} migration row count mismatch snapshot={} current={}",
+                path.display(),
+                row_count,
+                expected_versions.len()
+            ));
+        }
+        return Err(anyhow::anyhow!(
+            "snapshot is not an Atlas database: {} duplicate migration rows {:?}; row count {} != current {}",
+            path.display(),
+            duplicates,
+            row_count,
+            expected_versions.len()
         ));
     }
 
