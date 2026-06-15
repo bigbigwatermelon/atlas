@@ -340,34 +340,141 @@ async fn verify_snapshot_with_key(path: &Path, key: &SqlCipherKey) -> Result<()>
 async fn ensure_atlas_schema(conn: &sea_orm::DatabaseConnection, path: &Path) -> Result<()> {
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
-    const CORE_TABLES: &[&str] = &[
-        "workspace",
-        "backup_config",
-        "repo_ref",
-        "thread",
-        "session",
-        "skill_source",
+    ensure_table_columns(conn, path, "seaql_migrations", &["version"]).await?;
+
+    let row = conn
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT COUNT(*) AS n FROM seaql_migrations".to_string(),
+        ))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("validate Atlas migrations: no row"))?;
+    let applied_count: i64 = row.try_get("", "n")?;
+    let current = current_schema_version() as i64;
+    if applied_count < current {
+        return Err(anyhow::anyhow!(
+            "snapshot is not an Atlas database: {} migration row count {applied_count} is older than current {current}",
+            path.display()
+        ));
+    }
+
+    let row = conn
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT COUNT(*) AS n FROM seaql_migrations WHERE version = 'm0016_backup_config'"
+                .to_string(),
+        ))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("validate Atlas latest migration: no row"))?;
+    let latest_count: i64 = row.try_get("", "n")?;
+    if latest_count != 1 {
+        return Err(anyhow::anyhow!(
+            "snapshot is not an Atlas database: {} missing migration m0016_backup_config",
+            path.display()
+        ));
+    }
+
+    const CORE_TABLES: &[(&str, &[&str])] = &[
+        ("workspace", &["id", "name", "slug", "created_at"]),
+        (
+            "backup_config",
+            &[
+                "id",
+                "enabled",
+                "remote_url",
+                "auto_backup_enabled",
+                "interval_seconds",
+                "backup_on_exit",
+                "created_at",
+                "updated_at",
+            ],
+        ),
+        (
+            "repo_ref",
+            &[
+                "id",
+                "workspace_id",
+                "name",
+                "slug",
+                "local_git_path",
+                "base_ref",
+            ],
+        ),
+        (
+            "thread",
+            &[
+                "id",
+                "workspace_id",
+                "title",
+                "slug",
+                "kind",
+                "lead_tool",
+                "created_at",
+            ],
+        ),
+        (
+            "session",
+            &[
+                "id",
+                "direction_id",
+                "repo_id",
+                "tool",
+                "cwd",
+                "native_session_id",
+                "status",
+                "created_at",
+            ],
+        ),
+        (
+            "skill_source",
+            &["id", "git_url", "git_ref", "last_synced", "last_status"],
+        ),
     ];
 
-    for table in CORE_TABLES {
-        let row = conn
-            .query_one(Statement::from_string(
-                DatabaseBackend::Sqlite,
-                format!(
-                    "SELECT COUNT(*) AS n FROM sqlite_master \
-                     WHERE type = 'table' AND name = '{table}'"
-                ),
-            ))
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("validate Atlas schema: no sqlite_master row"))?;
-        let count: i64 = row.try_get("", "n")?;
-        if count != 1 {
+    for (table, columns) in CORE_TABLES {
+        ensure_table_columns(conn, path, table, columns).await?;
+    }
+    Ok(())
+}
+
+async fn ensure_table_columns(
+    conn: &sea_orm::DatabaseConnection,
+    path: &Path,
+    table: &str,
+    required: &[&str],
+) -> Result<()> {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    use std::collections::HashSet;
+
+    let escaped = table.replace('"', "\"\"");
+    let rows = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            format!("PRAGMA table_info(\"{escaped}\")"),
+        ))
+        .await?;
+    if rows.is_empty() {
+        return Err(anyhow::anyhow!(
+            "snapshot is not an Atlas database: {} missing table {table}",
+            path.display()
+        ));
+    }
+
+    let mut columns = HashSet::new();
+    for row in rows {
+        let name: String = row.try_get("", "name")?;
+        columns.insert(name);
+    }
+
+    for column in required {
+        if !columns.contains(*column) {
             return Err(anyhow::anyhow!(
-                "snapshot is not an Atlas database: {} missing table {table}",
+                "snapshot is not an Atlas database: {} table {table} missing column {column}",
                 path.display()
             ));
         }
     }
+
     Ok(())
 }
 

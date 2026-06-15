@@ -231,6 +231,58 @@ async fn make_non_atlas_backup(
     (url, rk_path)
 }
 
+async fn make_forged_core_table_backup(
+    root: &Path,
+    key: [u8; 48],
+    schema_version: usize,
+) -> (String, PathBuf) {
+    let source_home = root.join("forged-source-home");
+    std::fs::create_dir_all(&source_home).unwrap();
+    iso_env_with(&source_home, key);
+    let rk_path = root.join("forged-rk.json");
+    recovery_key::export_to(&rk_path).unwrap();
+
+    let url = make_bare(root);
+    let work = root.join("forged-work");
+    std::fs::create_dir_all(&work).unwrap();
+    sh(&work, &["git", "init", "--initial-branch=main"]);
+
+    let fake_db = work.join("atlas.db");
+    write_forged_core_tables_db(&fake_db, key).await;
+    let meta = serde_json::json!({
+        "schema_version": schema_version,
+        "snapshot_at": "0",
+        "db_bytes": std::fs::metadata(&fake_db).unwrap().len(),
+        "atlas_version": "0.1.0"
+    });
+    std::fs::write(
+        work.join(".atlas-backup-meta.json"),
+        serde_json::to_vec_pretty(&meta).unwrap(),
+    )
+    .unwrap();
+
+    sh(
+        &work,
+        &["git", "add", "atlas.db", ".atlas-backup-meta.json"],
+    );
+    sh(
+        &work,
+        &[
+            "git",
+            "-c",
+            "user.email=atlas@local",
+            "-c",
+            "user.name=Atlas",
+            "commit",
+            "-m",
+            "forged backup",
+        ],
+    );
+    sh(&work, &["git", "remote", "add", "origin", &url]);
+    sh(&work, &["git", "push", "origin", "HEAD:refs/heads/main"]);
+    (url, rk_path)
+}
+
 async fn write_non_atlas_encrypted_db(path: &Path, key: [u8; 48]) {
     let k = SqlCipherKey::from_bytes(&key).unwrap();
     let mut opt = sea_orm::ConnectOptions::new(format!("sqlite://{}?mode=rwc", path.display()));
@@ -239,6 +291,59 @@ async fn write_non_atlas_encrypted_db(path: &Path, key: [u8; 48]) {
     conn.execute_unprepared("CREATE TABLE not_atlas (id INTEGER PRIMARY KEY);")
         .await
         .unwrap();
+}
+
+async fn write_forged_core_tables_db(path: &Path, key: [u8; 48]) {
+    let k = SqlCipherKey::from_bytes(&key).unwrap();
+    let mut opt = sea_orm::ConnectOptions::new(format!("sqlite://{}?mode=rwc", path.display()));
+    opt.sqlcipher_key(format_for_pragma(&k));
+    let conn = sea_orm::Database::connect(opt).await.unwrap();
+
+    conn.execute_unprepared(
+        "CREATE TABLE seaql_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL);",
+    )
+    .await
+    .unwrap();
+    for version in [
+        "m0001_init",
+        "m0002_repo_profile",
+        "m0003_plan",
+        "m0004_direction_status",
+        "m0005_direction_repo_reason",
+        "m0006_drop_direction_repo",
+        "m0007_lead_message",
+        "m0008_direction_mandate",
+        "m0009_drop_thread_status",
+        "m0010_app_setting",
+        "m0011_thread_lead_tool",
+        "m0012_drop_repo_default_tool",
+        "m0013_skill_source",
+        "m0014_skill_enable",
+        "m0015_im_route",
+        "m0016_backup_config",
+    ] {
+        conn.execute_unprepared(&format!(
+            "INSERT INTO seaql_migrations (version, applied_at) VALUES ('{version}', 0);"
+        ))
+        .await
+        .unwrap();
+    }
+
+    for table in [
+        "workspace",
+        "backup_config",
+        "repo_ref",
+        "thread",
+        "session",
+        "skill_source",
+    ] {
+        conn.execute_unprepared(&format!(
+            "CREATE TABLE \"{}\" (id INTEGER PRIMARY KEY);",
+            table.replace('"', "\"\"")
+        ))
+        .await
+        .unwrap();
+    }
 }
 
 fn copy_pending_snapshot_to_db(home: &Path) {
@@ -637,6 +742,31 @@ async fn non_atlas_encrypted_snapshot_does_not_stage_restore() {
         err.to_string().contains("not an Atlas database"),
         "got: {err:#}"
     );
+    assert!(home.join("atlas.db").exists());
+    assert!(!atlas_app_lib::backup::pending_restore_exists(&home));
+    assert_eq!(workspace_count(&db).await, 0);
+}
+
+#[tokio::test]
+async fn forged_core_tables_without_columns_do_not_stage_restore() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let key = [0x35u8; 48];
+    let (url, rk) = make_forged_core_table_backup(tmp.path(), key, 1).await;
+
+    let home = tmp.path().join("target-home");
+    std::fs::create_dir_all(&home).unwrap();
+    iso_env_with(&home, key);
+    let db = Db::open_default().await.unwrap();
+    let _ = config::load(&db).await.unwrap();
+    let svc = BackupService::new(db.clone(), home.clone());
+
+    let err = svc
+        .restore_from(&url, &rk)
+        .await
+        .err()
+        .expect("must reject forged Atlas table names with incomplete columns");
+    assert!(err.to_string().contains("missing column"), "got: {err:#}");
     assert!(home.join("atlas.db").exists());
     assert!(!atlas_app_lib::backup::pending_restore_exists(&home));
     assert_eq!(workspace_count(&db).await, 0);
