@@ -92,7 +92,7 @@ pub async fn add_skill_source(
 ) -> Result<skill_source::Model> {
     let ref_norm = git_ref.unwrap_or("").to_string();
     // Idempotent: same (url, ref) reuses the existing row so repeat clicks /
-    // re-imports don't pile up duplicate clones under ~/.weft/skills/sources/.
+    // re-imports don't pile up duplicate clones under ~/.atlas/skills/sources/.
     // A *different* ref on the same URL is still a distinct source.
     if let Some(existing) = skill_source::Entity::find()
         .filter(skill_source::Column::GitUrl.eq(git_url))
