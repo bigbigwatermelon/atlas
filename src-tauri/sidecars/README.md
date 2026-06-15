@@ -1,22 +1,50 @@
 # Computer Use Sidecar
 
-Atlas bundles a pinned `open-computer-use` helper for macOS Computer Use.
+Atlas bundles a pinned `open-computer-use` runtime from `iFurySt/open-codex-computer-use`.
 
-Expected development path:
+The source-controlled runtime is prepared by:
+
+```bash
+pnpm computer-use:prepare-sidecar
+```
+
+Expected runtime paths:
 
 ```text
 src-tauri/sidecars/open-computer-use
+src-tauri/sidecars/open-computer-use-runtime/Open Computer Use.app/Contents/MacOS/OpenComputerUse
+src-tauri/sidecars/open-computer-use.version.json
 ```
 
-The binary is not fetched at runtime and Atlas must not call upstream installer commands that write user-global agent config.
+The wrapper at `src-tauri/sidecars/open-computer-use` forwards all arguments to the bundled native app binary. Atlas injects it into new agent sessions as:
 
-Until the binary is present, only metadata is bundled as a Tauri resource.
+```text
+<resource-dir>/sidecars/open-computer-use mcp
+```
 
-To update the helper:
+Pinned version:
 
-1. Pick a release or commit from `https://github.com/iFurySt/open-codex-computer-use`.
-2. Build or download the macOS `open-computer-use` binary.
-3. Put it at `src-tauri/sidecars/open-computer-use`.
-4. Ensure it is executable: `chmod 755 src-tauri/sidecars/open-computer-use`.
-5. Update `open-computer-use.version.json`.
-6. Run Settings diagnostics and the TextEdit manual smoke test.
+```text
+open-computer-use@0.1.53
+GitHub tag: v0.1.53
+GitHub commit: b753b790cace188152ffb755cd13b2ac9ff6ebf7
+```
+
+Do not run these upstream commands from Atlas:
+
+```text
+open-computer-use install-codex
+open-computer-use install-claude
+open-computer-use install-opencode
+```
+
+Those commands edit user-global agent configs. Atlas owns session-scoped MCP injection instead.
+
+Verification:
+
+```bash
+pnpm computer-use:verify-sidecar
+src-tauri/sidecars/open-computer-use --version
+src-tauri/sidecars/open-computer-use help call
+src-tauri/sidecars/open-computer-use call list_apps
+```

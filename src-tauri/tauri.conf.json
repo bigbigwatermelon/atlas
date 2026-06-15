@@ -42,6 +42,8 @@
       "icons/icon.ico"
     ],
     "resources": [
+      "sidecars/open-computer-use",
+      "sidecars/open-computer-use-runtime",
       "sidecars/open-computer-use.version.json"
     ]
   }
