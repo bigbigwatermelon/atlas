@@ -2,7 +2,7 @@
 
 ## 目标
 
-将 Weft 从当前的「Coding Agent 交付工作台」剥离为「通用本地 Agent App」。第一阶段只移除默认架构里的 coding 假设，不引入 HR、Pack、Scenario、业务插件系统或新的领域模型。
+将 Atlas 从当前的「Coding Agent 交付工作台」剥离为「通用本地 Agent App」。第一阶段只移除默认架构里的 coding 假设，不引入 HR、Pack、Scenario、业务插件系统或新的领域模型。
 
 完成后的应用应支持用户在本地桌面 App 中创建普通任务，与 Claude / Codex / OpenCode 对话，查看会话输出，处理权限请求，管理 skills，并保留 settings、backup、notifications、IM bridge 等现有基础能力。应用默认不要求用户添加 repo，不创建 git worktree，不展示 diff，不运行 pre-PR checks。
 
@@ -14,7 +14,7 @@
 - 不实现动态 UI 插件系统。
 - 不保留 coding flow 作为默认体验。
 - 不在第一阶段删除 Claude / Codex / OpenCode provider 切换。
-- 不要求兼容已有 Weft coding 数据迁移到新模型；第三方仓库克隆分析场景下可优先支持 fresh DB。
+- 不要求兼容已有 Atlas coding 数据迁移到新模型；第三方仓库克隆分析场景下可优先支持 fresh DB。
 
 ## 当前架构中应保留的部分
 
@@ -294,10 +294,10 @@ Settings 中保留 Skills 页面。scope 第一阶段仍可沿用 `global` 和 `
 第一阶段推荐：
 
 ```text
-~/.weft/workspaces/<workspace-slug>/tasks/<task-slug>/runs/<run-slug>
+~/.atlas/workspaces/<workspace-slug>/tasks/<task-slug>/runs/<run-slug>
 ```
 
-该目录由 Weft 管理，不是 git repo。skills 和 ask injection 可以写入该目录下的 provider config 目录。若用户主动选择一个本地文件夹，则该 run 使用用户指定 cwd。
+该目录由 Atlas 管理，不是 git repo。skills 和 ask injection 可以写入该目录下的 provider config 目录。若用户主动选择一个本地文件夹，则该 run 使用用户指定 cwd。
 
 ### Bus / Planner
 

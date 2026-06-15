@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Turn Weft's default experience into a generic local multi-provider Agent App by removing the repo/worktree/diff/check assumptions from the primary path.
+**Goal:** Turn Atlas's default experience into a generic local multi-provider Agent App by removing the repo/worktree/diff/check assumptions from the primary path.
 
 **Architecture:** Keep the existing Tauri/React app, store tables, provider adapters, chat engine, Ask Bridge, skills, settings, backup, and IM bridge. Add a repo-less run path on top of the existing `thread` and `direction` tables, then switch the UI and prompts to use that path by default while leaving coding modules present but not called.
 
@@ -12,7 +12,7 @@
 
 ## File Structure
 
-- Modify `src-tauri/src/paths.rs`: add app-managed run cwd helpers under `~/.weft/workspaces/...`.
+- Modify `src-tauri/src/paths.rs`: add app-managed run cwd helpers under `~/.atlas/workspaces/...`.
 - Modify `src-tauri/src/store/repo.rs`: keep `thread`/`direction`, but add tests proving `repo_id = 0` works as a generic run.
 - Modify `src-tauri/src/commands.rs`: add `create_run`, make `create_direction` only materialize worktrees for non-zero repo ids.
 - Modify `src-tauri/src/lead_chat/commands.rs`: replace coding lead prompt, stop injecting repo state into the lead prompt, add `chat_open_run`, and let repo-less sessions use app-managed cwd.
@@ -39,23 +39,23 @@ Add these tests inside `#[cfg(test)] mod tests` in `src-tauri/src/paths.rs`:
 
 ```rust
 #[test]
-fn run_home_is_namespaced_under_weft_home() {
+fn run_home_is_namespaced_under_atlas_home() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = std::env::temp_dir().join(format!(
-        "weft-paths-{}",
+        "atlas-paths-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
     ));
-    std::env::set_var("WEFT_HOME", &tmp);
+    std::env::set_var("ATLAS_HOME", &tmp);
 
     let p = run_home("people-ops", "draft-offer", "main").unwrap();
     assert!(p.ends_with("workspaces/people-ops/tasks/draft-offer/runs/main"));
     assert!(p.is_dir(), "run_home should create the directory");
 
     let _ = std::fs::remove_dir_all(&tmp);
-    std::env::remove_var("WEFT_HOME");
+    std::env::remove_var("ATLAS_HOME");
 }
 
 #[test]
@@ -92,12 +92,12 @@ fn checked_segment(segment: &str, label: &str) -> std::io::Result<String> {
     Ok(trimmed.to_string())
 }
 
-/// ~/.weft/workspaces/<workspace>/tasks/<task>/runs/<run>
+/// ~/.atlas/workspaces/<workspace>/tasks/<task>/runs/<run>
 pub fn run_home(workspace_slug: &str, task_slug: &str, run_slug: &str) -> std::io::Result<PathBuf> {
     let ws = checked_segment(workspace_slug, "workspace")?;
     let task = checked_segment(task_slug, "task")?;
     let run = checked_segment(run_slug, "run")?;
-    let dir = weft_home()?
+    let dir = atlas_home()?
         .join("workspaces")
         .join(ws)
         .join("tasks")
@@ -155,12 +155,12 @@ async fn repo_less_direction_can_back_a_generic_session() {
     assert_eq!(d.repo_id, 0);
     assert!(direction_repo_of(&db, d.id).await.unwrap().is_none());
 
-    let s = create_session(&db, d.id, 0, "codex", "/tmp/weft-run")
+    let s = create_session(&db, d.id, 0, "codex", "/tmp/atlas-run")
         .await
         .unwrap();
     let latest = latest_session_for(&db, d.id, 0).await.unwrap().unwrap();
     assert_eq!(latest.id, s.id);
-    assert_eq!(latest.cwd, "/tmp/weft-run");
+    assert_eq!(latest.cwd, "/tmp/atlas-run");
 }
 ```
 
@@ -376,7 +376,7 @@ git commit -m "feat(agent): support repo-less runs"
 Create `src-tauri/tests/lead_prompt.rs`:
 
 ```rust
-use weft_app_lib::lead_chat::commands::lead_prompt;
+use atlas_app_lib::lead_chat::commands::lead_prompt;
 
 #[test]
 fn lead_prompt_is_generic_agent_app_copy() {
@@ -406,7 +406,7 @@ Expected: FAIL because the current prompt is coding-specific.
 In `src-tauri/src/lead_chat/commands.rs`, replace `BASE_PROMPT`, `SENTINEL_DIRECTIVES`, and `lead_prompt()` with:
 
 ```rust
-const BASE_PROMPT: &str = "You are the coordinator for this task in weft, a local Agent App. \
+const BASE_PROMPT: &str = "You are the coordinator for this task in atlas, a local Agent App. \
 Start by calling get_task to read what the human is asking. Discuss the goal, constraints, \
 and next step with the human. You may answer directly, ask a concise clarifying question, \
 or suggest a named run for a focused agent session. Do not assume the workspace contains code \
@@ -466,7 +466,7 @@ pub fn format_generic_brief(task: &str, kind: &str, run: &str, mandate: &str) ->
     );
     s.push_str(
         "\n## Coordinate\n\
-         Use the weft_bus tools to post updates, read your inbox, and call \
+         Use the atlas_bus tools to post updates, read your inbox, and call \
          ask_human when the human must decide something. Do not assume this run \
          is editing a git repository.\n",
     );
@@ -993,7 +993,7 @@ palette: {
 workspace: {
   threadsCount: "{{count}} tasks",
   emptyTitleHas: "No tasks yet",
-  emptyBodyHas: "A task is one conversation or agent run. Create one, pick a provider, and Weft keeps the session, skills, and permission requests in one place.",
+  emptyBodyHas: "A task is one conversation or agent run. Create one, pick a provider, and Atlas keeps the session, skills, and permission requests in one place.",
   emptyBodyNoWs: "Create a workspace to begin.",
 },
 onboarding: {
@@ -1044,7 +1044,7 @@ palette: {
 workspace: {
   threadsCount: "{{count}} 个任务",
   emptyTitleHas: "还没有任务",
-  emptyBodyHas: "任务是一段对话或一次 agent 运行。新建任务后选择 provider，Weft 会管理会话、skills 和权限请求。",
+  emptyBodyHas: "任务是一段对话或一次 agent 运行。新建任务后选择 provider，Atlas 会管理会话、skills 和权限请求。",
   emptyBodyNoWs: "先创建一个工作区。",
 },
 onboarding: {
@@ -1142,8 +1142,8 @@ Expected: app opens with no repo requirement.
 
 In the running app:
 
-1. Clear or use a fresh `WEFT_HOME` test directory.
-2. Launch Weft.
+1. Clear or use a fresh `ATLAS_HOME` test directory.
+2. Launch Atlas.
 3. Confirm first-run does not ask to add repos.
 4. Create a workspace.
 5. Create a task.
