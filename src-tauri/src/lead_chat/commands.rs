@@ -141,8 +141,10 @@ pub async fn lead_engine(
     };
     let ask = crate::bus::inject::inject_ask_hook(&base, thread_id, "lead", &t.lead_tool, &cwd);
     crate::skills::inject_for(db, t.workspace_id, &cwd).await;
+    let computer = crate::computer_use::inject::maybe_inject(app, db, &t.lead_tool, &cwd).await;
     let mut extra = ask.args;
     extra.extend(inj.args);
+    extra.extend(computer.args);
     let system_prompt = if is_concierge {
         concierge_prompt(lang)
     } else {
@@ -461,8 +463,10 @@ async fn chat_open_worker_impl(
         &cwd,
     );
     crate::skills::inject_for(db, thread.workspace_id, &cwd).await;
+    let computer = crate::computer_use::inject::maybe_inject(app, db, &dir.tool, &cwd).await;
     let mut extra = ask.args;
     extra.extend(inj.args);
+    extra.extend(computer.args);
 
     let state = app.state::<LeadChatState>();
     let key = sess.id as i64;
@@ -564,8 +568,10 @@ async fn worker_engine(app: &AppHandle, db: &Db, session_id: i32) -> anyhow::Res
     if let Ok(Some(th)) = repo::get_thread(db, dir.thread_id).await {
         crate::skills::inject_for(db, th.workspace_id, &cwd).await;
     }
+    let computer = crate::computer_use::inject::maybe_inject(app, db, &sess.tool, &cwd).await;
     let mut extra = ask.args;
     extra.extend(inj.args);
+    extra.extend(computer.args);
     let inner = engine::EngineInner {
         thread_id: dir.thread_id,
         tool: sess.tool.clone(),
