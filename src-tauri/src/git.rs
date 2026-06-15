@@ -118,7 +118,7 @@ pub fn delete_branch(repo: &Path, branch: &str) -> Result<()> {
 
 /// Create a brand-new git repo at `at` with an empty initial commit, so worktrees
 /// (which need a commit-ish) work immediately. Fails if `at` is a non-empty dir.
-/// Relies on the user's global git identity for the commit.
+/// Uses repo-local Atlas identity so the initial commit works without global git config.
 pub fn init_repo(at: &Path) -> Result<()> {
     if at.exists()
         && std::fs::read_dir(at)
@@ -132,6 +132,8 @@ pub fn init_repo(at: &Path) -> Result<()> {
     }
     std::fs::create_dir_all(at)?;
     git(at, &["init", "-q"])?;
+    git(at, &["config", "user.email", "atlas@local"])?;
+    git(at, &["config", "user.name", "Atlas"])?;
     git(
         at,
         &["commit", "-q", "--allow-empty", "-m", "Initial commit"],
