@@ -3,14 +3,12 @@ import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent } from "../components/ui/Dialog";
 import { Button } from "../components/ui/Button";
 import { Input, Field } from "../components/ui/Input";
-import { Select } from "../components/ui/Select";
 import { useStore } from "../state/store";
 
 export function CreateThreadDialog({ open, onOpenChange }: DProps) {
   const { createThread } = useStore();
   const { t } = useTranslation();
   const [title, setTitle] = useState("");
-  const [kind, setKind] = useState("feature");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   async function submit() {
@@ -18,7 +16,7 @@ export function CreateThreadDialog({ open, onOpenChange }: DProps) {
     setBusy(true);
     setErr(null);
     try {
-      await createThread(title.trim(), kind);
+      await createThread(title.trim(), "task");
       setTitle("");
       onOpenChange(false);
     } catch (e) {
@@ -46,19 +44,6 @@ export function CreateThreadDialog({ open, onOpenChange }: DProps) {
               placeholder={t("dialog.taskTitleHint")}
               value={title}
               onChange={(e) => setTitle(e.currentTarget.value)}
-            />
-          </Field>
-          <Field label={t("dialog.threadType")}>
-            <Select
-              value={kind}
-              onValueChange={setKind}
-              ariaLabel={t("dialog.threadType")}
-              options={[
-                { value: "feature", label: t("kind.feature") },
-                { value: "bugfix", label: t("kind.bugfix") },
-                { value: "refactor", label: t("kind.refactor") },
-                { value: "spike", label: t("kind.spike") },
-              ]}
             />
           </Field>
           {err && <p className="text-[12px] text-danger">{err}</p>}

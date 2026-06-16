@@ -61,32 +61,40 @@ export function ThreadBoard() {
         ) : runs.length === 0 ? (
           <EmptyDiscuss />
         ) : (
-          <div className="min-h-0 flex-1 overflow-auto">
-            <div className="flex h-full min-w-fit gap-3 px-5 py-4">
-              {COLUMNS.map((col) => {
-                const cards = runs
-                  .filter((d) => statusOf(d) === col.key)
-                  .sort((a, b) => Number(urgent(b)) - Number(urgent(a)));
-                return (
-                  <div key={col.key} className="flex w-[300px] shrink-0 flex-col gap-2">
-                    <div className="flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-                      <span className={cn("h-1.5 w-1.5 rounded-full", col.dot)} />
-                      {t(col.label)}
-                      <span className="tabular-nums text-ink-faint/70">{cards.length}</span>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-bg/85 px-5 py-2.5">
+              <span className="text-[12px] font-medium text-ink-faint">
+                {t("thread.runCount", { count: runs.length })}
+              </span>
+              <AddRunButton />
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <div className="flex h-full min-w-fit gap-3 px-5 py-4">
+                {COLUMNS.map((col) => {
+                  const cards = runs
+                    .filter((d) => statusOf(d) === col.key)
+                    .sort((a, b) => Number(urgent(b)) - Number(urgent(a)));
+                  return (
+                    <div key={col.key} className="flex w-[300px] shrink-0 flex-col gap-2">
+                      <div className="flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
+                        <span className={cn("h-1.5 w-1.5 rounded-full", col.dot)} />
+                        {t(col.label)}
+                        <span className="tabular-nums text-ink-faint/70">{cards.length}</span>
+                      </div>
+                      <div className="flex min-h-0 flex-1 flex-col gap-2 rounded-[var(--radius-lg)] bg-surface/40 p-2">
+                        {cards.map((d) => (
+                          <DirectionCard key={d.id} direction={d} onRename={setRenamingDirectionId} />
+                        ))}
+                        {cards.length === 0 && (
+                          <div className="flex flex-1 items-center justify-center py-6 text-[11px] text-ink-faint/60">
+                            {t("thread.colEmpty")}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex min-h-0 flex-1 flex-col gap-2 rounded-[var(--radius-lg)] bg-surface/40 p-2">
-                      {cards.map((d) => (
-                        <DirectionCard key={d.id} direction={d} onRename={setRenamingDirectionId} />
-                      ))}
-                      {cards.length === 0 && (
-                        <div className="flex flex-1 items-center justify-center py-6 text-[11px] text-ink-faint/60">
-                          {t("thread.colEmpty")}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -103,6 +111,39 @@ export function ThreadBoard() {
         />
       )}
     </section>
+  );
+}
+
+function AddRunButton() {
+  const { activeThreadId, createRun, defaultTool } = useStore();
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const startRun = async () => {
+    if (activeThreadId == null || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await createRun(activeThreadId, t("thread.defaultRunName"), defaultTool);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex min-w-0 items-center justify-end gap-2">
+      {err && <span className="max-w-[220px] truncate text-[11px] text-danger">{err}</span>}
+      <Button
+        size="sm"
+        variant="primary"
+        disabled={busy}
+        onClick={() => void startRun()}
+      >
+        <TerminalSquare size={13} />
+        {busy ? t("lead.starting") : t("thread.startRun")}
+      </Button>
+    </div>
   );
 }
 

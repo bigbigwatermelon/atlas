@@ -39,20 +39,28 @@ fn checked_segment(segment: &str, label: &str) -> std::io::Result<String> {
     }
 }
 
-/// ~/.atlas/workspaces/<workspace>/tasks/<task>/runs/<run>
-pub fn run_home(workspace_slug: &str, task_slug: &str, run_slug: &str) -> std::io::Result<PathBuf> {
+/// ~/.atlas/workspaces/<workspace>/tasks/<task>
+pub fn task_home(workspace_slug: &str, task_slug: &str) -> std::io::Result<PathBuf> {
     let ws = checked_segment(workspace_slug, "workspace")?;
     let task = checked_segment(task_slug, "task")?;
-    let run = checked_segment(run_slug, "run")?;
-    let dir = atlas_home()?
+    Ok(atlas_home()?
         .join("workspaces")
         .join(ws)
         .join("tasks")
-        .join(task)
-        .join("runs")
-        .join(run);
+        .join(task))
+}
+
+/// ~/.atlas/workspaces/<workspace>/tasks/<task>/runs/<run>
+pub fn run_home(workspace_slug: &str, task_slug: &str, run_slug: &str) -> std::io::Result<PathBuf> {
+    let run = checked_segment(run_slug, "run")?;
+    let dir = task_home(workspace_slug, task_slug)?.join("runs").join(run);
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+/// ~/.atlas/leads/<thread_id>
+pub fn lead_home(thread_id: i32) -> std::io::Result<PathBuf> {
+    Ok(atlas_home()?.join("leads").join(thread_id.to_string()))
 }
 
 /// ~/.atlas/skills/sources — git-cloned skill source caches, one dir per source.
@@ -74,7 +82,7 @@ pub static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 mod tests {
-    use super::{atlas_home, db_path, run_home, skills_home, ENV_LOCK};
+    use super::{atlas_home, db_path, lead_home, run_home, skills_home, task_home, ENV_LOCK};
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
 
@@ -143,10 +151,18 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let home = AtlasHomeGuard::new("paths");
 
+        let task = task_home("people-ops", "draft-offer").unwrap();
+        assert!(task.ends_with("workspaces/people-ops/tasks/draft-offer"));
+        assert!(task.starts_with(home.path()));
+
         let p = run_home("people-ops", "draft-offer", "main").unwrap();
         assert!(p.ends_with("workspaces/people-ops/tasks/draft-offer/runs/main"));
         assert!(p.is_dir(), "run_home should create the directory");
         assert!(p.starts_with(home.path()));
+
+        let lead = lead_home(42).unwrap();
+        assert!(lead.ends_with("leads/42"));
+        assert!(lead.starts_with(home.path()));
     }
 
     #[test]

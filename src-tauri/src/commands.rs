@@ -142,7 +142,42 @@ pub async fn read_transcript(cwd: String, tool: String) -> R<Vec<crate::sidecar:
 
 #[tauri::command]
 pub async fn delete_thread(db: State<'_, Db>, thread_id: i32) -> R<()> {
-    repo::delete_thread_cascade(&db, thread_id).await.map_err(e)
+    delete_thread_inner(&db, thread_id).await.map_err(e)
+}
+
+pub async fn delete_thread_inner(db: &Db, thread_id: i32) -> anyhow::Result<()> {
+    let dirs = atlas_owned_dirs_for_thread(db, thread_id).await?;
+    repo::delete_thread_cascade(db, thread_id).await?;
+    for dir in dirs {
+        remove_dir_if_exists(dir).await?;
+    }
+    Ok(())
+}
+
+async fn atlas_owned_dirs_for_thread(
+    db: &Db,
+    thread_id: i32,
+) -> anyhow::Result<Vec<std::path::PathBuf>> {
+    use sea_orm::EntityTrait;
+
+    let mut dirs = Vec::new();
+    if let Some(thread) = repo::get_thread(db, thread_id).await? {
+        let workspace = entities::workspace::Entity::find_by_id(thread.workspace_id)
+            .one(&db.0)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("workspace {} not found", thread.workspace_id))?;
+        dirs.push(crate::paths::task_home(&workspace.slug, &thread.slug)?);
+    }
+    dirs.push(crate::paths::lead_home(thread_id)?);
+    Ok(dirs)
+}
+
+async fn remove_dir_if_exists(path: std::path::PathBuf) -> anyhow::Result<()> {
+    match tokio::fs::remove_dir_all(&path).await {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(anyhow::anyhow!("remove {}: {err}", path.display())),
+    }
 }
 
 #[tauri::command]
@@ -687,5 +722,34 @@ mod tests {
         assert_eq!(got.session_id, None);
         assert_eq!(got.native_id, None);
         assert_eq!(got.status, None);
+    }
+
+    #[tokio::test]
+    async fn delete_thread_inner_removes_task_and_lead_dirs() {
+        let _lock = crate::paths::ENV_LOCK.lock().unwrap();
+        let home = AtlasHomeGuard::new("delete-thread-dirs");
+        let db = Db::connect("sqlite::memory:").await.unwrap();
+        let ws = repo::create_workspace(&db, "People Ops").await.unwrap();
+        let thread = repo::create_thread(&db, ws.id, "Draft Offer", "task", "codex")
+            .await
+            .unwrap();
+        let dir = repo::create_direction(&db, thread.id, "Main Run", "codex", "plan+impl")
+            .await
+            .unwrap();
+
+        let run_dir = crate::paths::run_home(&ws.slug, &thread.slug, &dir.slug).unwrap();
+        let lead_dir = crate::paths::lead_home(thread.id).unwrap();
+        std::fs::create_dir_all(&lead_dir).unwrap();
+        std::fs::write(run_dir.join("agent.log"), "output").unwrap();
+        std::fs::write(lead_dir.join("lead.log"), "output").unwrap();
+
+        delete_thread_inner(&db, thread.id).await.unwrap();
+
+        assert!(!home
+            .path()
+            .join("workspaces/people-ops/tasks/draft-offer")
+            .exists());
+        assert!(!lead_dir.exists());
+        assert_eq!(repo::list_threads(&db, ws.id).await.unwrap().len(), 0);
     }
 }

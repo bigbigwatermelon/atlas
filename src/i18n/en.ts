@@ -114,6 +114,7 @@ export const en = {
     colRunning: "In progress",
     colNeeds: "Needs you",
     statusPlanning: "Planning",
+    statusBuilding: "Working",
     colDone: "Done",
     colEmpty: "—",
     dropHere: "Drop to move here",
@@ -429,6 +430,7 @@ export const en = {
     renameFailed: "Rename failed. Please try again.",
   },
   kind: {
+    task: "Task",
     feature: "Feature",
     bugfix: "Bugfix",
     refactor: "Refactor",

@@ -112,6 +112,7 @@ export const zh = {
     colRunning: "进行中",
     colNeeds: "待你处理",
     statusPlanning: "规划中",
+    statusBuilding: "处理中",
     colDone: "已完成",
     colEmpty: "—",
     dropHere: "拖到此处移动",
@@ -419,6 +420,7 @@ export const zh = {
     renameFailed: "重命名失败，请重试。",
   },
   kind: {
+    task: "任务",
     feature: "功能",
     bugfix: "缺陷",
     refactor: "重构",

@@ -119,9 +119,7 @@ pub async fn lead_engine(
     let t = repo::get_thread(db, thread_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("thread not found"))?;
-    let cwd = crate::paths::atlas_home()?
-        .join("leads")
-        .join(thread_id.to_string());
+    let cwd = crate::paths::lead_home(thread_id)?;
     std::fs::create_dir_all(&cwd)?;
     // git-init so claude's session store (keyed by cwd) behaves like any other
     // cwd; harmless if it already exists.
