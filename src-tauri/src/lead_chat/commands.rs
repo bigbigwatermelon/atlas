@@ -123,7 +123,7 @@ pub async fn lead_engine(
     std::fs::create_dir_all(&cwd)?;
     // git-init so claude's session store (keyed by cwd) behaves like any other
     // cwd; harmless if it already exists.
-    let _ = std::process::Command::new("git")
+    let _ = crate::git::command()
         .args(["init", "-q"])
         .current_dir(&cwd)
         .status();

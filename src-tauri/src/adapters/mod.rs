@@ -335,7 +335,7 @@ mod tests {
             std::env::temp_dir().join(format!("atlas-codex-ignore-config-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cwd);
         std::fs::create_dir_all(&cwd).unwrap();
-        std::process::Command::new("git")
+        crate::git::command()
             .args(["init", "-q"])
             .current_dir(&cwd)
             .status()
