@@ -1,33 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../state/store";
 import { ChatTimeline } from "./ChatTimeline";
 import { ChatComposer } from "./ChatComposer";
 import { PermissionBar } from "./PermissionBar";
-import { Dialog, DialogContent } from "../components/ui/Dialog";
-import { Input } from "../components/ui/Input";
-import { Button } from "../components/ui/Button";
-import { useRepoActions } from "./useRepoActions";
 import { api } from "../lib/api";
 import { resumeCommand } from "../lib/resume";
 
-type PromptState = {
-  title: string;
-  placeholder?: string;
-  value: string;
-  resolve: (v: string | null) => void;
-};
-
 /**
- * The task console — a real chat, not a projection of the CLI's log. Messages
- * live in atlas's own store, replies stream token-by-token over the lead-chat
- * event, and structured cards sit inline in the timeline. The engine survives
- * restarts (resume) so history is always here and the composer always works.
+ * The task console: one product-native conversation per task. Messages live in
+ * Atlas's store, replies stream over the lead-chat event, and the composer stays
+ * available across restarts through the provider's native resume id.
  */
-export function LeadTab({ onReview }: { onReview: () => void }) {
+export function LeadTab() {
   const {
     activeThreadId,
-    activeWorkspaceId,
     leadMessages,
     leadTurn,
     leadSlash,
@@ -35,24 +22,15 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
     loadLeadChat,
     sendLeadChat,
     interruptLead,
-    setReviewingProposal,
     asks,
   } = useStore();
   const { t } = useTranslation();
-  const { run, busy: actionsBusy } = useRepoActions();
-  const [promptState, setPromptState] = useState<PromptState | null>(null);
-
-  const promptText = (title: string, placeholder?: string) =>
-    new Promise<string | null>((resolve) =>
-      setPromptState({ title, placeholder, value: "", resolve }),
-    );
 
   useEffect(() => {
     if (activeThreadId != null) void loadLeadChat(activeThreadId);
   }, [activeThreadId, loadLeadChat]);
 
   if (activeThreadId == null) return null;
-  // The lead's own timeline: worker chat rows carry a session_id, skip them.
   const msgs = (leadMessages[activeThreadId] ?? []).filter((m) => m.session_id == null);
   const turn = leadTurn[activeThreadId] ?? { state: "stopped" as const, queued: 0 };
 
@@ -65,15 +43,6 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
         messages={msgs}
         busy={turn.state === "busy"}
         activity={leadActivity[activeThreadId]}
-        onReviewProposal={() => {
-          setReviewingProposal(true);
-          onReview();
-        }}
-        runAction={run}
-        actionsBusy={actionsBusy}
-        threadId={activeThreadId}
-        workspaceId={activeWorkspaceId}
-        promptText={promptText}
       />
       <ChatComposer
         slashCommands={leadSlash[activeThreadId] ?? []}
@@ -92,59 +61,10 @@ export function LeadTab({ onReview }: { onReview: () => void }) {
           const st = await api.leadState(activeThreadId);
           if (!st.native_id) return false;
           await api.leadStop(activeThreadId);
-          await navigator.clipboard.writeText(
-            resumeCommand("claude", st.cwd, st.native_id),
-          );
+          await navigator.clipboard.writeText(resumeCommand("claude", st.cwd, st.native_id));
           return true;
         }}
       />
-      <Dialog
-        open={promptState != null}
-        onOpenChange={(open) => {
-          if (!open && promptState) {
-            promptState.resolve(null);
-            setPromptState(null);
-          }
-        }}
-      >
-        {promptState && (
-          <DialogContent title={promptState.title}>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const v = promptState.value.trim();
-                promptState.resolve(v || null);
-                setPromptState(null);
-              }}
-              className="flex flex-col gap-3"
-            >
-              <Input
-                autoFocus
-                placeholder={promptState.placeholder}
-                value={promptState.value}
-                onChange={(e) =>
-                  setPromptState((s) => (s ? { ...s, value: e.currentTarget.value } : s))
-                }
-              />
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    promptState.resolve(null);
-                    setPromptState(null);
-                  }}
-                >
-                  {t("session.promptCancel")}
-                </Button>
-                <Button type="submit" variant="primary">
-                  {t("session.promptOk")}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        )}
-      </Dialog>
     </div>
   );
 }

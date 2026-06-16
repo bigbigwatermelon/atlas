@@ -108,11 +108,11 @@ async fn workspace_count(db: &Db) -> i64 {
     row.try_get("", "n").unwrap()
 }
 
-async fn repo_count(db: &Db) -> i64 {
+async fn thread_count(db: &Db) -> i64 {
     let row =
         db.0.query_one(sea_orm::Statement::from_string(
             sea_orm::DbBackend::Sqlite,
-            "SELECT COUNT(*) AS n FROM repo_ref".to_owned(),
+            "SELECT COUNT(*) AS n FROM thread".to_owned(),
         ))
         .await
         .unwrap()
@@ -120,30 +120,30 @@ async fn repo_count(db: &Db) -> i64 {
     row.try_get("", "n").unwrap()
 }
 
-async fn insert_real_repo(db: &Db) {
+async fn insert_real_task(db: &Db) {
     let default_id = ensure_default_workspace_inner(db).await.unwrap();
     assert_eq!(default_id, 1);
     db.0.execute_unprepared(
-        "INSERT INTO repo_ref \
-             (id, workspace_id, name, slug, local_git_path, base_ref) \
-             VALUES (1, 1, 'real repo', 'real-repo', '/tmp/real-repo', 'main')",
+        "INSERT INTO thread \
+             (id, workspace_id, title, slug, kind, lead_tool, created_at) \
+             VALUES (1, 1, 'real task', 'real-task', 'task', 'codex', '123')",
     )
     .await
     .unwrap();
 }
 
-async fn seed_current_default_repo(home: &Path, key: [u8; 48]) {
+async fn seed_current_default_task(home: &Path, key: [u8; 48]) {
     iso_env_with(home, key);
     let db = Db::open_default().await.unwrap();
-    insert_real_repo(&db).await;
+    insert_real_task(&db).await;
     db.0.close().await.unwrap();
 }
 
-async fn assert_current_default_repo(home: &Path, key: [u8; 48]) {
+async fn assert_current_default_task(home: &Path, key: [u8; 48]) {
     iso_env_with(home, key);
     let db = Db::open_default().await.unwrap();
     assert_eq!(workspace_name(&db, 1).await, "Default");
-    assert_eq!(repo_count(&db).await, 1);
+    assert_eq!(thread_count(&db).await, 1);
 }
 
 fn failed_restore_dirs(home: &Path) -> Vec<PathBuf> {
@@ -504,7 +504,6 @@ async fn write_forged_core_tables_db(path: &Path, key: [u8; 48]) {
     for table in [
         "workspace",
         "backup_config",
-        "repo_ref",
         "thread",
         "session",
         "skill_source",
@@ -748,7 +747,7 @@ async fn restore_refuses_when_db_has_non_default_workspace() {
 }
 
 #[tokio::test]
-async fn restore_refuses_when_default_workspace_has_repo() {
+async fn restore_refuses_when_default_workspace_has_task() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
     let key = [0x13u8; 48];
@@ -759,15 +758,7 @@ async fn restore_refuses_when_default_workspace_has_repo() {
     std::fs::create_dir_all(&target_home).unwrap();
     iso_env_with(&target_home, key);
     let db = Db::open_default().await.unwrap();
-    let default_id = ensure_default_workspace_inner(&db).await.unwrap();
-    db.0.execute_unprepared(
-        "INSERT INTO repo_ref \
-             (id, workspace_id, name, slug, local_git_path, base_ref) \
-             VALUES (1, 1, 'real repo', 'real-repo', '/tmp/real-repo', 'main')",
-    )
-    .await
-    .unwrap();
-    assert_eq!(default_id, 1);
+    insert_real_task(&db).await;
 
     let svc = BackupService::new(db, target_home.clone());
     let err = svc.restore_from(&url, &rk).await.err().expect("must error");
@@ -938,7 +929,7 @@ async fn malicious_pending_manifest_filename_is_quarantined() {
         BackupService::new(db, target_home.clone())
     };
     svc.restore_from(&url, &rk).await.unwrap();
-    seed_current_default_repo(&target_home, key).await;
+    seed_current_default_task(&target_home, key).await;
 
     let manifest_path = target_home.join("pending-restore").join("manifest.json");
     let manifest = serde_json::json!({
@@ -962,7 +953,7 @@ async fn malicious_pending_manifest_filename_is_quarantined() {
     assert_eq!(failed.len(), 1);
     let note = std::fs::read_to_string(failed[0].join("restore-error.txt")).unwrap();
     assert!(note.contains("snapshot must be atlas.db"), "got: {note}");
-    assert_current_default_repo(&target_home, key).await;
+    assert_current_default_task(&target_home, key).await;
 }
 
 #[tokio::test]
@@ -981,7 +972,7 @@ async fn malicious_pending_recovery_key_filename_is_quarantined() {
         BackupService::new(db, target_home.clone())
     };
     svc.restore_from(&url, &rk).await.unwrap();
-    seed_current_default_repo(&target_home, key).await;
+    seed_current_default_task(&target_home, key).await;
 
     let manifest_path = target_home.join("pending-restore").join("manifest.json");
     let manifest = serde_json::json!({
@@ -1008,7 +999,7 @@ async fn malicious_pending_recovery_key_filename_is_quarantined() {
         note.contains("recovery_key must be recovery-key.json"),
         "got: {note}"
     );
-    assert_current_default_repo(&target_home, key).await;
+    assert_current_default_task(&target_home, key).await;
 }
 
 #[tokio::test]
@@ -1027,7 +1018,7 @@ async fn older_pending_manifest_is_quarantined() {
         BackupService::new(db, target_home.clone())
     };
     svc.restore_from(&url, &rk).await.unwrap();
-    seed_current_default_repo(&target_home, key).await;
+    seed_current_default_task(&target_home, key).await;
 
     let manifest_path = target_home.join("pending-restore").join("manifest.json");
     let manifest = serde_json::json!({
@@ -1054,7 +1045,7 @@ async fn older_pending_manifest_is_quarantined() {
         note.contains("older backup requires a matching Atlas version"),
         "got: {note}"
     );
-    assert_current_default_repo(&target_home, key).await;
+    assert_current_default_task(&target_home, key).await;
 }
 
 #[tokio::test]
@@ -1073,7 +1064,7 @@ async fn missing_pending_recovery_key_is_quarantined() {
         BackupService::new(db, target_home.clone())
     };
     svc.restore_from(&url, &rk).await.unwrap();
-    seed_current_default_repo(&target_home, key).await;
+    seed_current_default_task(&target_home, key).await;
     std::fs::remove_file(
         target_home
             .join("pending-restore")
@@ -1089,7 +1080,7 @@ async fn missing_pending_recovery_key_is_quarantined() {
     assert_eq!(failed.len(), 1);
     let note = std::fs::read_to_string(failed[0].join("restore-error.txt")).unwrap();
     assert!(note.contains("read recovery key"), "got: {note}");
-    assert_current_default_repo(&target_home, key).await;
+    assert_current_default_task(&target_home, key).await;
 }
 
 #[tokio::test]
@@ -1108,7 +1099,7 @@ async fn corrupted_pending_snapshot_is_quarantined() {
         BackupService::new(db, target_home.clone())
     };
     svc.restore_from(&url, &rk).await.unwrap();
-    seed_current_default_repo(&target_home, key).await;
+    seed_current_default_task(&target_home, key).await;
     std::fs::write(
         target_home.join("pending-restore").join("atlas.db"),
         b"not an encrypted Atlas sqlite database",
@@ -1126,7 +1117,7 @@ async fn corrupted_pending_snapshot_is_quarantined() {
         note.contains("pending restore validation failed before applying"),
         "got: {note}"
     );
-    assert_current_default_repo(&target_home, key).await;
+    assert_current_default_task(&target_home, key).await;
 }
 
 #[tokio::test]
@@ -1259,13 +1250,7 @@ async fn apply_pending_restore_quarantines_pending_when_real_user_data_exists() 
         assert_eq!(default_id, 1);
         let svc = BackupService::new(db.clone(), target_home.clone());
         svc.restore_from(&url, &rk).await.unwrap();
-        db.0.execute_unprepared(
-            "INSERT INTO repo_ref \
-                 (id, workspace_id, name, slug, local_git_path, base_ref) \
-                 VALUES (1, 1, 'real repo', 'real-repo', '/tmp/real-repo', 'main')",
-        )
-        .await
-        .unwrap();
+        insert_real_task(&db).await;
         db.0.close().await.unwrap();
     }
 
@@ -1284,5 +1269,5 @@ async fn apply_pending_restore_quarantines_pending_when_real_user_data_exists() 
 
     let db = Db::open_default().await.unwrap();
     assert_eq!(workspace_name(&db, 1).await, "Default");
-    assert_eq!(repo_count(&db).await, 1);
+    assert_eq!(thread_count(&db).await, 1);
 }

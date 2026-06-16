@@ -1,12 +1,10 @@
 //! Codex folder-trust pre-accept — the Codex analog of `claude::ensure_trusted`.
 //!
-//! Codex prompts "Do you trust this folder?" on first run in an untrusted repo
-//! and blocks there, which stalls an unattended atlas worker. Codex trust is keyed
-//! by the *git repository root* (a worktree resolves to its main repo), stored in
-//! ~/.codex/config.toml as `[projects."<root>"] trust_level = "trusted"`. We
-//! pre-accept exactly that — a startup gate, not a per-action permission (those
-//! still surface via the Ask Bridge). We append the section if absent so the
-//! user's hand-edited config (comments, ordering) is preserved, and never
+//! Codex can prompt "Do you trust this folder?" on first run and block an
+//! unattended agent. When the target cwd is inside git, Codex keys that trust by
+//! the project root in ~/.codex/config.toml as `[projects."<root>"]`. We
+//! pre-accept only that startup gate; per-action permissions still surface via
+//! the Ask Bridge. The user's hand-edited config is preserved, and we never
 //! fabricate the file if Codex was never set up.
 
 use std::path::{Path, PathBuf};
@@ -24,7 +22,7 @@ pub fn ensure_codex_trusted(cwd: &Path) {
     );
 }
 
-/// The git repository root Codex trusts (a worktree → its main repo root).
+/// The project root Codex trusts for git-backed directories.
 fn repo_root(cwd: &Path) -> Option<String> {
     let out = std::process::Command::new("git")
         .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])

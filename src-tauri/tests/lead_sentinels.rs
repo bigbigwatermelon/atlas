@@ -1,6 +1,5 @@
 //! lead_chat::sentinels::extract_sentinels — pulls `<atlas:action_card>{...}`
-//! and `<atlas:list_repos/>` markers out of assistant text so the engine can
-//! persist action_card rows and answer list_repos via stdin separately.
+//! markers out of assistant text so the engine can persist action_card rows.
 use atlas_app_lib::lead_chat::sentinels::{extract_sentinels, Sentinel};
 
 #[test]
@@ -11,16 +10,15 @@ fn extracts_action_card() {
     assert_eq!(found.len(), 1);
     match &found[0] {
         Sentinel::ActionCard(json) => assert!(json.contains("\"title\":\"T\"")),
-        _ => panic!("wrong variant"),
     }
 }
 
 #[test]
-fn extracts_list_repos() {
-    let t = "before <atlas:list_repos/> after";
+fn unknown_atlas_marker_is_plain_text() {
+    let t = "before <atlas:legacy/> after";
     let (clean, found) = extract_sentinels(t);
-    assert_eq!(clean.trim(), "before  after");
-    assert!(matches!(found[0], Sentinel::ListRepos));
+    assert_eq!(clean, t);
+    assert!(found.is_empty());
 }
 
 #[test]
@@ -33,12 +31,11 @@ fn ignores_unknown() {
 
 #[test]
 fn extracts_multiple_mixed() {
-    let t = "<atlas:action_card>{\"a\":1}</atlas:action_card><atlas:list_repos/>";
+    let t = "<atlas:action_card>{\"a\":1}</atlas:action_card><atlas:legacy/>";
     let (clean, found) = extract_sentinels(t);
-    assert_eq!(clean.trim(), "");
-    assert_eq!(found.len(), 2);
+    assert_eq!(clean.trim(), "<atlas:legacy/>");
+    assert_eq!(found.len(), 1);
     assert!(matches!(found[0], Sentinel::ActionCard(_)));
-    assert!(matches!(found[1], Sentinel::ListRepos));
 }
 
 #[test]
@@ -59,31 +56,19 @@ fn skips_malformed_action_card_unclosed() {
 }
 
 #[test]
-fn extracts_two_list_repos_in_row() {
-    let t = "<atlas:list_repos/><atlas:list_repos/>";
-    let (clean, found) = extract_sentinels(t);
-    assert_eq!(clean, "");
-    assert_eq!(found.len(), 2);
-    assert!(matches!(found[0], Sentinel::ListRepos));
-    assert!(matches!(found[1], Sentinel::ListRepos));
-}
-
-#[test]
 fn action_card_json_can_contain_lt() {
     let t = r#"<atlas:action_card>{"title":"a<b","actions":[]}</atlas:action_card>"#;
     let (clean, found) = extract_sentinels(t);
     assert_eq!(clean, "");
     assert_eq!(found.len(), 1);
-    match &found[0] {
-        Sentinel::ActionCard(j) => assert!(j.contains("a<b")),
-        _ => panic!(),
-    }
+    let Sentinel::ActionCard(j) = &found[0];
+    assert!(j.contains("a<b"));
 }
 
 #[test]
 fn sentinel_butting_text_no_whitespace() {
-    let t = "hello<atlas:list_repos/>world";
+    let t = "hello<atlas:legacy/>world";
     let (clean, found) = extract_sentinels(t);
-    assert_eq!(clean, "helloworld");
-    assert_eq!(found.len(), 1);
+    assert_eq!(clean, t);
+    assert!(found.is_empty());
 }

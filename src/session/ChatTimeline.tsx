@@ -1,48 +1,31 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, FileText, Slash, Sparkles } from "lucide-react";
+import { FileText, Slash, Sparkles } from "lucide-react";
 import type { LeadMessage } from "../lib/types";
 import { Markdown } from "../components/Markdown";
 import { cn } from "../lib/cn";
 import { cleanToolName, compactToolTarget, toolIcon, toolLabelKey } from "./transcriptBits";
 import { ActionCardBlock, type ActionCardAction } from "./blocks/ActionCardBlock";
-import type { useRepoActions } from "./useRepoActions";
-
-type RunAction = ReturnType<typeof useRepoActions>["run"];
 
 /**
  * The chat-engine timeline: renders atlas-owned LeadMessage rows (no polling,
- * no jsonl). Structured cards (proposal/approval/worker events) live inline in
+ * no jsonl). Structured cards (approval/worker events) live inline in
  * the flow, where they happened — the conversation IS the console. Tool calls
  * are NOT rows: the one currently running shows as a transient activity line
  * under the stream and disappears when the turn moves on.
  *
- * The lead host wires up runAction/promptText so action_card buttons trigger
- * the real repo flows; worker hosts (Observe/Session) omit them and any
- * historical action_card rows fall back to read-only display.
+ * Historical action cards render as read-only context. The generic task base
+ * does not let chat cards trigger setup flows.
  */
 export function ChatTimeline({
   messages,
   busy,
   activity,
-  onReviewProposal,
-  runAction,
-  actionsBusy,
-  threadId,
-  workspaceId,
-  promptText,
 }: {
   messages: LeadMessage[];
   busy: boolean;
   /** The tool call executing right now (transient), if any. */
   activity?: { name: string; summary: string } | null;
-  onReviewProposal: () => void;
-  /** Lead-only: dispatch a repo action card. Omit → cards render read-only. */
-  runAction?: RunAction;
-  actionsBusy?: Record<string, boolean>;
-  threadId?: number | null;
-  workspaceId?: number | null;
-  promptText?: (title: string, placeholder?: string) => Promise<string | null>;
 }) {
   const { t } = useTranslation();
   const endRef = useRef<HTMLDivElement>(null);
@@ -88,13 +71,6 @@ export function ChatTimeline({
           <TimelineRow
             key={m.id}
             m={m}
-            all={visible}
-            onReviewProposal={onReviewProposal}
-            runAction={runAction}
-            actionsBusy={actionsBusy}
-            threadId={threadId ?? null}
-            workspaceId={workspaceId ?? null}
-            promptText={promptText}
           />
         ))}
         {busy && activity && <ActivityLine name={activity.name} summary={activity.summary} />}
@@ -160,33 +136,10 @@ function safeParseObj(content: string): Record<string, unknown> {
   }
 }
 
-// Read-only history replay: only the most recent assistant row is interactive.
-// Older action_cards stay rendered for context but their buttons are disabled.
-function isLastAssistant(m: LeadMessage, all: LeadMessage[]): boolean {
-  for (let i = all.length - 1; i >= 0; i--) {
-    if (all[i].role === "assistant") return all[i].id === m.id;
-  }
-  return false;
-}
-
 function TimelineRow({
   m,
-  all,
-  onReviewProposal,
-  runAction,
-  actionsBusy,
-  threadId,
-  workspaceId,
-  promptText,
 }: {
   m: LeadMessage;
-  all: LeadMessage[];
-  onReviewProposal: () => void;
-  runAction?: RunAction;
-  actionsBusy?: Record<string, boolean>;
-  threadId: number | null;
-  workspaceId: number | null;
-  promptText?: (title: string, placeholder?: string) => Promise<string | null>;
 }) {
   const { t } = useTranslation();
   const c = parse(m.content);
@@ -200,31 +153,16 @@ function TimelineRow({
     const actions = Array.isArray(parsed.actions)
       ? (parsed.actions as ActionCardAction[])
       : [];
-    // Worker hosts (no runAction wired) and historical rows fall back to
-    // read-only — buttons render disabled so the card stays in context but
-    // can't fire a flow without a handler.
-    const readOnly = !runAction || !promptText || !isLastAssistant(m, all);
-    const onAction: ((a: ActionCardAction) => void) | undefined =
-      runAction && promptText
-        ? (a) =>
-            void runAction({
-              actionId: a.id,
-              kind: a.kind,
-              ctx: {
-                threadId: threadId ?? undefined,
-                preferredWorkspaceId: workspaceId,
-              },
-              promptText,
-            })
-        : undefined;
+    const readOnly = true;
+    const onAction = (_a: ActionCardAction) => {};
     return (
       <ActionCardBlock
         title={title}
         body={body}
         actions={actions}
         readOnly={readOnly}
-        busy={actionsBusy ?? {}}
-        onAction={onAction ?? (() => {})}
+        busy={{}}
+        onAction={onAction}
       />
     );
   }
@@ -245,30 +183,6 @@ function TimelineRow({
           {m.status === "queued" && <QueuedChip />}
         </span>
       </div>
-    );
-  }
-
-  if (m.kind === "proposal") {
-    const count = Number(c.count ?? 0);
-    return (
-      <button
-        onClick={onReviewProposal}
-        className="group flex items-center gap-2.5 rounded-[var(--radius-md)] border border-accent/40 bg-accent-ghost px-3 py-2.5 text-left transition-colors hover:border-accent/70"
-      >
-        <Sparkles size={15} className="shrink-0 text-accent" />
-        <div className="min-w-0 flex-1">
-          <p className="text-[12.5px] font-medium text-ink">
-            {t("lead.proposalReady", { count })}
-          </p>
-          <p className="truncate text-[11px] text-ink-muted">
-            {String(c.rationale ?? "") || t("lead.reviewCreate")}
-          </p>
-        </div>
-        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-accent">
-          {t("lead.reviewCreate")}
-          <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
-        </span>
-      </button>
     );
   }
 

@@ -1,5 +1,5 @@
 //! Canonical atlas home + derived paths. Everything persistent lives under
-//! ~/.atlas so worktree cwds stay stable across restarts (resume depends on it).
+//! ~/.atlas so run cwds stay stable across restarts.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -21,13 +21,6 @@ pub fn atlas_home() -> std::io::Result<PathBuf> {
 /// ~/.atlas/atlas.db
 pub fn db_path() -> std::io::Result<PathBuf> {
     Ok(atlas_home()?.join("atlas.db"))
-}
-
-/// ~/.atlas/worktrees
-pub fn worktree_home() -> std::io::Result<PathBuf> {
-    let dir = atlas_home()?.join("worktrees");
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir)
 }
 
 fn checked_segment(segment: &str, label: &str) -> std::io::Result<String> {
@@ -71,8 +64,8 @@ pub fn skills_home() -> std::io::Result<PathBuf> {
 
 /// Process-global lock guarding the shared `ATLAS_HOME` env var across lib
 /// tests. The lib-test binary runs tests on parallel threads sharing one
-/// process env, so a test that *sets* ATLAS_HOME (e.g. materialize tests) and a
-/// test that *reads* the default (`paths_are_under_atlas_home`) must not overlap.
+/// process env, so a test that *sets* ATLAS_HOME and a test that *reads* the
+/// default (`paths_are_under_atlas_home`) must not overlap.
 /// Every test that touches ATLAS_HOME acquires this for the duration it relies on
 /// a particular env state. Panic-tolerant: a poisoned guard is recovered so one
 /// failing test doesn't cascade into the rest.
@@ -81,7 +74,7 @@ pub static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 mod tests {
-    use super::{db_path, run_home, skills_home, atlas_home, worktree_home, ENV_LOCK};
+    use super::{atlas_home, db_path, run_home, skills_home, ENV_LOCK};
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
 
@@ -142,7 +135,6 @@ mod tests {
         let home = atlas_home().unwrap();
         assert!(home.ends_with(".atlas"));
         assert!(db_path().unwrap().ends_with("atlas.db"));
-        assert!(worktree_home().unwrap().ends_with("worktrees"));
         assert!(skills_home().unwrap().ends_with("skills/sources"));
     }
 

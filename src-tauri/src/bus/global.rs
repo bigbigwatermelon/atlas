@@ -1,9 +1,6 @@
-//! `atlas_global` MCP server (spec §5 / M3-2): a stable, NOT-per-thread tool face
-//! exposed to the Concierge engine — so the IM conversation assistant can read workspaces /
-//! issues / Needs-you, answer asks on behalf of the user, message a lead, or
-//! file a new issue. Pure tool dispatch; the human is still the decision side
-//! for `confirm_scope` / `approve_direction` (those go through the desktop,
-//! not Concierge — see spec).
+//! `atlas_global` MCP server: a stable, not-per-thread tool face exposed to the
+//! Concierge engine so the IM assistant can read workspaces/tasks/Needs-you,
+//! answer asks on behalf of the user, message a lead, or create a new task.
 //!
 //! Wiring mirrors `handle_planner` in `bus::server`:
 //!  - HTTP POST → JSON-RPC (`initialize` / `tools/list` / `tools/call`)
@@ -89,17 +86,17 @@ pub async fn call_global(
             Ok(v) => json_result(v),
             Err(e) => text_result(format!("error: {e}")),
         },
-        "list_issues" => {
+        "list_tasks" => {
             let ws = args
                 .get("workspace_id")
                 .and_then(|v| v.as_i64())
                 .map(|x| x as i32);
-            match list_issues(db, ws).await {
+            match list_tasks(db, ws).await {
                 Ok(v) => json_result(v),
                 Err(e) => text_result(format!("error: {e}")),
             }
         }
-        "issue_status" => {
+        "task_status" => {
             let Some(tid) = args
                 .get("thread_id")
                 .and_then(|v| v.as_i64())
@@ -107,7 +104,7 @@ pub async fn call_global(
             else {
                 return text_result("error: thread_id required".into());
             };
-            match issue_status(db, asks, tid).await {
+            match task_status(db, asks, tid).await {
                 Ok(v) => json_result(v),
                 Err(e) => text_result(format!("error: {e}")),
             }
@@ -173,7 +170,7 @@ pub async fn call_global(
                 Err(e) => text_result(format!("error: {e}")),
             }
         }
-        "ensure_issue_topic" => {
+        "ensure_task_topic" => {
             let Some(tid) = args
                 .get("thread_id")
                 .and_then(|v| v.as_i64())
@@ -189,12 +186,12 @@ pub async fn call_global(
             if chat_id.is_empty() {
                 return text_result("error: chat_id required".into());
             }
-            match ensure_issue_topic(db, tid, chat_id).await {
+            match ensure_task_topic(db, tid, chat_id).await {
                 Ok(v) => json_result(v),
                 Err(e) => text_result(format!("error: {e}")),
             }
         }
-        "create_issue" => {
+        "create_task" => {
             let Some(ws) = args
                 .get("workspace_id")
                 .and_then(|v| v.as_i64())
@@ -210,12 +207,12 @@ pub async fn call_global(
             let kind = args
                 .get("kind")
                 .and_then(|v| v.as_str())
-                .unwrap_or("feature")
+                .unwrap_or("task")
                 .to_string();
             if title.trim().is_empty() {
                 return text_result("error: title required".into());
             }
-            match create_issue(db, ws, &title, &kind).await {
+            match create_task(db, ws, &title, &kind).await {
                 Ok(v) => json_result(v),
                 Err(e) => text_result(format!("error: {e}")),
             }
@@ -238,7 +235,7 @@ async fn list_workspaces(db: &Db) -> anyhow::Result<Value> {
     Ok(Value::Array(out))
 }
 
-async fn list_issues(db: &Db, ws: Option<i32>) -> anyhow::Result<Value> {
+async fn list_tasks(db: &Db, ws: Option<i32>) -> anyhow::Result<Value> {
     let workspaces = match ws {
         Some(id) => vec![id],
         None => repo::list_workspaces(db)
@@ -261,7 +258,7 @@ async fn list_issues(db: &Db, ws: Option<i32>) -> anyhow::Result<Value> {
     Ok(Value::Array(out))
 }
 
-async fn issue_status(db: &Db, asks: &AskRegistry, tid: i32) -> anyhow::Result<Value> {
+async fn task_status(db: &Db, asks: &AskRegistry, tid: i32) -> anyhow::Result<Value> {
     let t = repo::get_thread(db, tid)
         .await?
         .ok_or_else(|| anyhow::anyhow!("thread {tid} not found"))?;
@@ -314,7 +311,7 @@ async fn message_lead(db: &Db, thread_id: i32, text: &str) -> anyhow::Result<()>
     crate::lead_chat::engine::send(app, db, &eng, text, Vec::new(), Vec::new()).await
 }
 
-async fn create_issue(db: &Db, ws: i32, title: &str, kind: &str) -> anyhow::Result<Value> {
+async fn create_task(db: &Db, ws: i32, title: &str, kind: &str) -> anyhow::Result<Value> {
     let tool = crate::tools::default_tool(db).await;
     let t = repo::create_thread(db, ws, title, kind, &tool).await?;
     Ok(json!({
@@ -325,14 +322,14 @@ async fn create_issue(db: &Db, ws: i32, title: &str, kind: &str) -> anyhow::Resu
     }))
 }
 
-async fn ensure_issue_topic(db: &Db, thread_id: i32, chat_id: &str) -> anyhow::Result<Value> {
+async fn ensure_task_topic(db: &Db, thread_id: i32, chat_id: &str) -> anyhow::Result<Value> {
     let before = repo::im_route_of_thread(db, thread_id).await?;
     let settings = crate::im::ImSettings::load(db).await?;
     if !settings.ready() {
         anyhow::bail!("Feishu app credentials are not configured");
     }
     let ch = crate::im::feishu::FeishuChannel::new(&settings.app_id, &settings.app_secret);
-    crate::im::ensure_issue_topic(db, &ch, thread_id, chat_id, None, "zh").await?;
+    crate::im::ensure_task_topic(db, &ch, thread_id, chat_id, None, "zh").await?;
     let after = repo::im_route_of_thread(db, thread_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("topic route was not created"))?;
@@ -353,17 +350,17 @@ pub fn global_specs() -> Value {
     json!([
         {
             "name": "list_workspaces",
-            "description": "List every workspace (id, name, thread_count). Call before answering any question that mentions \"workspaces\" or \"issues\".",
+            "description": "List every workspace (id, name, thread_count). Call before answering any question that mentions workspaces or tasks.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
-            "name": "list_issues",
-            "description": "List issues. Pass workspace_id to scope to one workspace; omit for all.",
+            "name": "list_tasks",
+            "description": "List tasks. Pass workspace_id to limit to one workspace; omit for all.",
             "inputSchema": { "type": "object", "properties": { "workspace_id": i() } }
         },
         {
-            "name": "issue_status",
-            "description": "Read one issue's title, kind, and how many open permission asks it has.",
+            "name": "task_status",
+            "description": "Read one task's title, kind, and how many open permission asks it has.",
             "inputSchema": { "type": "object", "properties": { "thread_id": i() }, "required": ["thread_id"] }
         },
         {
@@ -387,21 +384,21 @@ pub fn global_specs() -> Value {
         },
         {
             "name": "message_lead",
-            "description": "Send a message into a thread's lead engine, as if the human typed it in the desktop. Use when the human wants to nudge a specific issue's lead from IM.",
+            "description": "Send a message into a thread's lead engine, as if the human typed it in the desktop. Use when the human wants to nudge a specific task's lead from IM.",
             "inputSchema": { "type": "object",
                 "properties": { "thread_id": i(), "text": s() },
                 "required": ["thread_id", "text"] }
         },
         {
-            "name": "ensure_issue_topic",
-            "description": "Ensure an existing issue has a Feishu topic in chat_id. Use only when the user semantically asks to create/open/continue an issue-specific Feishu topic; do not call for ordinary chat.",
+            "name": "ensure_task_topic",
+            "description": "Ensure an existing task has a Feishu topic in chat_id. Use only when the user semantically asks to create/open/continue a task-specific Feishu topic; do not call for ordinary chat.",
             "inputSchema": { "type": "object",
                 "properties": { "thread_id": i(), "chat_id": s() },
                 "required": ["thread_id", "chat_id"] }
         },
         {
-            "name": "create_issue",
-            "description": "File a new issue in a workspace. kind ∈ feature|bugfix|refactor|spike (defaults to feature).",
+            "name": "create_task",
+            "description": "Create a new task in a workspace. kind defaults to task.",
             "inputSchema": { "type": "object",
                 "properties": { "workspace_id": i(), "title": s(), "kind": s() },
                 "required": ["workspace_id", "title"] }
@@ -438,7 +435,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_issues_scopes_to_workspace() {
+    async fn list_tasks_limits_to_workspace() {
         let db = mem_db().await;
         let asks = AskRegistry::new();
         let bus = BusRegistry::new();
@@ -454,7 +451,7 @@ mod tests {
             &db,
             &asks,
             &bus,
-            "list_issues",
+            "list_tasks",
             &json!({ "workspace_id": w1.id }),
         )
         .await;
@@ -523,12 +520,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issue_status_reports_open_ask_count() {
+    async fn task_status_reports_open_ask_count() {
         let db = mem_db().await;
         let asks = AskRegistry::new();
         let bus = BusRegistry::new();
         let w = repo::create_workspace(&db, "ws").await.unwrap();
-        let t = repo::create_thread(&db, w.id, "issue", "feature", "claude")
+        let t = repo::create_thread(&db, w.id, "task", "task", "claude")
             .await
             .unwrap();
         let _ = asks.request(t.id, "10", "claude", "a", "a");
@@ -537,18 +534,18 @@ mod tests {
             &db,
             &asks,
             &bus,
-            "issue_status",
+            "task_status",
             &json!({ "thread_id": t.id }),
         )
         .await;
         let parsed: Value =
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap();
         assert_eq!(parsed["open_asks_count"], 2);
-        assert_eq!(parsed["title"], "issue");
+        assert_eq!(parsed["title"], "task");
     }
 
     #[tokio::test]
-    async fn create_issue_persists_thread() {
+    async fn create_task_persists_thread() {
         let db = mem_db().await;
         let asks = AskRegistry::new();
         let bus = BusRegistry::new();
@@ -557,18 +554,18 @@ mod tests {
             &db,
             &asks,
             &bus,
-            "create_issue",
-            &json!({ "workspace_id": w.id, "title": "new feature", "kind": "feature" }),
+            "create_task",
+            &json!({ "workspace_id": w.id, "title": "new task", "kind": "task" }),
         )
         .await;
         let parsed: Value =
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap();
-        assert_eq!(parsed["title"], "new feature");
-        assert_eq!(parsed["kind"], "feature");
+        assert_eq!(parsed["title"], "new task");
+        assert_eq!(parsed["kind"], "task");
         // confirm it landed in the DB
         let ts = repo::list_threads(&db, w.id).await.unwrap();
         assert_eq!(ts.len(), 1);
-        assert_eq!(ts[0].title, "new feature");
+        assert_eq!(ts[0].title, "new task");
     }
 
     #[tokio::test]

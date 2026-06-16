@@ -6,7 +6,6 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub direction_id: i32,
-    pub repo_id: i32,
     pub tool: String,
     pub cwd: String,
     pub native_session_id: Option<String>,

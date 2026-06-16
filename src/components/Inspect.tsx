@@ -9,21 +9,18 @@ import { ToolIcon } from "./ToolIcon";
 import { cn } from "../lib/cn";
 
 /**
- * The per-session "…" menu (escape hatch, §4.7 + resume §5.6). Leads with the
- * way to pick the session back up in your own tools — copy the `cd … && <tool>
- * resume <id>` command, or jump to it in the Codex app — then Reveal / Copy
- * path. No "open terminal": an empty shell at the worktree doesn't resume.
+ * The per-session "…" menu. It keeps the practical escape hatches for a generic
+ * run: copy the provider resume command, jump to the native app when supported,
+ * then reveal or copy the run directory.
  */
 export function Inspect({
   path,
-  branch,
   nativeId,
   tool,
   className,
   size = 14,
 }: {
   path: string;
-  branch?: string;
   nativeId?: string | null;
   tool?: string;
   className?: string;
@@ -98,14 +95,11 @@ export function Inspect({
             {t("inspect.copyPath")}
           </Item>
 
-          {(branch || nativeId) && (
+          {nativeId && (
             <>
               <DM.Separator className="my-1 h-px bg-border" />
               <div className="flex flex-col gap-1.5 px-2 py-1.5">
-                {branch && <MetaRow label={t("inspect.branchLabel")} value={branch} />}
-                {nativeId && (
-                  <MetaRow label={t("inspect.sessionLabel")} value={nativeId.slice(0, 12)} />
-                )}
+                <MetaRow label={t("inspect.sessionLabel")} value={nativeId.slice(0, 12)} />
               </div>
             </>
           )}

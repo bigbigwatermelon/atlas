@@ -529,17 +529,6 @@ async fn ensure_atlas_schema(conn: &sea_orm::DatabaseConnection, path: &Path) ->
             ],
         ),
         (
-            "repo_ref",
-            &[
-                "id",
-                "workspace_id",
-                "name",
-                "slug",
-                "local_git_path",
-                "base_ref",
-            ],
-        ),
-        (
             "thread",
             &[
                 "id",
@@ -556,7 +545,6 @@ async fn ensure_atlas_schema(conn: &sea_orm::DatabaseConnection, path: &Path) ->
             &[
                 "id",
                 "direction_id",
-                "repo_id",
                 "tool",
                 "cwd",
                 "native_session_id",
@@ -646,13 +634,9 @@ async fn user_data_row_count(conn: &sea_orm::DatabaseConnection) -> Result<i64> 
 
     const USER_TABLES: &[&str] = &[
         "app_setting",
-        "repo_ref",
-        "repo_profile",
         "thread",
         "direction",
-        "worktree",
         "session",
-        "plan",
         "lead_message",
         "skill_source",
         "skill_enable",
