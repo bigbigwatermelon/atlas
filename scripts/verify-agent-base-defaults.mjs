@@ -70,6 +70,16 @@ forbidRegex(
   "default sidebar must not expose Add repo or Repo map",
 );
 forbidRegex(
+  "src/nav/WorkspaceNav.tsx",
+  /WorkspacePicker|CreateWorkspaceDialog|setDlg\("ws"\)|nav\.newWorkspace|nav\.renameWorkspace|dialog\.workspaceName/,
+  "default sidebar must not expose task environment switching or creation",
+);
+forbidRegex(
+  "src/nav/dialogs.tsx",
+  /function\s+CreateWorkspaceDialog|export\s+function\s+CreateWorkspaceDialog/,
+  "task environment creation dialog must not remain as a UI module",
+);
+forbidRegex(
   "src/session/ObserveView.tsx",
   /if\s*\(\s*viewing\.repoId\s*===\s*0\s*\)\s*return\s+null\s*;/,
   "repo-less runs must render the observe/session surface",
@@ -99,6 +109,8 @@ forbidPhrase("src/i18n/zh.ts", "规划这个 issue", "中文任务空态仍说 i
 forbidPhrase("src/i18n/zh.ts", "读取你的仓库", "中文任务空态仍假设仓库");
 forbidPhrase("src/i18n/zh.ts", "个子任务 · 并行执行", "中文 thread copy 仍说子任务");
 forbidPhrase("src/i18n/zh.ts", "运行该子任务的检查", "中文 review copy 仍说子任务检查");
+forbidPhrase("src/i18n/zh.ts", "任务台", "中文文案仍暴露任务台概念");
+forbidRegex("src/i18n/en.ts", /[Tt]ask hub/, "English copy still exposes task hub concept");
 
 if (failures.length > 0) {
   console.error(failures.join("\n\n"));

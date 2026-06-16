@@ -15,69 +15,6 @@ const basename = (p: string) => p.trim().replace(/\/+$/, "").split("/").filter(B
 const repoNameFromUrl = (u: string) =>
   u.trim().replace(/\.git$/, "").replace(/\/+$/, "").split(/[/:]/).filter(Boolean).pop() ?? "";
 
-export function CreateWorkspaceDialog({ open, onOpenChange }: DProps) {
-  const { createWorkspace } = useStore();
-  const { t } = useTranslation();
-  const [value, setValue] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      setValue("");
-      setBusy(false);
-      setErr(null);
-    }
-  }, [open]);
-
-  async function submit() {
-    const name = value.trim();
-    if (!name || busy) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      await createWorkspace(name);
-      onOpenChange(false);
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title={t("dialog.newWorkspaceTitle")}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit();
-          }}
-          className="flex flex-col gap-4"
-        >
-          <Field label={t("dialog.workspaceName")}>
-            <Input
-              autoFocus
-              placeholder={t("dialog.workspaceNamePlaceholder")}
-              value={value}
-              onChange={(e) => setValue(e.currentTarget.value)}
-            />
-          </Field>
-          {err && <p className="text-[12px] text-danger">{err}</p>}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              {t("common.cancel")}
-            </Button>
-            <Button type="submit" variant="primary" disabled={!value.trim() || busy}>
-              {busy ? t("dialog.creating") : t("dialog.createWorkspace")}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function AddRepoDialog({ open, onOpenChange }: DProps) {
   const { addRepo, cloneRepo, createRepo, projectsDir } = useStore();
   const { t } = useTranslation();
