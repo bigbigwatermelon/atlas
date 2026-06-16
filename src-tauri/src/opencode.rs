@@ -4,8 +4,8 @@
 //!
 //! `opencode run` exposes no command list, so the registry (built-ins + config +
 //! markdown + MCP/skills) is only reachable via the HTTP server. One serve
-//! multiplexes every worktree through the `?directory=` query param, so a single
-//! process answers all sessions. It binds 127.0.0.1 on an ephemeral port
+//! multiplexes every session directory through the `?directory=` query param,
+//! so a single process answers all sessions. It binds 127.0.0.1 on an ephemeral port
 //! (`--port 0`) and we learn the bound URL from its "listening on http://…" line.
 
 use std::process::Stdio;

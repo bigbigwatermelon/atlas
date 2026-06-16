@@ -11,7 +11,6 @@ pub mod ask;
 pub mod backup;
 mod brief;
 pub mod bus;
-mod check;
 mod claude;
 mod codex_app_server;
 pub mod commands;
@@ -19,19 +18,14 @@ mod commands_backup;
 mod computer_use;
 pub mod config;
 mod coordinator;
-mod curator;
 mod detect;
-mod gc;
 pub mod git;
 pub mod im;
 mod inspect;
 pub mod lead_chat;
-pub mod materialize;
 mod opencode;
 pub mod paths;
-mod planner;
 mod power;
-pub mod profile;
 mod sidecar;
 pub mod skills;
 pub mod slug;
@@ -128,58 +122,33 @@ pub fn run() {
             coordinator::run(app.handle().clone(), wake_rx);
             lead_chat::engine::spawn_watchdog(app.handle().clone());
             power::spawn_sweep(app.handle().clone());
-            gc::spawn_periodic(app.handle().clone());
             skills::spawn_periodic(app.handle().clone());
             im::spawn(app.handle().clone());
             backup::scheduler::spawn(backup_svc.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::create_workspace,
             commands::list_workspaces,
             commands::ensure_default_workspace,
-            commands::add_repo_ref,
-            commands::clone_repo,
-            commands::create_repo,
             commands::create_thread,
             commands::list_threads,
             commands::workspace_overview,
-            commands::list_repos,
-            commands::list_repo_profiles,
-            commands::repo_graph,
-            commands::reprofile_repo,
-            commands::update_repo_profile,
             commands::list_directions,
             commands::set_task_status,
             commands::read_transcript,
-            commands::worktree_diff,
-            commands::get_proposal,
-            commands::save_proposal,
-            commands::confirm_proposal,
-            commands::preview_brief,
-            commands::verify_direction,
-            commands::create_direction,
             commands::create_run,
-            commands::list_worktrees,
-            commands::repo_diff,
             commands::delete_thread,
-            commands::rename_workspace,
             commands::rename_thread,
             commands::rename_direction,
             commands::thread_messages,
             commands::bus_post_human,
             commands::pending_asks,
-            commands::workspace_needs_counts,
             commands::answer_permission,
             commands::set_dangerous_mode,
             commands::set_keep_awake,
             commands::set_guardrails,
             commands::session_for,
-            commands::effective_config,
             commands::needs_you,
-            commands::write_triggers,
-            commands::approve_write_trigger,
-            commands::deny_write_trigger,
             commands::answer_ask,
             lead_chat::commands::lead_send,
             lead_chat::commands::lead_interrupt,
@@ -188,8 +157,6 @@ pub fn run() {
             lead_chat::commands::lead_state,
             lead_chat::commands::list_lead_messages,
             lead_chat::commands::discover_slash,
-            lead_chat::commands::post_lead_tool_result,
-            lead_chat::commands::chat_open_worker,
             lead_chat::commands::chat_open_run,
             lead_chat::commands::chat_send,
             lead_chat::commands::chat_interrupt,

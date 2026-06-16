@@ -1,19 +1,18 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import { Layers, SquarePen, X } from "lucide-react";
+import { Layers, SquarePen } from "lucide-react";
 import { useStore } from "../state/store";
 import type { ThreadOverview } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { CreateThreadDialog } from "../nav/dialogs";
 import { cn } from "../lib/cn";
 
-type Phase = "planning" | "working" | "review" | "done";
+type Phase = "planning" | "working" | "done";
 
 const COLUMNS: { key: Phase; label: string; dot: string }[] = [
   { key: "planning", label: "wsboard.planning", dot: "bg-idle" },
   { key: "working", label: "thread.colRunning", dot: "bg-running" },
-  { key: "review", label: "thread.colReview", dot: "bg-brand" },
   { key: "done", label: "thread.colDone", dot: "bg-accent" },
 ];
 
@@ -23,7 +22,6 @@ export function WorkspaceKanban() {
     refreshOverview,
     needs,
     asks,
-    checksByDirection,
     selectThread,
   } = useStore();
   const { t } = useTranslation();
@@ -32,26 +30,18 @@ export function WorkspaceKanban() {
     void refreshOverview();
   }, [refreshOverview]);
 
-  // Phase from the stored direction statuses — deterministic across restarts
-  // (no dependency on in-memory sessions). Needs-you is a tag on the card, not
-  // a stage: an open ask never moves a card out of its lifecycle column.
-  // planning = the thread is still being scoped (no tasks yet); any task not
-  // yet through coding = working; only review-and-beyond remains = review.
+  // Phase from the stored run statuses. Needs-you is a tag on the card, not a
+  // stage: an open ask never moves a card out of its lifecycle column.
   const phaseOf = (o: ThreadOverview): Phase => {
     if (o.direction_ids.length === 0) return "planning";
     if (o.statuses.every((s) => s === "done")) return "done";
-    if (o.statuses.some((s) => s !== "done" && s !== "review")) return "working";
-    return "review";
+    return "working";
   };
 
-  // Cards waiting on the human (or with a failing check) bubble to the top of
-  // their column — the attention signal without hijacking the stage.
+  // Cards waiting on the human bubble to the top of their column.
   const urgent = (o: ThreadOverview): boolean =>
     needs.some((n) => o.direction_ids.includes(n.direction_id)) ||
-    asks.some((a) => o.direction_ids.includes(Number(a.dir))) ||
-    o.direction_ids.some((id) =>
-      (checksByDirection[id] ?? []).some((rc) => rc.checks.some((c) => c.status === "fail")),
-    );
+    asks.some((a) => o.direction_ids.includes(Number(a.dir)));
 
   if (overview.length === 0) {
     return <EmptyBoard />;
@@ -140,7 +130,7 @@ function EmptyBoard() {
 }
 
 function ThreadCard({ o, onOpen }: { o: ThreadOverview; onOpen: () => void }) {
-  const { sessions, needs, asks, checksByDirection, openNeeds } = useStore();
+  const { sessions, needs, asks, openNeeds } = useStore();
   const { t } = useTranslation();
   const live = Object.values(sessions).filter(
     (s) => s.status === "running" && o.direction_ids.includes(s.directionId),
@@ -149,9 +139,6 @@ function ThreadCard({ o, onOpen }: { o: ThreadOverview; onOpen: () => void }) {
   const attention =
     needs.filter((n) => o.direction_ids.includes(n.direction_id)).length +
     asks.filter((a) => o.direction_ids.includes(Number(a.dir))).length;
-  const failing = o.direction_ids.filter((id) =>
-    (checksByDirection[id] ?? []).some((rc) => rc.checks.some((c) => c.status === "fail")),
-  ).length;
   const total = Math.max(o.direction_ids.length, 1);
   const donePct = Math.min(100, Math.round((done / total) * 100));
 
@@ -186,19 +173,9 @@ function ThreadCard({ o, onOpen }: { o: ThreadOverview; onOpen: () => void }) {
         <span className="shrink-0 rounded-full border border-border bg-bg px-1.5 py-0.5 text-[10.5px] text-ink-faint">
           {t(`kind.${o.kind}`, o.kind)}
         </span>
-        {o.write_repos.slice(0, 3).map((r) => (
-          <span
-            key={r.id}
-            className="rounded-full border border-border bg-bg px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted"
-          >
-            {r.name}
-          </span>
-        ))}
-        {o.write_repos.length > 3 && (
-          <span className="rounded-full border border-border bg-bg px-1.5 py-0.5 font-mono text-[10.5px] text-ink-faint">
-            +{o.write_repos.length - 3}
-          </span>
-        )}
+        <span className="shrink-0 rounded-full border border-border bg-bg px-1.5 py-0.5 text-[10.5px] text-ink-faint">
+          {t("thread.runCount", { count: o.direction_ids.length })}
+        </span>
       </div>
 
       {o.direction_ids.length > 0 && (
@@ -207,7 +184,7 @@ function ThreadCard({ o, onOpen }: { o: ThreadOverview; onOpen: () => void }) {
             <span
               className={cn(
                 "block h-full rounded-full",
-                attention > 0 ? "bg-waiting" : failing > 0 ? "bg-danger" : "bg-brand",
+                attention > 0 ? "bg-waiting" : "bg-brand",
               )}
               style={{ width: `${donePct}%` }}
             />
@@ -222,15 +199,6 @@ function ThreadCard({ o, onOpen }: { o: ThreadOverview; onOpen: () => void }) {
             >
               <span className="atlas-pulse h-1.5 w-1.5 rounded-full bg-running" />
               {live}
-            </span>
-          )}
-          {failing > 0 && (
-            <span
-              title={t("workspace.failing", { count: failing })}
-              className="flex items-center gap-1 text-[11px] tabular-nums text-danger"
-            >
-              <X size={11} />
-              {failing}
             </span>
           )}
         </div>

@@ -4,7 +4,6 @@ import type {
   BackupStatusDto,
   BusMsg,
   ComputerUseStatus,
-  ConfigItem,
   DefaultToolInfo,
   Direction,
   EnabledSkill,
@@ -17,11 +16,6 @@ import type {
   ObserveRef,
   ParsedSkill,
   PermissionAsk,
-  Proposal,
-  RepoChecks,
-  RepoGraph,
-  RepoRef,
-  ResolvedProposal,
   SessionInfo,
   SkillSource,
   SlashCmd,
@@ -29,40 +23,53 @@ import type {
   ThreadOverview,
   ToolStatus,
   Workspace,
-  Worktree,
-  WorktreeDiff,
-  WriteTrigger,
 } from "./types";
 
 // Tauri converts camelCase command args to snake_case Rust params.
 
+type SessionInfoDto = {
+  session_id: number;
+  run_dir: string;
+  cwd: string;
+  tool: string;
+  resumed: boolean;
+  native_id: string | null;
+};
+
+type ObserveRefDto = {
+  run_dir: string;
+  tool: string;
+  session_id: number | null;
+  native_id: string | null;
+  status: string | null;
+};
+
+function normalizeSessionInfo(raw: SessionInfoDto): SessionInfo {
+  return {
+    session_id: raw.session_id,
+    run_dir: raw.run_dir || raw.cwd,
+    cwd: raw.cwd || raw.run_dir,
+    tool: raw.tool,
+    resumed: raw.resumed,
+    native_id: raw.native_id,
+  };
+}
+
+function normalizeObserveRef(raw: ObserveRefDto | null): ObserveRef | null {
+  if (!raw) return null;
+  return {
+    run_dir: raw.run_dir,
+    tool: raw.tool,
+    session_id: raw.session_id,
+    native_id: raw.native_id,
+    status: raw.status,
+  };
+}
+
 export const api = {
   listWorkspaces: () => invoke<Workspace[]>("list_workspaces"),
-  createWorkspace: (name: string) =>
-    invoke<Workspace>("create_workspace", { name }),
-  renameWorkspace: (workspaceId: number, name: string) =>
-    invoke<Workspace>("rename_workspace", { workspaceId, name }),
   ensureDefaultWorkspace: () =>
     invoke<number>("ensure_default_workspace"),
-
-  listRepos: (workspaceId: number) =>
-    invoke<RepoRef[]>("list_repos", { workspaceId }),
-  addRepoRef: (workspaceId: number, name: string, localGitPath: string) =>
-    invoke<RepoRef>("add_repo_ref", { workspaceId, name, localGitPath }),
-  cloneRepo: (workspaceId: number, url: string, dest: string, name: string) =>
-    invoke<RepoRef>("clone_repo", { workspaceId, url, dest, name }),
-  createRepo: (workspaceId: number, name: string, dest: string) =>
-    invoke<RepoRef>("create_repo", { workspaceId, name, dest }),
-  postLeadToolResult: (threadId: number, payload: unknown) =>
-    invoke<void>("post_lead_tool_result", { threadId, payload }),
-
-  // Repo map (curator): profiles + cross-repo dependency graph.
-  repoGraph: (workspaceId: number) =>
-    invoke<RepoGraph>("repo_graph", { workspaceId }),
-  reprofileRepo: (repoId: number) =>
-    invoke<void>("reprofile_repo", { repoId }),
-  updateRepoProfile: (repoId: number, summary: string, role: string) =>
-    invoke<void>("update_repo_profile", { repoId, summary, role }),
 
   listThreads: (workspaceId: number) =>
     invoke<Thread[]>("list_threads", { workspaceId }),
@@ -82,26 +89,8 @@ export const api = {
   renameDirection: (directionId: number, name: string) =>
     invoke<Direction>("rename_direction", { directionId, name }),
 
-  // Planner: the lead's proposed Task → scope decomposition (§4.10, §5.1).
-  getProposal: (threadId: number) =>
-    invoke<ResolvedProposal | null>("get_proposal", { threadId }),
-  saveProposal: (threadId: number, proposal: Proposal) =>
-    invoke<void>("save_proposal", { threadId, proposal }),
-  confirmProposal: (threadId: number) =>
-    invoke<number[]>("confirm_proposal", { threadId }),
-  createDirection: (
-    threadId: number,
-    name: string,
-    tool: string,
-    repoId: number,
-    reason: string,
-  ) =>
-    invoke<Direction>("create_direction", { threadId, name, tool, repoId, reason }),
-  createRun: (threadId: number, name: string, tool: string, reason?: string) =>
-    invoke<Direction>("create_run", { threadId, name, tool, reason: reason ?? null }),
-
-  listWorktrees: (directionId: number) =>
-    invoke<Worktree[]>("list_worktrees", { directionId }),
+  createRun: (threadId: number, name: string, tool: string) =>
+    invoke<Direction>("create_run", { threadId, name, tool }),
 
   // Lead chat engine: atlas-owned conversation (headless stream-json claude).
   leadSend: (
@@ -126,10 +115,8 @@ export const api = {
     invoke<SlashCmd[]>("discover_slash", { threadId, sessionId }),
 
   // Chat-mode workers (claude): same engine, keyed by session id.
-  chatOpenWorker: (directionId: number, repoId: number, lang: string) =>
-    invoke<SessionInfo>("chat_open_worker", { directionId, repoId, lang }),
   chatOpenRun: (directionId: number, lang: string) =>
-    invoke<SessionInfo>("chat_open_run", { directionId, lang }),
+    invoke<SessionInfoDto>("chat_open_run", { directionId, lang }).then(normalizeSessionInfo),
   chatSend: (
     sessionId: number,
     text: string,
@@ -139,16 +126,10 @@ export const api = {
   chatInterrupt: (sessionId: number) =>
     invoke<void>("chat_interrupt", { sessionId }),
   chatStop: (sessionId: number) => invoke<void>("chat_stop", { sessionId }),
-  sessionFor: (directionId: number, repoId: number) =>
-    invoke<ObserveRef | null>("session_for", { directionId, repoId }),
+  sessionFor: (directionId: number) =>
+    invoke<ObserveRefDto | null>("session_for", { directionId }).then(normalizeObserveRef),
   readTranscript: (cwd: string, tool: string) =>
     invoke<NormEvent[]>("read_transcript", { cwd, tool }),
-  worktreeDiff: (cwd: string) =>
-    invoke<WorktreeDiff>("worktree_diff", { cwd }),
-
-  // Quality loop: run inferred checks across a direction's write worktrees.
-  verifyDirection: (directionId: number) =>
-    invoke<RepoChecks[]>("verify_direction", { directionId }),
 
   threadMessages: (threadId: number) =>
     invoke<BusMsg[]>("thread_messages", { threadId }),
@@ -157,8 +138,6 @@ export const api = {
 
   // Ask Bridge: pending tool permission requests + the answer.
   pendingAsks: () => invoke<PermissionAsk[]>("pending_asks"),
-  workspaceNeedsCounts: () =>
-    invoke<[number, number][]>("workspace_needs_counts"),
   answerPermission: (askId: number, answer: "allow" | "deny" | "always" | "full") =>
     invoke<void>("answer_permission", { askId, answer }),
 
@@ -168,15 +147,7 @@ export const api = {
   answerAsk: (threadId: number, askId: number, text: string) =>
     invoke<void>("answer_ask", { threadId, askId, text }),
 
-  // Write triggers: lead-proposed repo writes awaiting human approve/deny.
-  writeTriggers: (workspaceId: number) =>
-    invoke<WriteTrigger[]>("write_triggers", { workspaceId }),
-  approveWriteTrigger: (threadId: number, index: number, tool: string) =>
-    invoke<number>("approve_write_trigger", { threadId, index, tool }),
-  denyWriteTrigger: (threadId: number, index: number) =>
-    invoke<void>("deny_write_trigger", { threadId, index }),
-
-  // Inspect escape hatches (§4.7): real ways into the hidden plumbing.
+  // Inspect escape hatches: real ways into the hidden plumbing.
   openTerminal: (path: string) => invoke<void>("open_terminal", { path }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
@@ -199,9 +170,6 @@ export const api = {
   // force-stopping a stuck/runaway agent (enforcement pending on the engine).
   setGuardrails: (idleSecs: number, wallSecs: number) =>
     invoke<void>("set_guardrails", { idleSecs, wallSecs }),
-  // Effective config (skills + rules) for a repo, tagged by layer + override.
-  effectiveConfig: (repoPath: string, wsId?: number) =>
-    invoke<ConfigItem[]>("effective_config", { repoPath, wsId }),
   listSkillSources: () => invoke<SkillSource[]>("list_skill_sources"),
   addSkillSource: (gitUrl: string, gitRef?: string) =>
     invoke<SkillSource>("add_skill_source", { gitUrl, gitRef }),

@@ -1,5 +1,5 @@
 //! 入站路由（spec §4 顺序判定）：归一化事件 → Route。纯函数、无 IO、无 LLM。
-//! 当前覆盖 owner 绑定、卡片回复/按钮路由、issue 话题绑定、话题消息与 Concierge 私聊。
+//! 当前覆盖 owner 绑定、卡片回复/按钮路由、任务话题绑定、话题消息与 Concierge 私聊。
 
 use crate::ask::Answer;
 use crate::im::{CardIndex, ReplyTarget};
@@ -16,7 +16,7 @@ pub enum Inbound {
         sender_open_id: String,
         chat_type: String,         // "p2p" | "group"
         chat_id: String,           // 飞书群/单聊 id（群路由用，M2-3）
-        thread_id: Option<String>, // 飞书话题 id（群里 issue 话题用，M2-3）
+        thread_id: Option<String>, // 飞书话题 id（群里任务话题用）
         message_id: String,
         parent_id: Option<String>,
         text: String,
@@ -37,16 +37,16 @@ pub enum Route {
         text: String,
     },
     /// 已绑定 owner 在飞书群话题里发送 `/bind <thread_id>`，把当前飞书
-    /// 话题绑定到指定 Atlas issue。群消息仍不能绑定 owner；只有 allowlist
-    /// 中的 sender 可以改 issue↔话题路由。
-    BindIssueThread {
+    /// 话题绑定到指定 Atlas 任务。群消息仍不能绑定 owner；只有 allowlist
+    /// 中的 sender 可以改任务和话题的路由。
+    BindTaskThread {
         thread_id: i32,
         chat_id: String,
         im_thread_ref: String,
     },
     /// 已绑定 owner 在飞书群普通消息里发送 `/topic <thread_id>`，为已有
-    /// Atlas issue 创建或复用一个飞书 topic。
-    EnsureIssueTopic {
+    /// 为 Atlas 任务创建或复用一个飞书 topic。
+    EnsureTaskTopic {
         thread_id: i32,
         chat_id: String,
         reply_to: String,
@@ -62,9 +62,9 @@ pub enum Route {
     },
     /// 回复了权限卡但动词解析不出 → 回用法提示。
     BadVerdict,
-    /// 飞书话题里给已绑定 issue 的自由文本 → 灌进 lead engine。
+    /// 飞书话题里给已绑定任务的自由文本 -> 灌进 lead engine。
     /// 解析路径在 inbound 之外：执行侧用 (chat_id, im_thread_ref) 查 im_route。
-    IssueMessage {
+    TaskMessage {
         chat_id: String,
         im_thread_ref: String,
         sender_open_id: String,
@@ -99,7 +99,7 @@ fn as_ask_id(v: &serde_json::Value) -> Option<u64> {
         .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
 }
 
-fn parse_bind_issue(text: &str) -> Option<i32> {
+fn parse_bind_task(text: &str) -> Option<i32> {
     let mut parts = text.split_whitespace();
     match (parts.next(), parts.next(), parts.next()) {
         (Some("/bind"), Some(id), None) => id.parse::<i32>().ok().filter(|n| *n > 0),
@@ -107,10 +107,10 @@ fn parse_bind_issue(text: &str) -> Option<i32> {
     }
 }
 
-fn parse_topic_issue(text: &str) -> Option<i32> {
+fn parse_topic_task(text: &str) -> Option<i32> {
     let mut parts = text.split_whitespace();
     match (parts.next(), parts.next(), parts.next()) {
-        (Some("/topic" | "/issue"), Some(id), None) => id.parse::<i32>().ok().filter(|n| *n > 0),
+        (Some("/topic" | "/task"), Some(id), None) => id.parse::<i32>().ok().filter(|n| *n > 0),
         _ => None,
     }
 }
@@ -160,8 +160,8 @@ pub fn route(inb: &Inbound, allow: &[String], cards: &CardIndex) -> Route {
                     Some(tref) => {
                         if text.split_whitespace().next() == Some("/bind") {
                             if allow.iter().any(|a| a == sender_open_id) {
-                                if let Some(thread_id) = parse_bind_issue(text) {
-                                    return Route::BindIssueThread {
+                                if let Some(thread_id) = parse_bind_task(text) {
+                                    return Route::BindTaskThread {
                                         thread_id,
                                         chat_id: chat_id.clone(),
                                         im_thread_ref: tref.clone(),
@@ -170,7 +170,7 @@ pub fn route(inb: &Inbound, allow: &[String], cards: &CardIndex) -> Route {
                             }
                             return Route::Ignore;
                         }
-                        Route::IssueMessage {
+                        Route::TaskMessage {
                             chat_id: chat_id.clone(),
                             im_thread_ref: tref.clone(),
                             sender_open_id: sender_open_id.clone(),
@@ -179,10 +179,10 @@ pub fn route(inb: &Inbound, allow: &[String], cards: &CardIndex) -> Route {
                     }
                     None => {
                         // 普通群聊没有飞书 thread_id；只有已绑定 owner 可以为已有
-                        // issue 创建 topic，避免机器人被拉进群后被任意群成员刷 route。
+                        // task 创建 topic，避免机器人被拉进群后被任意群成员刷 route。
                         if allow.iter().any(|a| a == sender_open_id) {
-                            if let Some(thread_id) = parse_topic_issue(text) {
-                                return Route::EnsureIssueTopic {
+                            if let Some(thread_id) = parse_topic_task(text) {
+                                return Route::EnsureTaskTopic {
                                     thread_id,
                                     chat_id: chat_id.clone(),
                                     reply_to: message_id.clone(),
@@ -381,7 +381,7 @@ mod tests {
             text: "hi".into(),
         };
         // 普通群消息来自 owner：交给 Concierge 语义判断；chat_id 注入上下文，
-        // 让它只在用户语义明确时调用 ensure_issue_topic。
+        // 让它只在用户语义明确时调用 ensure_task_topic。
         assert_eq!(
             route(&g_no_thread, &allow, &cards()),
             Route::FreeText {
@@ -405,7 +405,7 @@ mod tests {
         // 话题内普通消息无视白名单（绑定语义在 im_route 上）；执行侧拿 (chat_id, thread_id) 反查
         assert_eq!(
             route(&g_in_thread, &allow, &cards()),
-            Route::IssueMessage {
+            Route::TaskMessage {
                 chat_id: "oc_g".into(),
                 im_thread_ref: "omt_42".into(),
                 sender_open_id: "ou_x".into(),
@@ -428,7 +428,7 @@ mod tests {
         };
         assert_eq!(
             route(&bind, &allow, &cards()),
-            Route::BindIssueThread {
+            Route::BindTaskThread {
                 thread_id: 7,
                 chat_id: "oc_g".into(),
                 im_thread_ref: "omt_42".into(),
@@ -461,7 +461,7 @@ mod tests {
         };
         assert_eq!(
             route(&topic, &allow, &cards()),
-            Route::EnsureIssueTopic {
+            Route::EnsureTaskTopic {
                 thread_id: 7,
                 chat_id: "oc_g".into(),
                 reply_to: "om_cmd".into(),
@@ -483,7 +483,7 @@ mod tests {
     #[test]
     fn group_with_empty_allowlist_never_binds() {
         // 顺序锁：群消息不得通过 Bind 路径。空白名单 + 普通群消息忽略；
-        // 话题内消息仍可走 IssueMessage，让执行侧按已存在的 im_route 反查 issue。
+        // 话题内消息仍可走 TaskMessage，让执行侧按已存在的 im_route 反查 task。
         let no_thread = Inbound::Text {
             sender_open_id: "ou_stranger".into(),
             chat_type: "group".into(),
@@ -505,7 +505,7 @@ mod tests {
         };
         assert_eq!(
             route(&in_thread, &[], &cards()),
-            Route::IssueMessage {
+            Route::TaskMessage {
                 chat_id: "oc_g".into(),
                 im_thread_ref: "omt_1".into(),
                 sender_open_id: "ou_stranger".into(),

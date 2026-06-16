@@ -1,8 +1,8 @@
 //! All DB reads/writes go through here. Keeps SeaORM specifics out of commands.
 
 use super::entities::{
-    app_setting, direction, im_route, lead_message, plan, repo_profile, repo_ref, session,
-    skill_enable, skill_source, thread, workspace, worktree,
+    app_setting, direction, im_route, lead_message, session, skill_enable, skill_source, thread,
+    workspace,
 };
 use super::Db;
 use crate::slug::unique_slug;
@@ -45,8 +45,7 @@ pub async fn list_workspaces(db: &Db) -> Result<Vec<workspace::Model>> {
     Ok(workspace::Entity::find().all(&db.0).await?)
 }
 
-/// Rename = display-name only. slug (and anything derived from it — branches,
-/// worktree paths) is a stable identifier and never changes after creation.
+/// Rename = display-name only. slug is a stable identifier and never changes.
 pub async fn rename_workspace(db: &Db, workspace_id: i32, name: &str) -> Result<workspace::Model> {
     let name = validate_display_name(name, "workspace name")?;
     let dup = workspace::Entity::find()
@@ -207,31 +206,6 @@ pub async fn set_setting(db: &Db, key: &str, value: &str) -> Result<()> {
 /// Workspace container used by per-IM-conversation Concierge threads.
 pub const K_CONCIERGE_WORKSPACE: &str = "concierge.workspace_id";
 
-pub async fn add_repo_ref(
-    db: &Db,
-    workspace_id: i32,
-    name: &str,
-    local_git_path: &str,
-    base_ref: &str,
-) -> Result<repo_ref::Model> {
-    let existing: Vec<String> = repo_ref::Entity::find()
-        .filter(repo_ref::Column::WorkspaceId.eq(workspace_id))
-        .all(&db.0)
-        .await?
-        .into_iter()
-        .map(|r| r.slug)
-        .collect();
-    let m = repo_ref::ActiveModel {
-        workspace_id: Set(workspace_id),
-        name: Set(name.to_string()),
-        slug: Set(unique_slug(name, &existing)),
-        local_git_path: Set(local_git_path.to_string()),
-        base_ref: Set(base_ref.to_string()),
-        ..Default::default()
-    };
-    Ok(m.insert(&db.0).await?)
-}
-
 pub async fn create_thread(
     db: &Db,
     workspace_id: i32,
@@ -265,24 +239,13 @@ pub async fn list_threads(db: &Db, workspace_id: i32) -> Result<Vec<thread::Mode
         .await?)
 }
 
-pub async fn list_repos(db: &Db, workspace_id: i32) -> Result<Vec<repo_ref::Model>> {
-    Ok(repo_ref::Entity::find()
-        .filter(repo_ref::Column::WorkspaceId.eq(workspace_id))
-        .all(&db.0)
-        .await?)
-}
-
-pub async fn get_repo(db: &Db, repo_id: i32) -> Result<Option<repo_ref::Model>> {
-    Ok(repo_ref::Entity::find_by_id(repo_id).one(&db.0).await?)
-}
-
 pub async fn get_thread(db: &Db, thread_id: i32) -> Result<Option<thread::Model>> {
     Ok(thread::Entity::find_by_id(thread_id).one(&db.0).await?)
 }
 
 /// Display-title only; slug stays (see rename_workspace).
 pub async fn rename_thread(db: &Db, thread_id: i32, title: &str) -> Result<thread::Model> {
-    let title = validate_display_name(title, "issue title")?;
+    let title = validate_display_name(title, "task title")?;
     let m = thread::Entity::find_by_id(thread_id)
         .one(&db.0)
         .await?
@@ -294,76 +257,11 @@ pub async fn rename_thread(db: &Db, thread_id: i32, title: &str) -> Result<threa
         .one(&db.0)
         .await?;
     if dup.is_some() {
-        anyhow::bail!("another issue in this workspace already titled {title:?}");
+        anyhow::bail!("another task in this workspace already titled {title:?}");
     }
     let mut a: thread::ActiveModel = m.into();
     a.title = Set(title.to_string());
     Ok(a.update(&db.0).await?)
-}
-
-pub async fn get_plan(db: &Db, thread_id: i32) -> Result<Option<plan::Model>> {
-    Ok(plan::Entity::find()
-        .filter(plan::Column::ThreadId.eq(thread_id))
-        .one(&db.0)
-        .await?)
-}
-
-/// Insert or update a thread's plan/proposal.
-pub async fn upsert_plan(
-    db: &Db,
-    thread_id: i32,
-    proposal: &str,
-    status: &str,
-    created_at: &str,
-) -> Result<plan::Model> {
-    let mut a = match get_plan(db, thread_id).await? {
-        Some(m) => m.into(),
-        None => plan::ActiveModel {
-            thread_id: Set(thread_id),
-            created_at: Set(created_at.to_string()),
-            ..Default::default()
-        },
-    };
-    a.proposal = Set(proposal.to_string());
-    a.status = Set(status.to_string());
-    Ok(a.save(&db.0).await?.try_into_model()?)
-}
-
-pub async fn get_repo_profile(db: &Db, repo_id: i32) -> Result<Option<repo_profile::Model>> {
-    Ok(repo_profile::Entity::find()
-        .filter(repo_profile::Column::RepoId.eq(repo_id))
-        .one(&db.0)
-        .await?)
-}
-
-/// Insert or update a repo's profile. `stack`/`published`/`deps` are JSON arrays.
-#[allow(clippy::too_many_arguments)]
-pub async fn upsert_repo_profile(
-    db: &Db,
-    repo_id: i32,
-    role: &str,
-    stack: &str,
-    summary: &str,
-    published: &str,
-    deps: &str,
-    source: &str,
-    profiled_commit: &str,
-) -> Result<repo_profile::Model> {
-    let mut a = match get_repo_profile(db, repo_id).await? {
-        Some(m) => m.into(),
-        None => repo_profile::ActiveModel {
-            repo_id: Set(repo_id),
-            ..Default::default()
-        },
-    };
-    a.role = Set(role.to_string());
-    a.stack = Set(stack.to_string());
-    a.summary = Set(summary.to_string());
-    a.published = Set(published.to_string());
-    a.deps = Set(deps.to_string());
-    a.source = Set(source.to_string());
-    a.profiled_commit = Set(profiled_commit.to_string());
-    Ok(a.save(&db.0).await?.try_into_model()?)
 }
 
 pub async fn list_directions(db: &Db, thread_id: i32) -> Result<Vec<direction::Model>> {
@@ -373,25 +271,17 @@ pub async fn list_directions(db: &Db, thread_id: i32) -> Result<Vec<direction::M
         .await?)
 }
 
-/// Create a direction bound to exactly one write repo + a reason (scope rework,
-/// spec Part 1). The worktree is materialized separately by `materialize`.
 pub async fn create_direction(
     db: &Db,
     thread_id: i32,
     name: &str,
     tool: &str,
-    repo_id: i32,
-    reason: &str,
     mandate: &str,
 ) -> Result<direction::Model> {
-    let t = thread::Entity::find_by_id(thread_id)
+    let _thread = thread::Entity::find_by_id(thread_id)
         .one(&db.0)
         .await?
         .ok_or_else(|| anyhow::anyhow!("thread {thread_id} not found"))?;
-    let ws = workspace::Entity::find_by_id(t.workspace_id)
-        .one(&db.0)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("workspace missing"))?;
     let existing: Vec<String> = direction::Entity::find()
         .filter(direction::Column::ThreadId.eq(thread_id))
         .all(&db.0)
@@ -400,16 +290,12 @@ pub async fn create_direction(
         .map(|d| d.slug)
         .collect();
     let slug = unique_slug(name, &existing);
-    let branch = format!("ws/{}/{}/{}", ws.slug, t.slug, slug);
     let dir = direction::ActiveModel {
         thread_id: Set(thread_id),
         name: Set(name.to_string()),
         slug: Set(slug),
         tool: Set(tool.to_string()),
-        branch: Set(branch),
         status: Set("queued".to_string()),
-        repo_id: Set(repo_id),
-        reason: Set(reason.to_string()),
         mandate: Set(normalize_mandate(mandate).to_string()),
         created_at: Set(now()),
         ..Default::default()
@@ -447,7 +333,7 @@ pub async fn set_direction_status(db: &Db, direction_id: i32, status: &str) -> R
     Ok(())
 }
 
-/// Display-name only; slug AND branch stay (live worktrees keep working).
+/// Display-name only; slug stays stable.
 pub async fn rename_direction(db: &Db, direction_id: i32, name: &str) -> Result<direction::Model> {
     let name = validate_display_name(name, "task name")?;
     let m = direction::Entity::find_by_id(direction_id)
@@ -461,85 +347,19 @@ pub async fn rename_direction(db: &Db, direction_id: i32, name: &str) -> Result<
         .one(&db.0)
         .await?;
     if dup.is_some() {
-        anyhow::bail!("another task in this issue already named {name:?}");
+        anyhow::bail!("another run in this task already named {name:?}");
     }
     let mut a: direction::ActiveModel = m.into();
     a.name = Set(name.to_string());
     Ok(a.update(&db.0).await?)
 }
 
-/// The single write repo bound to a direction (scope rework). None if the
-/// direction has no repo set (repo_id = 0) or the repo row is gone.
-pub async fn direction_repo_of(db: &Db, direction_id: i32) -> Result<Option<repo_ref::Model>> {
-    let Some(d) = direction::Entity::find_by_id(direction_id)
-        .one(&db.0)
-        .await?
-    else {
-        return Ok(None);
-    };
-    if d.repo_id == 0 {
-        return Ok(None);
-    }
-    Ok(repo_ref::Entity::find_by_id(d.repo_id).one(&db.0).await?)
-}
-
-pub async fn record_worktree(
-    db: &Db,
-    repo_id: i32,
-    direction_id: i32,
-    branch: &str,
-    path: &str,
-) -> Result<worktree::Model> {
-    Ok(worktree::ActiveModel {
-        repo_id: Set(repo_id),
-        direction_id: Set(direction_id),
-        branch: Set(branch.to_string()),
-        path: Set(path.to_string()),
-        created_at: Set(now()),
-        ..Default::default()
-    }
-    .insert(&db.0)
-    .await?)
-}
-
-pub async fn list_worktrees(db: &Db, direction_id: Option<i32>) -> Result<Vec<worktree::Model>> {
-    let q = worktree::Entity::find();
-    let q = match direction_id {
-        Some(id) => q.filter(worktree::Column::DirectionId.eq(id)),
-        None => q,
-    };
-    Ok(q.all(&db.0).await?)
-}
-
-pub async fn worktree_for(
-    db: &Db,
-    direction_id: i32,
-    repo_id: i32,
-) -> Result<Option<worktree::Model>> {
-    Ok(worktree::Entity::find()
-        .filter(worktree::Column::DirectionId.eq(direction_id))
-        .filter(worktree::Column::RepoId.eq(repo_id))
-        .one(&db.0)
-        .await?)
-}
-
-/// Delete a thread and everything under it. Returns the worktree paths that the
-/// caller must physically remove via git (DB rows are gone after this).
-pub async fn delete_thread_cascade(db: &Db, thread_id: i32) -> Result<Vec<(i32, String, String)>> {
+pub async fn delete_thread_cascade(db: &Db, thread_id: i32) -> Result<()> {
     let dirs = direction::Entity::find()
         .filter(direction::Column::ThreadId.eq(thread_id))
         .all(&db.0)
         .await?;
-    let mut removed: Vec<(i32, String, String)> = Vec::new(); // (repo_id, worktree path, branch)
     for d in &dirs {
-        let wts = worktree::Entity::find()
-            .filter(worktree::Column::DirectionId.eq(d.id))
-            .all(&db.0)
-            .await?;
-        for w in wts {
-            removed.push((w.repo_id, w.path.clone(), w.branch.clone()));
-            worktree::Entity::delete_by_id(w.id).exec(&db.0).await?;
-        }
         session::Entity::delete_many()
             .filter(session::Column::DirectionId.eq(d.id))
             .exec(&db.0)
@@ -547,19 +367,17 @@ pub async fn delete_thread_cascade(db: &Db, thread_id: i32) -> Result<Vec<(i32, 
         direction::Entity::delete_by_id(d.id).exec(&db.0).await?;
     }
     thread::Entity::delete_by_id(thread_id).exec(&db.0).await?;
-    Ok(removed)
+    Ok(())
 }
 
 pub async fn create_session(
     db: &Db,
     direction_id: i32,
-    repo_id: i32,
     tool: &str,
     cwd: &str,
 ) -> Result<session::Model> {
     Ok(session::ActiveModel {
         direction_id: Set(direction_id),
-        repo_id: Set(repo_id),
         tool: Set(tool.to_string()),
         cwd: Set(cwd.to_string()),
         native_session_id: Set(None),
@@ -585,23 +403,18 @@ pub async fn get_session(db: &Db, session_id: i32) -> Result<Option<session::Mod
     Ok(session::Entity::find_by_id(session_id).one(&db.0).await?)
 }
 
-/// The most-recent session row for a (direction, repo) slot, by insertion order.
+/// The most-recent session row for a direction, by insertion order.
 /// Used to decide resume-vs-fresh when no live PTY is tracked in memory.
-pub async fn latest_session_for(
-    db: &Db,
-    direction_id: i32,
-    repo_id: i32,
-) -> Result<Option<session::Model>> {
+pub async fn latest_session_for(db: &Db, direction_id: i32) -> Result<Option<session::Model>> {
     Ok(session::Entity::find()
         .filter(session::Column::DirectionId.eq(direction_id))
-        .filter(session::Column::RepoId.eq(repo_id))
         .order_by_desc(session::Column::Id)
         .one(&db.0)
         .await?)
 }
 
-/// The most-recent session row for a direction (any repo) — the coordinator's
-/// route from a bus wake target to its chat engine.
+/// The most-recent session row for a direction — the coordinator's route from a
+/// bus wake target to its chat engine.
 pub async fn latest_session_for_direction(
     db: &Db,
     direction_id: i32,
@@ -731,8 +544,8 @@ pub async fn set_lead_native_id(db: &Db, thread_id: i32, native_id: &str) -> Res
 
 // ─────────────────────────── im_route (M2) ───────────────────────────
 
-/// Bind an issue (thread) to an IM thread. Upserts on `thread_id`: re-binding the
-/// same issue replaces its target. Returns the resulting row.
+/// Bind an task (thread) to an IM thread. Upserts on `thread_id`: re-binding the
+/// same task replaces its target. Returns the resulting row.
 pub async fn bind_im_route(
     db: &Db,
     thread_id: i32,
@@ -784,7 +597,7 @@ pub async fn im_route_of_thread(db: &Db, thread_id: i32) -> Result<Option<im_rou
         .await?)
 }
 
-/// Reverse lookup: which issue is this IM thread bound to?
+/// Reverse lookup: which task is this IM thread bound to?
 pub async fn im_route_of_thread_ref(
     db: &Db,
     channel: &str,
@@ -883,7 +696,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(got.thread_id, 7);
-        // re-bind same issue: row count stays 1, target replaced
+        // re-bind same task: row count stays 1, target replaced
         bind_im_route(&db, 7, "feishu", "oc_chat", "th_2")
             .await
             .unwrap();
@@ -898,8 +711,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn im_route_thread_ref_is_unique_across_issues() {
-        // Same (channel, chat_id, im_thread_ref) cannot bind to two different issues.
+    async fn im_route_thread_ref_is_unique_across_tasks() {
+        // Same (channel, chat_id, im_thread_ref) cannot bind to two different tasks.
         let db = mem().await;
         bind_im_route(&db, 1, "feishu", "oc_chat", "th_1")
             .await
@@ -913,130 +726,64 @@ mod tests {
         let db = mem().await;
         let ws = create_workspace(&db, "Demo WS").await.unwrap();
         assert_eq!(ws.slug, "demo-ws");
-        let repo = add_repo_ref(&db, ws.id, "web-app", "/tmp/x", "main")
-            .await
-            .unwrap();
         let t = create_thread(&db, ws.id, "Add login", "feature", "claude")
             .await
             .unwrap();
-        let dir = create_direction(
-            &db,
-            t.id,
-            "main",
-            "claude",
-            repo.id,
-            "build the feature",
-            "plan+impl",
-        )
-        .await
-        .unwrap();
-        assert_eq!(dir.branch, "ws/demo-ws/add-login/main");
-        assert_eq!(dir.repo_id, repo.id);
-        assert_eq!(dir.reason, "build the feature");
-
-        // pretend it was materialized
-        record_worktree(&db, repo.id, dir.id, &dir.branch, "/tmp/wt")
+        let dir = create_direction(&db, t.id, "main", "claude", "plan+impl")
             .await
             .unwrap();
-        assert_eq!(list_worktrees(&db, Some(dir.id)).await.unwrap().len(), 1);
-        assert!(direction_repo_of(&db, dir.id).await.unwrap().is_some());
+        let _session = create_session(&db, dir.id, "claude", "/tmp/run")
+            .await
+            .unwrap();
 
-        // cascade delete returns the path to clean and empties the rows
-        let removed = delete_thread_cascade(&db, t.id).await.unwrap();
-        assert_eq!(
-            removed,
-            vec![(
-                repo.id,
-                "/tmp/wt".to_string(),
-                "ws/demo-ws/add-login/main".to_string()
-            )]
-        );
+        delete_thread_cascade(&db, t.id).await.unwrap();
         assert_eq!(list_workspaces(&db).await.unwrap().len(), 1); // ws survives
         assert_eq!(list_threads(&db, ws.id).await.unwrap().len(), 0);
-        assert_eq!(list_worktrees(&db, None).await.unwrap().len(), 0);
+        assert!(latest_session_for(&db, dir.id).await.unwrap().is_none());
     }
 
     #[tokio::test]
     async fn latest_session_for_returns_newest_with_native() {
         let db = mem().await;
         let ws = create_workspace(&db, "Demo WS").await.unwrap();
-        let repo = add_repo_ref(&db, ws.id, "web-app", "/tmp/x", "main")
-            .await
-            .unwrap();
         let thread = create_thread(&db, ws.id, "T", "feature", "claude")
             .await
             .unwrap();
-        let dir = create_direction(&db, thread.id, "D", "claude", repo.id, "r", "impl-only")
+        let dir = create_direction(&db, thread.id, "D", "claude", "impl-only")
             .await
             .unwrap();
         // older session (no native), then newer (native captured)
-        let _s1 = create_session(&db, dir.id, repo.id, "claude", "/tmp/x")
+        let _s1 = create_session(&db, dir.id, "claude", "/tmp/x")
             .await
             .unwrap();
-        let s2 = create_session(&db, dir.id, repo.id, "claude", "/tmp/x")
+        let s2 = create_session(&db, dir.id, "claude", "/tmp/x")
             .await
             .unwrap();
         set_session_native_id(&db, s2.id, "abc-123").await.unwrap();
 
-        let latest = latest_session_for(&db, dir.id, repo.id)
-            .await
-            .unwrap()
-            .unwrap();
+        let latest = latest_session_for(&db, dir.id).await.unwrap().unwrap();
         assert_eq!(latest.id, s2.id);
         assert_eq!(latest.native_session_id.as_deref(), Some("abc-123"));
-        assert!(latest_session_for(&db, dir.id, 99999)
-            .await
-            .unwrap()
-            .is_none());
     }
 
     #[tokio::test]
-    async fn repo_less_direction_can_back_a_generic_session() {
+    async fn direction_can_back_a_generic_session() {
         let db = Db::connect("sqlite::memory:").await.unwrap();
         let ws = create_workspace(&db, "People Ops").await.unwrap();
         let t = create_thread(&db, ws.id, "Draft offer email", "task", "codex")
             .await
             .unwrap();
 
-        let d = create_direction(&db, t.id, "Main run", "codex", 0, "", "plan+impl")
+        let d = create_direction(&db, t.id, "Main run", "codex", "plan+impl")
             .await
             .unwrap();
-        assert_eq!(d.repo_id, 0);
-        assert!(direction_repo_of(&db, d.id).await.unwrap().is_none());
 
-        let s = create_session(&db, d.id, 0, "codex", "/tmp/atlas-run")
+        let s = create_session(&db, d.id, "codex", "/tmp/atlas-run")
             .await
             .unwrap();
-        let latest = latest_session_for(&db, d.id, 0).await.unwrap().unwrap();
+        let latest = latest_session_for(&db, d.id).await.unwrap().unwrap();
         assert_eq!(latest.id, s.id);
         assert_eq!(latest.cwd, "/tmp/atlas-run");
-    }
-
-    #[tokio::test]
-    async fn direction_repo_of_none_when_unset() {
-        let db = mem().await;
-        let ws = create_workspace(&db, "Demo WS").await.unwrap();
-        let t = create_thread(&db, ws.id, "Add login", "feature", "claude")
-            .await
-            .unwrap();
-        // A direction with repo_id == 0 (unset) has no bound write repo.
-        let dir = direction::ActiveModel {
-            thread_id: Set(t.id),
-            name: Set("main".to_string()),
-            slug: Set("main".to_string()),
-            tool: Set("claude".to_string()),
-            branch: Set("ws/demo-ws/add-login/main".to_string()),
-            status: Set("queued".to_string()),
-            repo_id: Set(0),
-            reason: Set(String::new()),
-            created_at: Set(now()),
-            ..Default::default()
-        }
-        .insert(&db.0)
-        .await
-        .unwrap();
-        assert_eq!(dir.repo_id, 0);
-        assert!(direction_repo_of(&db, dir.id).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -1070,17 +817,14 @@ mod tests {
     async fn rename_updates_display_name_only() {
         let db = mem().await;
         let ws = create_workspace(&db, "Demo WS").await.unwrap();
-        let repo = add_repo_ref(&db, ws.id, "web-app", "/tmp/x", "main")
-            .await
-            .unwrap();
         let t = create_thread(&db, ws.id, "Add login", "feature", "claude")
             .await
             .unwrap();
-        let d = create_direction(&db, t.id, "main", "claude", repo.id, "r", "plan+impl")
+        let d = create_direction(&db, t.id, "main", "claude", "plan+impl")
             .await
             .unwrap();
 
-        // trim + 只更新显示字段；slug / branch 都保持创建时的值
+        // trim + only display fields change; slugs remain stable.
         let ws2 = rename_workspace(&db, ws.id, "  New WS  ").await.unwrap();
         assert_eq!(ws2.name, "New WS");
         assert_eq!(ws2.slug, "demo-ws");
@@ -1092,7 +836,6 @@ mod tests {
         let d2 = rename_direction(&db, d.id, "api work").await.unwrap();
         assert_eq!(d2.name, "api work");
         assert_eq!(d2.slug, "main");
-        assert_eq!(d2.branch, "ws/demo-ws/add-login/main");
     }
 
     #[tokio::test]
@@ -1115,9 +858,6 @@ mod tests {
         assert!(rename_workspace(&db, ws_b.id, "Alpha").await.is_err());
         assert!(rename_workspace(&db, ws_a.id, "Alpha").await.is_ok());
 
-        let repo = add_repo_ref(&db, ws_a.id, "web-app", "/tmp/x", "main")
-            .await
-            .unwrap();
         let t1 = create_thread(&db, ws_a.id, "Login", "feature", "claude")
             .await
             .unwrap();
@@ -1132,15 +872,15 @@ mod tests {
             .unwrap();
         assert!(rename_thread(&db, t3.id, "Login").await.is_ok());
 
-        let d1 = create_direction(&db, t1.id, "api", "claude", repo.id, "r", "plan+impl")
+        let d1 = create_direction(&db, t1.id, "api", "claude", "plan+impl")
             .await
             .unwrap();
-        let d2 = create_direction(&db, t1.id, "ui", "claude", repo.id, "r", "plan+impl")
+        let d2 = create_direction(&db, t1.id, "ui", "claude", "plan+impl")
             .await
             .unwrap();
         assert!(rename_direction(&db, d2.id, "api").await.is_err());
         // same direction name under a DIFFERENT thread is fine
-        let d3 = create_direction(&db, t2.id, "main", "claude", repo.id, "r", "plan+impl")
+        let d3 = create_direction(&db, t2.id, "main", "claude", "plan+impl")
             .await
             .unwrap();
         assert!(rename_direction(&db, d3.id, "api").await.is_ok());

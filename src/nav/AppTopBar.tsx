@@ -29,16 +29,11 @@ export function AppTopBar() {
     sessions,
     showNeeds,
     homeTab,
-    repos,
     threads,
     overview,
     directionsByThread,
     needs,
     asks,
-    writeTriggers,
-    proposal,
-    reviewingProposal,
-    setReviewingProposal,
     threadTab,
     setThreadTab,
     backToBoard,
@@ -52,21 +47,17 @@ export function AppTopBar() {
   const lang = currentLang();
   const thread = threads.find((th) => th.id === activeThreadId);
   const activeSession = activeSessionId != null ? sessions[activeSessionId] : null;
-  const inIssue = !!thread && activeSessionId == null && viewing == null && !showNeeds;
+  const inTask = !!thread && activeSessionId == null && viewing == null && !showNeeds;
   const inSession = activeSession != null && !showNeeds;
   const inObserve = viewing != null && !showNeeds;
-  const viewedRepo = viewing ? repos.find((r) => r.id === viewing.repoId) : null;
   const viewedDirection = viewing
     ? Object.values(directionsByThread)
         .flat()
         .find((d) => d.id === viewing.directionId)
     : null;
-  const sessionRepo = activeSession ? repos.find((r) => r.id === activeSession.repoId) : null;
   const sessionDirection = activeSession
     ? directionsByThread[activeSession.threadId]?.find((d) => d.id === activeSession.directionId)
     : null;
-  const sessionRepoLabel =
-    activeSession && activeSession.repoId !== 0 ? sessionRepo?.name : null;
   const inWorkspaceBoard =
     activeWorkspaceId != null &&
     activeThreadId == null &&
@@ -74,15 +65,13 @@ export function AppTopBar() {
     viewing == null &&
     !showNeeds &&
     homeTab === "board";
-  const needsCount = needs.length + asks.length + writeTriggers.length;
-  const proposalPending =
-    proposal?.status === "proposed" && proposal.directions.length > 0 && !reviewingProposal;
+  const needsCount = needs.length + asks.length;
   const taskTabs = [
     {
       key: "lead" as const,
       label: t("lead.viewChat"),
       icon: MessagesSquare,
-      dot: proposalPending ? "bg-accent" : null,
+      dot: null as string | null,
     },
     { key: "board" as const, label: t("thread.tabBoard"), icon: LayoutGrid, dot: null as string | null },
   ];
@@ -151,11 +140,6 @@ export function AppTopBar() {
             <span className="min-w-0 truncate text-[13px] font-semibold text-ink">
               {sessionDirection?.name ?? "task"}
             </span>
-            {sessionRepoLabel && (
-              <span className="hidden shrink-0 text-[11.5px] text-ink-faint sm:inline">
-                {sessionRepoLabel}
-              </span>
-            )}
           </div>
         )}
         {inObserve && (
@@ -172,14 +156,9 @@ export function AppTopBar() {
             <span className="min-w-0 truncate text-[13px] font-semibold text-ink">
               {viewedDirection?.name ?? "task"}
             </span>
-            {viewedRepo && (
-              <span className="hidden shrink-0 text-[11.5px] text-ink-faint sm:inline">
-                {viewedRepo.name}
-              </span>
-            )}
           </div>
         )}
-        {inIssue && (
+        {inTask && (
           <div className="ml-1 flex min-w-0 items-center gap-2">
             <div className="flex shrink-0 items-center gap-1">
               {taskTabs.map((tab) => {
@@ -190,7 +169,6 @@ export function AppTopBar() {
                     type="button"
                     onClick={() => {
                       setThreadTab(tab.key);
-                      if (tab.key === "board") setReviewingProposal(false);
                     }}
                     className={cn(
                       "relative flex h-9 items-center gap-1.5 px-2.5 text-[12.5px] transition-colors",

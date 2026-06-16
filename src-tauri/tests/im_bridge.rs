@@ -259,10 +259,10 @@ async fn hint_routes_send_usage_text() {
 }
 
 #[tokio::test]
-async fn issue_message_route_resolves_via_im_route() {
-    // M2-3：bind 一条 im_route 后，IssueMessage 路由应能用 (chat_id, thread_ref)
-    // 反查到 issue thread_id。这里跑 execute(..., None) 即无 app 句柄路径——
-    // 不进 engine，但反查 + early-return 不能报错。完整 issue → lead engine 投递由
+async fn task_message_route_resolves_via_im_route() {
+    // M2-3：bind 一条 im_route 后，TaskMessage 路由应能用 (chat_id, thread_ref)
+    // 反查到 task thread_id。这里跑 execute(..., None) 即无 app 句柄路径——
+    // 不进 engine，但反查 + early-return 不能报错。完整 task → lead engine 投递由
     // 桥运行时（spawn 路径）覆盖。
     let db = mem_db().await;
     let (asks, bus, ch) = (
@@ -271,13 +271,13 @@ async fn issue_message_route_resolves_via_im_route() {
         FakeChannel::default(),
     );
     let ws = repo::create_workspace(&db, "ws").await.unwrap();
-    let t = repo::create_thread(&db, ws.id, "issue-x", "feature", "claude")
+    let t = repo::create_thread(&db, ws.id, "task-x", "feature", "claude")
         .await
         .unwrap();
     repo::bind_im_route(&db, t.id, "feishu", "oc_g", "omt_42")
         .await
         .unwrap();
-    let r = Route::IssueMessage {
+    let r = Route::TaskMessage {
         chat_id: "oc_g".into(),
         im_thread_ref: "omt_42".into(),
         sender_open_id: "ou_x".into(),
@@ -290,7 +290,7 @@ async fn issue_message_route_resolves_via_im_route() {
 }
 
 #[tokio::test]
-async fn bind_issue_thread_route_persists_im_route_and_confirms() {
+async fn bind_task_thread_route_persists_im_route_and_confirms() {
     let db = mem_db().await;
     let (asks, bus, ch) = (
         AskRegistry::new(),
@@ -298,10 +298,10 @@ async fn bind_issue_thread_route_persists_im_route_and_confirms() {
         FakeChannel::default(),
     );
     let ws = repo::create_workspace(&db, "ws").await.unwrap();
-    let t = repo::create_thread(&db, ws.id, "issue-bind", "feature", "claude")
+    let t = repo::create_thread(&db, ws.id, "task-bind", "feature", "claude")
         .await
         .unwrap();
-    let r = Route::BindIssueThread {
+    let r = Route::BindTaskThread {
         thread_id: t.id,
         chat_id: "oc_g".into(),
         im_thread_ref: "omt_42".into(),
@@ -319,14 +319,14 @@ async fn bind_issue_thread_route_persists_im_route_and_confirms() {
 }
 
 #[tokio::test]
-async fn bind_issue_thread_missing_issue_is_polite_noop() {
+async fn bind_task_thread_missing_task_is_polite_noop() {
     let db = mem_db().await;
     let (asks, bus, ch) = (
         AskRegistry::new(),
         BusRegistry::new(),
         FakeChannel::default(),
     );
-    let r = Route::BindIssueThread {
+    let r = Route::BindTaskThread {
         thread_id: 999,
         chat_id: "oc_g".into(),
         im_thread_ref: "omt_42".into(),
@@ -341,8 +341,8 @@ async fn bind_issue_thread_missing_issue_is_polite_noop() {
 }
 
 #[tokio::test]
-async fn issue_message_route_unbound_thread_hints_without_creating_issue() {
-    // 未 bind 的话题消息：不反向创建 issue，只提示如何为已有 issue 绑定 topic。
+async fn task_message_route_unbound_thread_hints_without_creating_task() {
+    // 未 bind 的话题消息：不反向创建 task，只提示如何为已有 task 绑定 topic。
     use std::collections::HashMap;
     let db = mem_db().await;
     let (asks, bus, ch) = (
@@ -354,7 +354,7 @@ async fn issue_message_route_unbound_thread_hints_without_creating_issue() {
         inbound_message_id: Some("om_in".into()),
         acks: Some(std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()))),
     };
-    let r = Route::IssueMessage {
+    let r = Route::TaskMessage {
         chat_id: "oc_g".into(),
         im_thread_ref: "omt_never_bound".into(),
         sender_open_id: "ou_x".into(),
@@ -371,7 +371,7 @@ async fn issue_message_route_unbound_thread_hints_without_creating_issue() {
 }
 
 #[tokio::test]
-async fn issue_message_with_ctx_adds_eyes_reaction() {
+async fn task_message_with_ctx_adds_eyes_reaction() {
     // M2-6: bind 后的话题消息且 ctx 带 inbound_message_id + acks → 加 👀。
     use std::collections::HashMap;
     let db = mem_db().await;
@@ -381,7 +381,7 @@ async fn issue_message_with_ctx_adds_eyes_reaction() {
         FakeChannel::default(),
     );
     let ws = repo::create_workspace(&db, "ws").await.unwrap();
-    let t = repo::create_thread(&db, ws.id, "issue-x", "feature", "claude")
+    let t = repo::create_thread(&db, ws.id, "task-x", "feature", "claude")
         .await
         .unwrap();
     repo::bind_im_route(&db, t.id, "feishu", "oc_g", "omt_42")
@@ -392,7 +392,7 @@ async fn issue_message_with_ctx_adds_eyes_reaction() {
         inbound_message_id: Some("om_in_1".into()),
         acks: Some(acks.clone()),
     };
-    let r = Route::IssueMessage {
+    let r = Route::TaskMessage {
         chat_id: "oc_g".into(),
         im_thread_ref: "omt_42".into(),
         sender_open_id: "ou_x".into(),
@@ -417,7 +417,7 @@ async fn consume_lead_out_replies_and_drains_acks() {
     let db = mem_db().await;
     let ch = FakeChannel::default();
     let ws = repo::create_workspace(&db, "ws").await.unwrap();
-    let t = repo::create_thread(&db, ws.id, "issue-y", "feature", "claude")
+    let t = repo::create_thread(&db, ws.id, "task-y", "feature", "claude")
         .await
         .unwrap();
     repo::bind_im_route(&db, t.id, "feishu", "oc_g", "omt_99")
@@ -474,15 +474,15 @@ async fn consume_lead_out_unbound_thread_is_noop() {
 }
 
 #[tokio::test]
-async fn ensure_issue_topic_creates_feishu_root_and_binds_issue() {
+async fn ensure_task_topic_creates_feishu_root_and_binds_task() {
     let db = mem_db().await;
     let ch = FakeChannel::default();
     let ws = repo::create_workspace(&db, "ws").await.unwrap();
-    let t = repo::create_thread(&db, ws.id, "issue-topic", "feature", "claude")
+    let t = repo::create_thread(&db, ws.id, "task-topic", "feature", "claude")
         .await
         .unwrap();
 
-    im::ensure_issue_topic(&db, &ch, t.id, "oc_g", Some("om_cmd"), "zh")
+    im::ensure_task_topic(&db, &ch, t.id, "oc_g", Some("om_cmd"), "zh")
         .await
         .unwrap();
 
@@ -493,7 +493,7 @@ async fn ensure_issue_topic_creates_feishu_root_and_binds_issue() {
     let chat_texts = ch.chat_texts.lock().unwrap();
     assert_eq!(chat_texts.len(), 1);
     assert_eq!(chat_texts[0].0, "oc_g");
-    assert!(chat_texts[0].1.contains("Atlas issue"));
+    assert!(chat_texts[0].1.contains("Atlas task"));
     let replies = ch.replies.lock().unwrap();
     assert_eq!(replies.len(), 1);
     assert_eq!(replies[0].0, "om_cmd");

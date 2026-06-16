@@ -148,7 +148,7 @@ pub trait Channel: Send + Sync {
     async fn patch_card(&self, message_id: &str, card: serde_json::Value) -> anyhow::Result<()>;
     /// 发纯文本到用户（p2p）。
     async fn send_text(&self, open_id: &str, text: &str) -> anyhow::Result<()>;
-    /// 发纯文本到群聊，返回根 message_id；用作 issue topic 的锚点。
+    /// 发纯文本到群聊，返回根 message_id；用作 task topic 的锚点。
     async fn send_chat_text(&self, _chat_id: &str, _text: &str) -> anyhow::Result<String> {
         anyhow::bail!("send_chat_text unsupported by this channel")
     }
@@ -167,7 +167,7 @@ pub trait Channel: Send + Sync {
     }
 }
 
-/// M2-6 桥运行时上下文：让 execute() 在入站 IssueMessage 路径里挂 👀，
+/// M2-6 桥运行时上下文：让 execute() 在入站 TaskMessage 路径里挂 👀，
 /// 同时把 (im_message_id, reaction_id) 记到 `acks[thread_id]`——lead 首条
 /// 出站时 [`spawn`] 出站任务取走清空。`message_id`/`acks` 任一缺失即跳过
 /// reaction（测试路径 / 配置未注入 都安全）。
@@ -177,10 +177,10 @@ pub struct ExecuteCtx {
     pub acks: Option<Arc<tokio::sync::Mutex<HashMap<i32, Vec<(String, String)>>>>>,
 }
 
-/// Route execution requires an AppHandle when an issue message has to be fed
+/// Route execution requires an AppHandle when an task message has to be fed
 /// into the lead engine (M2-3 / M3 Concierge): the engine wiring (planner MCP,
 /// ask hook, etc.) lives on app state. For tests that don't exercise those
-/// paths, pass None — IssueMessage / FreeText that needs the app degrade to
+/// paths, pass None — TaskMessage / FreeText that needs the app degrade to
 /// a polite stub instead of panicking.
 ///
 /// `ctx`（M2-6）：桥运行时塞进的额外上下文——目前只有「这条入站消息的飞书
@@ -244,7 +244,7 @@ pub async fn execute(
                 }
             }
         }
-        inbound::Route::BindIssueThread {
+        inbound::Route::BindTaskThread {
             thread_id,
             chat_id,
             im_thread_ref,
@@ -254,11 +254,11 @@ pub async fn execute(
                 if let Err(e) = channel
                     .send_text(
                         sender,
-                        &t("没有找到这个 issue。", "No issue with that id was found."),
+                        &t("没有找到这个任务。", "No task with that id was found."),
                     )
                     .await
                 {
-                    eprintln!("[atlas][im] bind-issue missing hint: {e}");
+                    eprintln!("[atlas][im] bind-task missing hint: {e}");
                 }
                 return Ok(());
             };
@@ -276,15 +276,15 @@ pub async fn execute(
                 )
                 .await
             {
-                eprintln!("[atlas][im] bind-issue confirm: {e}");
+                eprintln!("[atlas][im] bind-task confirm: {e}");
             }
         }
-        inbound::Route::EnsureIssueTopic {
+        inbound::Route::EnsureTaskTopic {
             thread_id,
             chat_id,
             reply_to,
         } => {
-            ensure_issue_topic(db, channel, thread_id, &chat_id, Some(&reply_to), lang).await?;
+            ensure_task_topic(db, channel, thread_id, &chat_id, Some(&reply_to), lang).await?;
         }
         inbound::Route::AnswerPerm { ask_id, answer } => {
             if !asks.answer(ask_id, answer) {
@@ -366,14 +366,14 @@ pub async fn execute(
                 eprintln!("[atlas][im] freetext hint: {e}");
             }
         }
-        inbound::Route::IssueMessage {
+        inbound::Route::TaskMessage {
             chat_id,
             im_thread_ref,
             sender_open_id: _,
             text,
         } => {
-            // 飞书话题/群会话里的消息 → 反查 im_route 命中 issue → 灌进 lead engine。
-            // 未绑定不自动创建 issue；issue 是主对象，topic 通过 `/topic <issue-id>`
+            // 飞书话题/群会话里的消息 → 反查 im_route 命中 task → 灌进 lead engine。
+            // 未绑定不自动创建任务；任务是主对象，topic 通过 `/topic <task-id>`
             // 或桌面绑定动作创建/绑定。
             let r =
                 crate::store::repo::im_route_of_thread_ref(db, "feishu", &chat_id, &im_thread_ref)
@@ -384,7 +384,7 @@ pub async fn execute(
                         if let Err(e) = channel
                             .reply_text(
                                 mid,
-                                "这段飞书话题还没有绑定 Atlas issue。发送 /bind <issue-id> 绑定当前话题，或在群里发送 /topic <issue-id> 创建 issue topic。",
+                                "这段飞书话题还没有绑定 Atlas 任务。发送 /bind <task-id> 绑定当前话题，或在群里发送 /topic <task-id> 创建任务 topic。",
                             )
                             .await
                         {
@@ -416,8 +416,8 @@ pub async fn execute(
                 }
             }
             let Some(app) = app else { return Ok(()) }; // 测试路径不进 engine
-            if let Err(e) = feed_issue_message(app, db, route.thread_id, &text, lang).await {
-                eprintln!("[atlas][im] issue lead send: {e}");
+            if let Err(e) = feed_task_message(app, db, route.thread_id, &text, lang).await {
+                eprintln!("[atlas][im] task lead send: {e}");
             }
         }
     }
@@ -599,12 +599,12 @@ pub fn spawn(app: tauri::AppHandle) {
                     let route_name = match &r {
                         inbound::Route::Ignore => "ignore",
                         inbound::Route::Bind { .. } => "bind",
-                        inbound::Route::BindIssueThread { .. } => "bind_issue_thread",
-                        inbound::Route::EnsureIssueTopic { .. } => "ensure_issue_topic",
+                        inbound::Route::BindTaskThread { .. } => "bind_task_thread",
+                        inbound::Route::EnsureTaskTopic { .. } => "ensure_task_topic",
                         inbound::Route::AnswerPerm { .. } => "answer_perm",
                         inbound::Route::AnswerHuman { .. } => "answer_human",
                         inbound::Route::BadVerdict => "bad_verdict",
-                        inbound::Route::IssueMessage { .. } => "issue_message",
+                        inbound::Route::TaskMessage { .. } => "task_message",
                         inbound::Route::FreeText { .. } => "free_text",
                     };
                     eprintln!("[atlas][im] route={route_name} sender={sender}");
@@ -827,9 +827,9 @@ async fn consume_human_event(
     }
 }
 
-/// M2-3: 把飞书话题里的一条消息灌进 issue 对应的 lead engine。
+/// M2-3: 把飞书话题里的一条消息灌进 task 对应的 lead engine。
 /// 不感知前端 lang 设置——桥侧固定中文（spec：IM 出站默认 zh）。
-async fn feed_issue_message(
+async fn feed_task_message(
     app: &tauri::AppHandle,
     db: &crate::store::Db,
     thread_id: i32,
@@ -840,7 +840,7 @@ async fn feed_issue_message(
     crate::lead_chat::engine::send(app, db, &eng, text, Vec::new(), Vec::new()).await
 }
 
-pub async fn ensure_issue_topic(
+pub async fn ensure_task_topic(
     db: &crate::store::Db,
     ch: &dyn Channel,
     thread_id: i32,
@@ -854,14 +854,14 @@ pub async fn ensure_issue_topic(
                 .reply_text(
                     reply_to,
                     if lang == "zh" {
-                        "没有找到这个 issue。"
+                        "没有找到这个任务。"
                     } else {
-                        "No issue with that id was found."
+                        "No task with that id was found."
                     },
                 )
                 .await
             {
-                eprintln!("[atlas][im] ensure-topic missing issue: {e}");
+                eprintln!("[atlas][im] ensure-topic missing task: {e}");
             }
         }
         return Ok(());
@@ -875,9 +875,9 @@ pub async fn ensure_issue_topic(
                     &format!(
                         "{} #{} · {}",
                         if lang == "zh" {
-                            "这个 issue 已有飞书 topic"
+                            "这个任务已有飞书 topic"
                         } else {
-                            "This issue already has a Feishu topic"
+                            "This task already has a Feishu topic"
                         },
                         thread.id,
                         thread.title
@@ -897,7 +897,7 @@ pub async fn ensure_issue_topic(
         .send_chat_text(
             chat_id,
             &format!(
-                "Atlas issue #{} · {}\n这个飞书话题已绑定到 Atlas issue。",
+                "Atlas task #{} · {}\n这个飞书话题已绑定到 Atlas 任务。",
                 thread.id, thread.title
             ),
         )
@@ -935,7 +935,7 @@ pub async fn consume_lead_out(
     ch: &dyn Channel,
     acks: &Arc<tokio::sync::Mutex<HashMap<i32, Vec<(String, String)>>>>,
 ) {
-    // 反查 im_route：普通 issue 通过绑定话题回飞书；Concierge 通过
+    // 反查 im_route：普通 task 通过绑定话题回飞书；Concierge 通过
     // feishu_concierge route 回到发起它的 IM 会话。
     let route = match crate::store::repo::im_route_of_thread(db, out.thread_id).await {
         Ok(Some(r)) => r,
@@ -963,7 +963,7 @@ pub async fn consume_lead_out(
         }
         return;
     }
-    let body = outbound::issue_reply_text(IM_LANG, &out.text);
+    let body = outbound::task_reply_text(IM_LANG, &out.text);
     // im_thread_ref 即话题根 message_id：飞书 reply API 会把回复挂同一话题。
     if let Err(e) = ch.reply_text(&route.im_thread_ref, &body).await {
         eprintln!("[atlas][im] reply lead text: {e}");

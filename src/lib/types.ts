@@ -31,25 +31,6 @@ export interface Workspace {
   created_at: string;
 }
 
-export interface RepoRef {
-  id: number;
-  workspace_id: number;
-  name: string;
-  slug: string;
-  local_git_path: string;
-  base_ref: string;
-}
-
-/** One effective skill/rule for a repo, tagged with the layer it comes from
- *  (personal / repo) and whether a higher layer shadows it (§ M6 有效配置). */
-export interface ConfigItem {
-  name: string;
-  kind: "skill" | "rule";
-  layer: "personal" | "repo" | "team";
-  path: string;
-  overridden: boolean;
-}
-
 export interface Thread {
   id: number;
   workspace_id: number;
@@ -60,17 +41,6 @@ export interface Thread {
 }
 
 export type Task = Thread;
-
-export interface FileDiff {
-  path: string;
-  added: number;
-  removed: number;
-}
-
-export interface WorktreeDiff {
-  files: FileDiff[];
-  patch: string;
-}
 
 /** Normalized observe-mode transcript event (from the tool's own sidecar). */
 export type NormEvent =
@@ -83,9 +53,7 @@ export interface Direction {
   name: string;
   slug: string;
   tool: string;
-  branch: string;
-  repo_id: number;
-  /** agent/human-driven lifecycle: queued | planning | working | review | done. */
+  /** agent/human-driven lifecycle: queued | planning | working | done. */
   status: string;
   /** worker mandate: "plan+impl" (plans its direction first) | "impl-only". */
   mandate: string;
@@ -94,21 +62,10 @@ export interface Direction {
 
 export type Run = Direction;
 
-export interface Worktree {
-  id: number;
-  repo_id: number;
-  direction_id: number;
-  branch: string;
-  path: string;
-  created_at: string;
-}
-
 export interface SessionInfo {
   session_id: number;
-  repo: string;
-  worktree: string;
+  run_dir: string;
   cwd: string;
-  branch: string;
   tool: string;
   resumed: boolean;
   native_id: string | null;
@@ -116,25 +73,11 @@ export interface SessionInfo {
 
 /** Read-only snapshot backing the observe surface (mirrors Rust ObserveRef). */
 export interface ObserveRef {
-  worktree: string;
-  branch: string;
+  run_dir: string;
   tool: string;
   session_id: number | null;
   native_id: string | null;
   status: string | null;
-}
-
-/** One executable verification rung's result (ARCHITECTURE §4.13). */
-export interface CheckResult {
-  name: string;
-  status: string; // pass | fail
-  code: number;
-  output_tail: string;
-}
-export interface RepoChecks {
-  repo: string;
-  worktree: string;
-  checks: CheckResult[];
 }
 
 /** One row in a chat timeline (lead console / chat-mode workers). */
@@ -148,7 +91,6 @@ export interface LeadMessage {
     | "text"
     | "tool"
     | "command"
-    | "proposal"
     | "approval"
     | "worker_event"
     | "meta"
@@ -215,83 +157,12 @@ export interface LeadStateInfo {
 /** UI-side runtime status for a live session panel. */
 export type SessionStatus = "running" | "idle" | "exited";
 
-export interface FileDiff {
-  path: string;
-  added: number;
-  removed: number;
-}
-export interface DiffSummary {
-  files: FileDiff[];
-}
-
 export interface BusMsg {
   from: string;
   to: string;
   text: string;
   ts: number;
   kind: string;
-}
-
-/** The curator's profile of one repo, as the UI sees it (ARCHITECTURE §4.9). */
-export interface RepoProfile {
-  repo_id: number;
-  repo_name: string;
-  role: string; // service | app | library | infra | docs | unknown
-  stack: string[];
-  summary: string;
-  published: string[];
-  deps: string[];
-  source: string; // inferred | user
-  profiled_commit: string;
-  stale: boolean;
-}
-
-/** A directed dependency edge: `from` consumes `to`, evidenced by `via`. */
-export interface RepoEdge {
-  from: number;
-  to: number;
-  via: string;
-}
-
-export interface RepoGraph {
-  nodes: RepoProfile[];
-  edges: RepoEdge[];
-}
-
-/** The lead's proposed split of a Task into directions: ONE write repo each
- *  (by NAME) plus the required reason — reads are unmanaged (scope rework). */
-export interface ProposedDirection {
-  name: string;
-  tool: string;
-  repo: string;
-  reason: string;
-  mandate?: string;
-  decision?: string;
-}
-export interface Proposal {
-  rationale: string;
-  directions: ProposedDirection[];
-}
-
-/** A write repo resolved against the workspace repos, for review/edit. */
-export interface ScopeEntry {
-  repo_id: number;
-  repo_name: string;
-  known: boolean;
-}
-export interface ResolvedDirection {
-  name: string;
-  repo: ScopeEntry;
-  reason: string;
-  /** "plan+impl" | "impl-only" */
-  mandate: string;
-  decision: string;
-}
-export interface ResolvedProposal {
-  thread_id: number;
-  rationale: string;
-  status: string; // proposed | confirmed
-  directions: ResolvedDirection[];
 }
 
 /** A thread's roll-up for the workspace board (cards = threads). */
@@ -350,7 +221,6 @@ export interface ThreadOverview {
   direction_ids: number[];
   /** stored lifecycle status per direction (same order as direction_ids). */
   statuses: string[];
-  write_repos: { id: number; name: string }[];
 }
 
 /** A tool's permission request, blocked on the human (the Ask Bridge §4.3). */
@@ -367,16 +237,6 @@ export interface PermissionAsk {
   dir_name: string;
 }
 
-/** A lead-proposed write declaration awaiting human approve/deny (Needs you). */
-export interface WriteTrigger {
-  thread_id: number;
-  thread_title: string;
-  index: number;
-  name: string;
-  repo_name: string;
-  reason: string;
-}
-
 /** An open agent→human question, aggregated workspace-wide for "Needs you". */
 export interface NeedItem {
   ask_id: number;
@@ -388,7 +248,7 @@ export interface NeedItem {
   ts: number;
 }
 
-/** IM 话题绑定行：issue ↔ 飞书话题 1:1 映射（M2-5）。 */
+/** IM 话题绑定行：task ↔ 飞书话题 1:1 映射（M2-5）。 */
 export interface ImRoute {
   thread_id: number;
   channel: string;

@@ -1,7 +1,6 @@
 //! Spawn-time, ADDITIVE injection of the thread bus as an MCP server for each
-//! tool. Never overrides a sub-repo's own config: claude/codex use file-less
-//! launch flags; opencode deep-merges into the worktree opencode.json (which is
-//! a throwaway worktree, not the canonical repo — architecture §2.1).
+//! tool. Claude/Codex use launch flags; OpenCode deep-merges into a local
+//! opencode.json in the target cwd.
 
 use std::path::Path;
 
@@ -107,7 +106,7 @@ pub fn inject_ask_hook(base: &str, thread: i32, dir: &str, tool: &str, cwd: &Pat
 
 /// OpenCode has no PreToolUse hook; its analog is a local plugin's
 /// `tool.execute.before`, which is async and throws to deny. Drop a plugin in
-/// the worktree's `.opencode/plugins/` that POSTs each tool action to atlas's
+/// the cwd's `.opencode/plugins/` that POSTs each tool action to atlas's
 /// /ask endpoint and throws on a deny verdict — same Ask Bridge, same endpoint,
 /// same allow/deny contract as claude/codex. Auto-loaded (no launch flag).
 fn inject_opencode_ask_plugin(base: &str, thread: i32, dir: &str, cwd: &Path) -> Injection {
@@ -138,8 +137,8 @@ export const AtlasAsk = async () => ({
     Injection { args: vec![] }
 }
 
-/// Build the thread-bus injection. `cwd` is the worktree (used for the claude
-/// temp config and the opencode merge). `dir` is the direction id as a string.
+/// Build the thread-bus injection. `cwd` is the run directory used for generated
+/// config files. `dir` is the direction id as a string.
 pub fn inject(base: &str, thread: i32, dir: &str, tool: &str, cwd: &Path) -> Injection {
     inject_mcp("atlas_bus", "bus", &mcp_url(base, thread, dir), tool, cwd)
 }
@@ -164,8 +163,8 @@ pub fn inject_global(base: &str, tool: &str, cwd: &Path) -> Injection {
 }
 
 /// Additively register one HTTP MCP `server` at `url` for `tool`, never
-/// overriding the sub-repo's own config. `stem` names the claude temp config
-/// file (`.atlas-<stem>.mcp.json`).
+/// overriding local config. `stem` names the claude temp config file
+/// (`.atlas-<stem>.mcp.json`).
 fn inject_mcp(server: &str, stem: &str, url: &str, tool: &str, cwd: &Path) -> Injection {
     match tool {
         "claude" => {
@@ -195,7 +194,7 @@ fn inject_mcp(server: &str, stem: &str, url: &str, tool: &str, cwd: &Path) -> In
 }
 
 /// Deep-merge `mcp.<server> = {type:remote, url, enabled:true}` into the cwd's
-/// opencode.json, preserving any existing config the sub-repo shipped.
+/// opencode.json, preserving any existing local config.
 fn merge_opencode_config(cwd: &Path, server: &str, url: &str) {
     let path = cwd.join("opencode.json");
     let mut root: serde_json::Value = std::fs::read_to_string(&path)
@@ -222,9 +221,9 @@ fn merge_opencode_config(cwd: &Path, server: &str, url: &str) {
         );
     }
     let _ = std::fs::write(&path, serde_json::to_vec_pretty(&root).unwrap_or_default());
-    // Best-effort: only hides opencode.json from git when the sub-repo does NOT
-    // track it. If the repo ships a tracked opencode.json, the merge still shows
-    // as a modification — an accepted limitation of the worktree-local merge.
+    // Best-effort: only hides opencode.json from git when the current directory
+    // does not already track it. If it is tracked, the merge still shows as a
+    // modification.
     crate::git::git_exclude(cwd, "opencode.json");
 }
 
@@ -362,9 +361,8 @@ mod tests {
         use std::process::Command;
         let root = std::env::temp_dir().join(format!("atlas-inj-git-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        let repo = root.join("repo");
-        let wt = root.join("wt");
-        std::fs::create_dir_all(&repo).unwrap();
+        let dir = root.join("dir");
+        std::fs::create_dir_all(&dir).unwrap();
         let sh = |dir: &Path, args: &[&str]| {
             assert!(Command::new(args[0])
                 .args(&args[1..])
@@ -373,22 +371,13 @@ mod tests {
                 .unwrap()
                 .success());
         };
-        sh(&repo, &["git", "init", "-q"]);
-        sh(&repo, &["git", "config", "user.email", "t@t.t"]);
-        sh(&repo, &["git", "config", "user.name", "t"]);
-        std::fs::write(repo.join("README.md"), "x\n").unwrap();
-        sh(&repo, &["git", "add", "-A"]);
-        sh(&repo, &["git", "commit", "-q", "-m", "init"]);
-        sh(
-            &repo,
-            &["git", "worktree", "add", "-q", wt.to_str().unwrap()],
-        );
+        sh(&dir, &["git", "init", "-q"]);
 
-        let _ = inject("http://127.0.0.1:9", 1, "1", "claude", &wt);
-        assert!(wt.join(".atlas-bus.mcp.json").exists(), "file written");
+        let _ = inject("http://127.0.0.1:9", 1, "1", "claude", &dir);
+        assert!(dir.join(".atlas-bus.mcp.json").exists(), "file written");
         let status = Command::new("git")
             .args(["status", "--porcelain"])
-            .current_dir(&wt)
+            .current_dir(&dir)
             .output()
             .unwrap();
         let s = String::from_utf8_lossy(&status.stdout);

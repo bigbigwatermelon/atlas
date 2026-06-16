@@ -6,9 +6,6 @@ fn lead_prompt_is_generic_agent_app_copy() {
     assert!(prompt.contains("local Agent App"));
     assert!(prompt.contains("get_task"));
     assert!(prompt.contains("directly in chat"));
+    assert!(prompt.contains("general task and agent conversation base"));
     assert!(!prompt.contains("ask_human"));
-    assert!(!prompt.contains("get_repo_map"));
-    assert!(!prompt.contains("propose_directions"));
-    assert!(!prompt.contains("worktree"));
-    assert!(!prompt.contains("PR"));
 }

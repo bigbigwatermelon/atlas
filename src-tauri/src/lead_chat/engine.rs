@@ -1021,8 +1021,7 @@ fn spawn_reader(
                         let full = texts.join("\n\n");
                         // Fork <atlas:*> sentinels out of the body before persisting:
                         // action_card lives as its own row so the UI can render the
-                        // card without parsing prose; list_repos triggers a stdin
-                        // reply (handled below) and produces no row of its own.
+                        // card without parsing prose.
                         let (clean, sentinels) = super::sentinels::extract_sentinels(&full);
                         let content = serde_json::json!({ "text": clean }).to_string();
                         match inner.current.take() {
@@ -1098,68 +1097,6 @@ fn spawn_reader(
                                         Err(e) => eprintln!(
                                             "[atlas] lead sentinel: action_card JSON parse failed: {e}"
                                         ),
-                                    }
-                                }
-                                super::sentinels::Sentinel::ListRepos => {
-                                    // Look up workspace via the thread row (engine
-                                    // doesn't cache it; one extra query per call is
-                                    // cheap and avoids a wider refactor).
-                                    let ws_id = match repo::get_thread(&db, thread_id).await {
-                                        Ok(Some(t)) => Some(t.workspace_id),
-                                        Ok(None) => {
-                                            eprintln!(
-                                                "[atlas] lead sentinel: list_repos — thread {thread_id} not found"
-                                            );
-                                            None
-                                        }
-                                        Err(e) => {
-                                            eprintln!(
-                                                "[atlas] lead sentinel: list_repos — get_thread failed: {e}"
-                                            );
-                                            None
-                                        }
-                                    };
-                                    if let Some(workspace_id) = ws_id {
-                                        let repos = match repo::list_repos(&db, workspace_id).await
-                                        {
-                                            Ok(r) => r,
-                                            Err(e) => {
-                                                eprintln!(
-                                                    "[atlas] lead sentinel: list_repos query failed: {e}"
-                                                );
-                                                Vec::new()
-                                            }
-                                        };
-                                        let payload = serde_json::json!({
-                                            "repos": repos.iter().map(|r| serde_json::json!({
-                                                "id": r.id,
-                                                "name": r.name,
-                                                "slug": r.slug,
-                                                "local_git_path": r.local_git_path,
-                                                "base_ref": r.base_ref,
-                                            })).collect::<Vec<_>>()
-                                        });
-                                        let body = match serde_json::to_string(&payload) {
-                                            Ok(s) => s,
-                                            Err(e) => {
-                                                eprintln!(
-                                                    "[atlas] lead sentinel: serialize list_repos_result failed: {e}"
-                                                );
-                                                continue;
-                                            }
-                                        };
-                                        let reply = format!(
-                                            "<atlas:list_repos_result>{body}</atlas:list_repos_result>"
-                                        );
-                                        // Invisible plumbing: tracked=false keeps this
-                                        // off the timeline; the agent reads it as a
-                                        // tool-result-style user turn.
-                                        let out = Outgoing {
-                                            text: reply,
-                                            images: Vec::new(),
-                                            tracked: false,
-                                        };
-                                        write_user(&mut inner, &out).await;
                                     }
                                 }
                             }

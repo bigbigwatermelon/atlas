@@ -1,9 +1,7 @@
 //! Scan assistant text for atlas control sentinels so the engine can fork them
 //! out of the timeline body. Pure string scanning — no regex dep, no allocs
-//! beyond the cleaned output. Two markers today, matching the directives
-//! injected via `commands::SENTINEL_DIRECTIVES`:
+//! beyond the cleaned output. One marker today:
 //!   `<atlas:action_card>{json}</atlas:action_card>` — assistant proposes a card.
-//!   `<atlas:list_repos/>` — assistant requests the current workspace's repos.
 //! Malformed (unclosed) action_card stays inline as plain text so a half-typed
 //! sentinel never silently swallows assistant output.
 
@@ -11,16 +9,13 @@
 pub enum Sentinel {
     /// Raw JSON payload (the text between the open and close tags).
     ActionCard(String),
-    ListRepos,
 }
 
 const OPEN_AC: &str = "<atlas:action_card>";
 const CLOSE_AC: &str = "</atlas:action_card>";
-const LIST_REPOS: &str = "<atlas:list_repos/>";
 
 enum Next {
     ActionCard(usize),
-    ListRepos(usize),
 }
 
 /// Scan `text` left-to-right; returns the cleaned body (sentinels stripped) and
@@ -32,16 +27,12 @@ pub fn extract_sentinels(text: &str) -> (String, Vec<Sentinel>) {
     let mut rest = text;
     loop {
         let ac = rest.find(OPEN_AC);
-        let lr = rest.find(LIST_REPOS);
-        let next = match (ac, lr) {
-            (None, None) => {
+        let next = match ac {
+            None => {
                 out.push_str(rest);
                 break;
             }
-            (Some(a), None) => Next::ActionCard(a),
-            (None, Some(l)) => Next::ListRepos(l),
-            (Some(a), Some(l)) if a < l => Next::ActionCard(a),
-            (Some(_), Some(l)) => Next::ListRepos(l),
+            Some(a) => Next::ActionCard(a),
         };
         match next {
             Next::ActionCard(pos) => {
@@ -57,11 +48,6 @@ pub fn extract_sentinels(text: &str) -> (String, Vec<Sentinel>) {
                     out.push_str(rest);
                     break;
                 }
-            }
-            Next::ListRepos(pos) => {
-                out.push_str(&rest[..pos]);
-                found.push(Sentinel::ListRepos);
-                rest = &rest[pos + LIST_REPOS.len()..];
             }
         }
     }
