@@ -1,27 +1,22 @@
 //! Codex folder-trust pre-accept — the Codex analog of `claude::ensure_trusted`.
 //!
-//! Codex prompts "Do you trust this folder?" on first run in an untrusted repo
-//! and blocks there, which stalls an unattended atlas worker. Codex trust is keyed
-//! by the *git repository root* (a worktree resolves to its main repo), stored in
-//! ~/.codex/config.toml as `[projects."<root>"] trust_level = "trusted"`. We
-//! pre-accept exactly that — a startup gate, not a per-action permission (those
-//! still surface via the Ask Bridge). We append the section if absent so the
-//! user's hand-edited config (comments, ordering) is preserved, and never
-//! fabricate the file if Codex was never set up.
+//! Codex prompts "Do you trust this folder?" on first run in an untrusted repo,
+//! which stalls an unattended Atlas worker. Trust is keyed by the git repository
+//! root. Atlas passes that trust as an inline `-c` override for spawned Codex
+//! workers so session startup does not mutate the user's global
+//! `~/.codex/config.toml`.
 
 use std::path::{Path, PathBuf};
 
-pub fn ensure_codex_trusted(cwd: &Path) {
-    let Ok(home) = std::env::var("HOME") else {
-        return;
-    };
+pub fn trusted_project_config_arg(cwd: &Path) -> Option<String> {
     let Some(root) = repo_root(cwd) else {
-        return;
+        return None;
     };
-    ensure_codex_trusted_in(
-        &PathBuf::from(&home).join(".codex").join("config.toml"),
-        &root,
-    );
+    Some(format!(
+        "projects.{}.trust_level={}",
+        toml_quote(&root),
+        toml_quote("trusted")
+    ))
 }
 
 /// The git repository root Codex trusts (a worktree → its main repo root).
@@ -39,27 +34,8 @@ fn repo_root(cwd: &Path) -> Option<String> {
     Some(p.parent()?.to_string_lossy().to_string())
 }
 
-fn ensure_codex_trusted_in(cfg: &Path, root: &str) {
-    let Ok(text) = std::fs::read_to_string(cfg) else {
-        return; // Codex not set up — don't fabricate a config.
-    };
-    let key = format!(
-        "[projects.\"{}\"]",
-        root.replace('\\', "\\\\").replace('"', "\\\"")
-    );
-    if text.contains(&key) {
-        return; // already trusted
-    }
-    let mut next = text;
-    if !next.ends_with('\n') {
-        next.push('\n');
-    }
-    next.push_str(&format!("\n{key}\ntrust_level = \"trusted\"\n"));
-
-    let tmp = cfg.with_extension("toml.atlas-tmp");
-    if std::fs::write(&tmp, next.as_bytes()).is_ok() {
-        let _ = std::fs::rename(&tmp, cfg);
-    }
+fn toml_quote(value: &str) -> String {
+    toml::Value::String(value.to_string()).to_string()
 }
 
 #[cfg(test)]
@@ -67,40 +43,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn appends_when_absent_preserving_existing() {
-        let base = std::env::temp_dir().join(format!("atlas-codex-trust-{}", std::process::id()));
+    fn trusted_project_config_arg_uses_git_root_without_writing_config() {
+        let base =
+            std::env::temp_dir().join(format!("atlas-codex-trust-arg-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        let cfg = base.join("config.toml");
-        std::fs::write(
-            &cfg,
-            "# my config\nmodel = \"gpt-5\"\n\n[projects.\"/existing\"]\ntrust_level = \"trusted\"\n",
-        )
-        .unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&base)
+            .status()
+            .unwrap();
 
-        ensure_codex_trusted_in(&cfg, "/private/tmp/atlas-d-web");
-        let after = std::fs::read_to_string(&cfg).unwrap();
-        assert!(after.contains("# my config")); // preserved
-        assert!(after.contains("[projects.\"/existing\"]")); // preserved
-        assert!(after.contains("[projects.\"/private/tmp/atlas-d-web\"]"));
-        assert!(after.matches("trust_level = \"trusted\"").count() == 2);
+        let arg = trusted_project_config_arg(&base).unwrap();
+        assert!(arg.starts_with("projects."));
+        assert!(arg.ends_with(".trust_level=\"trusted\""));
 
-        // idempotent
-        ensure_codex_trusted_in(&cfg, "/private/tmp/atlas-d-web");
-        let after2 = std::fs::read_to_string(&cfg).unwrap();
-        assert_eq!(after, after2);
+        let parsed: toml::Value = toml::from_str(&format!("{arg}\n")).unwrap();
+        let root = repo_root(&base).unwrap();
+        assert_eq!(
+            parsed["projects"][root.as_str()]["trust_level"].as_str(),
+            Some("trusted")
+        );
+        assert!(!base.join(".codex").join("config.toml").exists());
 
         let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
-    fn noop_when_no_config() {
-        let base = std::env::temp_dir().join(format!("atlas-codex-none-{}", std::process::id()));
+    fn returns_none_outside_git_repo() {
+        let base = std::env::temp_dir().join(format!("atlas-codex-no-repo-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        let cfg = base.join("config.toml");
-        ensure_codex_trusted_in(&cfg, "/x");
-        assert!(!cfg.exists());
+        assert!(trusted_project_config_arg(&base).is_none());
         let _ = std::fs::remove_dir_all(&base);
     }
 }
