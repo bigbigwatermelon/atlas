@@ -1,6 +1,6 @@
 use crate::store::entities::{
-    app_setting, backup_config, direction, im_route, lead_message, plan, repo_profile, repo_ref,
-    session, skill_enable, skill_source, thread, workspace, worktree,
+    app_setting, backup_config, direction, im_route, lead_message, session, skill_enable,
+    skill_source, thread, workspace,
 };
 use sea_orm::{EntityTrait, Schema};
 use sea_orm_migration::prelude::*;
@@ -27,7 +27,67 @@ impl MigratorTrait for Migrator {
             Box::new(M0014SkillEnable),
             Box::new(M0015ImRoute),
             Box::new(M0016BackupConfig),
+            Box::new(M0017DropLegacyRepoModel),
         ]
+    }
+}
+
+async fn drop_table_if_exists(manager: &SchemaManager<'_>, table: &str) -> Result<(), DbErr> {
+    let r = manager
+        .drop_table(Table::drop().table(Alias::new(table)).to_owned())
+        .await;
+    match r {
+        Ok(()) => Ok(()),
+        Err(e) if e.to_string().to_lowercase().contains("no such table") => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+async fn drop_column_if_exists(
+    manager: &SchemaManager<'_>,
+    table: &str,
+    column: &str,
+) -> Result<(), DbErr> {
+    let r = manager
+        .alter_table(
+            Table::alter()
+                .table(Alias::new(table))
+                .drop_column(Alias::new(column))
+                .to_owned(),
+        )
+        .await;
+    match r {
+        Ok(()) => Ok(()),
+        Err(e)
+            if {
+                let s = e.to_string().to_lowercase();
+                s.contains("no such column") || s.contains("no such table")
+            } =>
+        {
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn clear_legacy_repo_session_native_ids(
+    manager: &SchemaManager<'_>,
+) -> Result<(), DbErr> {
+    let r = manager
+        .get_connection()
+        .execute_unprepared("UPDATE session SET native_session_id = NULL WHERE repo_id IS NOT NULL")
+        .await;
+    match r {
+        Ok(_) => Ok(()),
+        Err(e)
+            if {
+                let s = e.to_string().to_lowercase();
+                s.contains("no such column") || s.contains("no such table")
+            } =>
+        {
+            Ok(())
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -56,16 +116,10 @@ impl MigrationTrait for M0001Init {
             .create_table(Self::table(&schema, workspace::Entity))
             .await?;
         manager
-            .create_table(Self::table(&schema, repo_ref::Entity))
-            .await?;
-        manager
             .create_table(Self::table(&schema, thread::Entity))
             .await?;
         manager
             .create_table(Self::table(&schema, direction::Entity))
-            .await?;
-        manager
-            .create_table(Self::table(&schema, worktree::Entity))
             .await?;
         manager
             .create_table(Self::table(&schema, session::Entity))
@@ -74,14 +128,7 @@ impl MigrationTrait for M0001Init {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        for t in [
-            "session",
-            "worktree",
-            "direction",
-            "thread",
-            "repo_ref",
-            "workspace",
-        ] {
+        for t in ["session", "direction", "thread", "workspace"] {
             manager
                 .drop_table(Table::drop().table(Alias::new(t)).to_owned())
                 .await?;
@@ -90,7 +137,8 @@ impl MigrationTrait for M0001Init {
     }
 }
 
-/// Adds the curator's repo-profile table (ARCHITECTURE §4.9).
+/// Retained migration slot for databases that already recorded it. No-op for
+/// the generic agent base.
 pub struct M0002RepoProfile;
 
 impl MigrationName for M0002RepoProfile {
@@ -101,23 +149,17 @@ impl MigrationName for M0002RepoProfile {
 
 #[async_trait::async_trait]
 impl MigrationTrait for M0002RepoProfile {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let schema = Schema::new(manager.get_database_backend());
-        let mut stmt = schema.create_table_from_entity(repo_profile::Entity);
-        stmt.if_not_exists();
-        manager.create_table(stmt).await?;
+    async fn up(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(Alias::new("repo_profile")).to_owned())
-            .await?;
-        Ok(())
+        drop_table_if_exists(manager, "repo_profile").await
     }
 }
 
-/// Adds the per-thread plan/proposal table (ARCHITECTURE §4.10).
+/// Retained migration slot for databases that already recorded it. No-op for
+/// the generic agent base.
 pub struct M0003Plan;
 
 impl MigrationName for M0003Plan {
@@ -128,19 +170,12 @@ impl MigrationName for M0003Plan {
 
 #[async_trait::async_trait]
 impl MigrationTrait for M0003Plan {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let schema = Schema::new(manager.get_database_backend());
-        let mut stmt = schema.create_table_from_entity(plan::Entity);
-        stmt.if_not_exists();
-        manager.create_table(stmt).await?;
+    async fn up(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(Alias::new("plan")).to_owned())
-            .await?;
-        Ok(())
+        drop_table_if_exists(manager, "plan").await
     }
 }
 
@@ -191,10 +226,8 @@ impl MigrationTrait for M0004DirectionStatus {
     }
 }
 
-/// Adds the single write-repo id + reason columns to directions (scope rework,
-/// spec Part 1). M0001 reflects the current entity, so a FRESH db already has
-/// both; this only matters for dbs created before the columns existed. sqlite
-/// has no ADD COLUMN IF NOT EXISTS, so tolerate the duplicate.
+/// Retained migration slot for databases that already recorded it. No-op for
+/// the generic agent base.
 pub struct M0005DirectionRepoReason;
 
 impl MigrationName for M0005DirectionRepoReason {
@@ -205,54 +238,19 @@ impl MigrationName for M0005DirectionRepoReason {
 
 #[async_trait::async_trait]
 impl MigrationTrait for M0005DirectionRepoReason {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        for col in [
-            ColumnDef::new(Alias::new("repo_id"))
-                .integer()
-                .not_null()
-                .default(0)
-                .to_owned(),
-            ColumnDef::new(Alias::new("reason"))
-                .string()
-                .not_null()
-                .default("")
-                .to_owned(),
-        ] {
-            let r = manager
-                .alter_table(
-                    Table::alter()
-                        .table(Alias::new("direction"))
-                        .add_column(col)
-                        .to_owned(),
-                )
-                .await;
-            match r {
-                Ok(()) => {}
-                Err(e) if e.to_string().to_lowercase().contains("duplicate column") => {}
-                Err(e) => return Err(e),
-            }
-        }
+    async fn up(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         for c in ["repo_id", "reason"] {
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(Alias::new("direction"))
-                        .drop_column(Alias::new(c))
-                        .to_owned(),
-                )
-                .await?;
+            drop_column_if_exists(manager, "direction", c).await?;
         }
         Ok(())
     }
 }
 
-/// Drops the now-unused direction_repo table (scope rework: a direction
-/// binds a single repo via direction.repo_id). Fresh DBs never created it
-/// (M0001 no longer does), so tolerate "no such table".
+/// Drops a legacy join table if present. Retained for migration history.
 pub struct M0006DropDirectionRepo;
 
 impl MigrationName for M0006DropDirectionRepo {
@@ -264,14 +262,7 @@ impl MigrationName for M0006DropDirectionRepo {
 #[async_trait::async_trait]
 impl MigrationTrait for M0006DropDirectionRepo {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let r = manager
-            .drop_table(Table::drop().table(Alias::new("direction_repo")).to_owned())
-            .await;
-        match r {
-            Ok(()) => Ok(()),
-            Err(e) if e.to_string().to_lowercase().contains("no such table") => Ok(()),
-            Err(e) => Err(e),
-        }
+        drop_table_if_exists(manager, "direction_repo").await
     }
 
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
@@ -473,9 +464,8 @@ impl MigrationTrait for M0011ThreadLeadTool {
     }
 }
 
-/// Drops the dead repo_ref.default_tool column: written once at registration
-/// ("claude"), never read — tool selection is now app_setting + per-card. A
-/// FRESH db (M0001 reflects the entity) never has it, so tolerate the miss.
+/// Retained migration slot for databases that already recorded it. No-op for
+/// the generic agent base.
 pub struct M0012DropRepoDefaultTool;
 
 impl MigrationName for M0012DropRepoDefaultTool {
@@ -486,20 +476,8 @@ impl MigrationName for M0012DropRepoDefaultTool {
 
 #[async_trait::async_trait]
 impl MigrationTrait for M0012DropRepoDefaultTool {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let r = manager
-            .alter_table(
-                Table::alter()
-                    .table(Alias::new("repo_ref"))
-                    .drop_column(Alias::new("default_tool"))
-                    .to_owned(),
-            )
-            .await;
-        match r {
-            Ok(()) => Ok(()),
-            Err(e) if e.to_string().to_lowercase().contains("no such column") => Ok(()),
-            Err(e) => Err(e),
-        }
+    async fn up(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
+        Ok(())
     }
 
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
@@ -556,7 +534,7 @@ impl MigrationTrait for M0014SkillEnable {
     }
 }
 
-/// Adds the im_route table — issue ↔ IM thread binding (spec §6, M2).
+/// Adds the im_route table — task ↔ IM thread binding (spec §6, M2).
 pub struct M0015ImRoute;
 impl MigrationName for M0015ImRoute {
     fn name(&self) -> &str {
@@ -570,7 +548,7 @@ impl MigrationTrait for M0015ImRoute {
         let mut stmt = schema.create_table_from_entity(im_route::Entity);
         stmt.if_not_exists();
         manager.create_table(stmt).await?;
-        // Composite unique: same Feishu thread can't bind to two issues.
+        // Composite unique: same Feishu thread can't bind to two tasks.
         manager
             .create_index(
                 Index::create()
@@ -615,5 +593,97 @@ impl MigrationTrait for M0016BackupConfig {
             .drop_table(Table::drop().table(Alias::new("backup_config")).to_owned())
             .await?;
         Ok(())
+    }
+}
+
+/// Removes the old repository/worktree delivery model from existing databases.
+pub struct M0017DropLegacyRepoModel;
+impl MigrationName for M0017DropLegacyRepoModel {
+    fn name(&self) -> &str {
+        "m0017_drop_legacy_repo_model"
+    }
+}
+#[async_trait::async_trait]
+impl MigrationTrait for M0017DropLegacyRepoModel {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        for table in ["plan", "repo_profile", "worktree", "repo_ref", "direction_repo"] {
+            drop_table_if_exists(manager, table).await?;
+        }
+        for column in ["branch", "repo_id", "reason"] {
+            drop_column_if_exists(manager, "direction", column).await?;
+        }
+        clear_legacy_repo_session_native_ids(manager).await?;
+        drop_column_if_exists(manager, "session", "repo_id").await?;
+        Ok(())
+    }
+
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
+
+    #[tokio::test]
+    async fn m0017_clears_legacy_repo_session_native_ids_before_dropping_repo_id() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared(
+            r#"
+            CREATE TABLE session (
+                id INTEGER PRIMARY KEY,
+                direction_id INTEGER NOT NULL,
+                repo_id INTEGER,
+                tool TEXT NOT NULL,
+                cwd TEXT NOT NULL,
+                native_session_id TEXT,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared(
+            r#"
+            INSERT INTO session
+                (id, direction_id, repo_id, tool, cwd, native_session_id, status, created_at)
+            VALUES
+                (1, 10, 99, 'codex', '/legacy', 'legacy-native', 'idle', '2026-01-01'),
+                (2, 10, NULL, 'codex', '/generic', 'generic-native', 'idle', '2026-01-01');
+            "#,
+        )
+        .await
+        .unwrap();
+
+        let manager = SchemaManager::new(&db);
+        M0017DropLegacyRepoModel.up(&manager).await.unwrap();
+
+        let rows = db
+            .query_all(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "SELECT id, native_session_id FROM session ORDER BY id".to_string(),
+            ))
+            .await
+            .unwrap();
+        let legacy_native: Option<String> = rows[0].try_get("", "native_session_id").unwrap();
+        let generic_native: Option<String> = rows[1].try_get("", "native_session_id").unwrap();
+        assert_eq!(legacy_native, None);
+        assert_eq!(generic_native.as_deref(), Some("generic-native"));
+
+        let columns = db
+            .query_all(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "PRAGMA table_info('session')".to_string(),
+            ))
+            .await
+            .unwrap();
+        let has_repo_id = columns.iter().any(|row| {
+            let name: String = row.try_get("", "name").unwrap();
+            name == "repo_id"
+        });
+        assert!(!has_repo_id);
     }
 }

@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { GitCompare, Keyboard, Square } from "lucide-react";
+import { Keyboard, Square } from "lucide-react";
 import { useStore } from "../state/store";
 import { api } from "../lib/api";
 import type { SessionStatus } from "../lib/types";
 import { ChatTimeline } from "./ChatTimeline";
 import { ChatComposer } from "./ChatComposer";
 import { appLink, resumeCommand } from "../lib/resume";
-import { DiffPanel } from "./DiffPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
 import { Inspect } from "../components/Inspect";
@@ -32,11 +31,7 @@ export function SessionView() {
   } = useStore();
   const { t } = useTranslation();
   const active = activeSessionId != null ? sessions[activeSessionId] : null;
-  const [showDiff, setShowDiff] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
-  useEffect(() => {
-    setShowDiff(false);
-  }, [active?.info.session_id]);
 
   // Workers run on the chat engine: hydrate the thread's timeline (their rows
   // live there).
@@ -49,28 +44,12 @@ export function SessionView() {
 
   const { info, status, nativeId } = active;
   const running = status === "running";
-  const hasDiff = info.branch.trim().length > 0;
-  // Product words, not plumbing: "<repo> · <direction>". The real worktree
-  // path / branch / native id live in Inspect (§4.7).
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <section className="flex min-w-0 flex-1 flex-col bg-bg">
         <header className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
           <StatusChip status={status as SessionStatus} />
-          <span className="hidden min-w-0 truncate font-mono text-[11.5px] text-ink-faint md:block">
-            {info.branch}
-          </span>
           <span className="min-w-0 flex-1" />
-          {hasDiff && (
-            <button
-              onClick={() => setShowDiff(true)}
-              title={t("diff.tab")}
-              aria-label={t("diff.tab")}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-md)] border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-            >
-              <GitCompare size={13} />
-            </button>
-          )}
           <button
             onClick={() => setShowKeys(true)}
             title={t("session.keymap")}
@@ -90,8 +69,7 @@ export function SessionView() {
             </Button>
           )}
           <Inspect
-            path={info.worktree}
-            branch={info.branch}
+            path={info.run_dir}
             nativeId={nativeId}
             tool={info.tool}
             className="h-7 w-7 shrink-0"
@@ -106,7 +84,6 @@ export function SessionView() {
             )}
             busy={(workerTurn[info.session_id]?.state ?? "stopped") === "busy"}
             activity={workerActivity[info.session_id]}
-            onReviewProposal={() => {}}
           />
           <ChatComposer
             slashCommands={workerSlash[info.session_id] ?? []}
@@ -122,7 +99,7 @@ export function SessionView() {
               if (!nativeId) return false;
               await api.chatStop(info.session_id);
               await navigator.clipboard.writeText(
-                resumeCommand(info.tool, info.worktree, nativeId),
+                resumeCommand(info.tool, info.run_dir, nativeId),
               );
               return true;
             }}
@@ -135,14 +112,6 @@ export function SessionView() {
         </div>
       </section>
 
-      {hasDiff && (
-        <DiffPanel
-          cwd={info.worktree}
-          open={showDiff}
-          onClose={() => setShowDiff(false)}
-          onAsk={(text) => void api.chatSend(info.session_id, text)}
-        />
-      )}
       <KeymapDialog open={showKeys} onOpenChange={setShowKeys} />
     </div>
   );

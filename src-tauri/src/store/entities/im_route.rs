@@ -1,7 +1,7 @@
 use sea_orm::entity::prelude::*;
 
-/// Issue ↔ IM-thread binding (spec §6). One row per (channel, chat_id, im_thread_ref)
-/// or per thread_id (issue can only be bound to one IM thread at a time).
+/// Task ↔ IM-thread binding (spec §6). One row per (channel, chat_id, im_thread_ref)
+/// or per thread_id (task can only be bound to one IM thread at a time).
 /// `channel` is the IM adapter name ("feishu"); `im_thread_ref` is the platform-
 /// specific thread id (飞书 thread_id 字符串)。
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
@@ -12,7 +12,7 @@ pub struct Model {
     pub channel: String,
     pub chat_id: String,
     pub im_thread_ref: String,
-    /// Issue (thread) id. Unique — each issue maps to at most one IM thread.
+    /// Task (thread) id. Unique — each task maps to at most one IM thread.
     #[sea_orm(unique)]
     pub thread_id: i32,
     pub created_at: String,

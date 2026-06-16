@@ -373,10 +373,6 @@ function AutomationSettings() {
     setDangerousMode,
     keepAwake,
     setKeepAwake,
-    reviewSkill,
-    setReviewSkill,
-    autoReview,
-    setAutoReview,
   } = useStore();
   const [loopGuard, setLoopGuard] = useState(true);
 
@@ -391,19 +387,6 @@ function AutomationSettings() {
         </SettingRow>
         <SettingRow label={t("settings.keepAwakeTitle")} hint={t("settings.keepAwakeHint")}>
           <Toggle on={keepAwake} onChange={setKeepAwake} label={t("settings.keepAwakeTitle")} />
-        </SettingRow>
-      </SettingsGroup>
-      <SettingsGroup title={t("settings.reviewGroup")}>
-        <SettingRow label={t("settings.reviewSkill")} hint={t("settings.reviewSkillHint")}>
-          <Input
-            value={reviewSkill}
-            placeholder="superpowers:requesting-code-review"
-            onChange={(e) => setReviewSkill(e.currentTarget.value)}
-            className="h-8 w-[360px] max-w-[42vw] bg-bg/80 font-mono text-[12px]"
-          />
-        </SettingRow>
-        <SettingRow label={t("settings.autoReview")} hint={t("settings.autoReviewHint")}>
-          <Toggle on={autoReview} onChange={setAutoReview} label={t("settings.autoReview")} />
         </SettingRow>
       </SettingsGroup>
     </div>
@@ -563,7 +546,7 @@ function ImField({ label, hint, children }: { label: string; hint?: string; chil
   );
 }
 
-/** 已绑定的 issue ↔ 飞书话题映射；绑定动作走「在飞书话题里
+/** 已绑定的 task ↔ 飞书话题映射；绑定动作走「在飞书话题里
  *  发 `/bind <thread_id>` 给 bot」的入站协议；Settings 提供查看与解绑。 */
 function ImRoutes() {
   const { t } = useTranslation();

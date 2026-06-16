@@ -529,17 +529,6 @@ async fn ensure_atlas_schema(conn: &sea_orm::DatabaseConnection, path: &Path) ->
             ],
         ),
         (
-            "repo_ref",
-            &[
-                "id",
-                "workspace_id",
-                "name",
-                "slug",
-                "local_git_path",
-                "base_ref",
-            ],
-        ),
-        (
             "thread",
             &[
                 "id",
@@ -556,7 +545,6 @@ async fn ensure_atlas_schema(conn: &sea_orm::DatabaseConnection, path: &Path) ->
             &[
                 "id",
                 "direction_id",
-                "repo_id",
                 "tool",
                 "cwd",
                 "native_session_id",
@@ -642,38 +630,58 @@ async fn ensure_connection_is_shell(
 }
 
 async fn user_data_row_count(conn: &sea_orm::DatabaseConnection) -> Result<i64> {
-    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
-
     const USER_TABLES: &[&str] = &[
         "app_setting",
-        "repo_ref",
-        "repo_profile",
         "thread",
         "direction",
-        "worktree",
         "session",
-        "plan",
         "lead_message",
         "skill_source",
         "skill_enable",
         "im_route",
     ];
+    const LEGACY_USER_TABLES: &[&str] = &["repo_ref", "repo_profile", "worktree", "plan"];
 
     let mut total = 0_i64;
     for table in USER_TABLES {
-        let row = conn
-            .query_one(Statement::from_string(
-                DatabaseBackend::Sqlite,
-                format!("SELECT COUNT(*) AS n FROM {table}"),
-            ))
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("count {table}: no row"))?;
-        let count: i64 = row.try_get("", "n")?;
-        total += count;
+        total += table_row_count(conn, table).await?;
+    }
+    for table in LEGACY_USER_TABLES {
+        if table_exists(conn, table).await? {
+            total += table_row_count(conn, table).await?;
+        }
     }
     total += non_shell_workspace_row_count(conn).await?;
     total += non_shell_backup_config_row_count(conn).await?;
     Ok(total)
+}
+
+async fn table_exists(conn: &sea_orm::DatabaseConnection, table: &str) -> Result<bool> {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+    let row = conn
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = ?",
+            vec![table.to_string().into()],
+        ))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("inspect {table}: no row"))?;
+    let count: i64 = row.try_get("", "n")?;
+    Ok(count > 0)
+}
+
+async fn table_row_count(conn: &sea_orm::DatabaseConnection, table: &str) -> Result<i64> {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+    let row = conn
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            format!("SELECT COUNT(*) AS n FROM {table}"),
+        ))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("count {table}: no row"))?;
+    Ok(row.try_get("", "n")?)
 }
 
 async fn non_shell_workspace_row_count(conn: &sea_orm::DatabaseConnection) -> Result<i64> {
@@ -855,5 +863,29 @@ mod tests {
         assert_eq!(a, b);
         assert_ne!(a, c);
         assert!(a.starts_with(tmp.path().join("backup")));
+    }
+
+    #[tokio::test]
+    async fn user_data_row_count_includes_legacy_repo_tables_when_present() {
+        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+        let db = Db::connect("sqlite::memory:").await.unwrap();
+        crate::store::repo::create_workspace(&db, "Default")
+            .await
+            .unwrap();
+        db.0.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "CREATE TABLE repo_ref (id INTEGER PRIMARY KEY)".to_string(),
+        ))
+        .await
+        .unwrap();
+        db.0.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO repo_ref (id) VALUES (1)".to_string(),
+        ))
+        .await
+        .unwrap();
+
+        assert_eq!(user_data_row_count(&db.0).await.unwrap(), 1);
     }
 }

@@ -18,9 +18,8 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::time::Duration;
 
-/// Shared state for the local server: the in-memory thread bus, the DB (the
-/// planner reads the repo map and writes proposals), and the Ask registry (the
-/// permission Ask Bridge).
+/// Shared state for the local server: the in-memory thread bus, the DB, and
+/// the Ask registry (the permission Ask Bridge).
 #[derive(Clone)]
 pub struct ServerState {
     pub bus: BusRegistry,
@@ -208,10 +207,10 @@ async fn handle(
 /// Bus tool: the agent sets its own task's lifecycle status. `dir` is the
 /// direction id from the URL path, so the agent can't move another task.
 async fn set_task_status_tool(db: &Db, dir: &str, status: &str) -> Value {
-    let allowed = ["queued", "planning", "working", "review", "done"];
+    let allowed = ["queued", "planning", "working", "done"];
     if !allowed.contains(&status) {
         return text_result(format!(
-            "invalid status '{status}'; use one of: queued, planning, working, review, done"
+            "invalid status '{status}'; use one of: queued, planning, working, done"
         ));
     }
     match dir.parse::<i32>() {
@@ -314,14 +313,6 @@ async fn call_planner(db: &Db, thread: i32, name: &str, _args: &Value) -> Value 
     }
 }
 
-async fn repo_map_json(db: &Db, thread: i32) -> anyhow::Result<String> {
-    let t = crate::store::repo::get_thread(db, thread)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("thread not found"))?;
-    let g = crate::curator::graph(db, t.workspace_id).await?;
-    Ok(serde_json::to_string(&g)?)
-}
-
 fn planner_specs() -> Value {
     json!([
         {
@@ -378,7 +369,7 @@ fn tool_specs() -> Value {
         },
         {
             "name": "set_task_status",
-            "description": "Move your task on the board as work really progresses: queued (not started), planning (working out this direction's plan), working (actively building), review (done coding, awaiting the human's look), done (delivered/accepted). Reversible — set it back to working if the human asks for changes. Use this to keep the human's board honest instead of leaving it to guesswork.",
+            "description": "Move your task on the board as work really progresses: queued (not started), planning (working out this run's plan), working (actively doing the work), done (delivered). Reversible — set it back to working if the human asks for changes. Use this to keep the human's board honest instead of leaving it to guesswork.",
             "inputSchema": { "type": "object",
                 "properties": { "status": str_prop() }, "required": ["status"] }
         }

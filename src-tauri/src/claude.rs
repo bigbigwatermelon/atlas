@@ -6,16 +6,15 @@
 //! `--dangerously-skip-permissions`; per-action edit/command approvals still
 //! apply — they're intercepted and surfaced via the Ask Bridge (see `ask` +
 //! `inject_ask_hook`). We DO pre-accept the one-time FOLDER-TRUST onboarding for
-//! the dirs atlas itself created (`ensure_trusted`): a fresh worktree per dispatch
-//! would otherwise stall every unattended agent on "Do you trust this folder?",
-//! a startup gate that no hook can surface. That gate is not a per-action
-//! permission.
+//! the run dirs Atlas itself created (`ensure_trusted`), otherwise unattended
+//! agents can stall on "Do you trust this folder?". That startup gate is not a
+//! per-action permission.
 
 use std::path::{Path, PathBuf};
 
-/// Pre-accept claude's one-time folder-trust onboarding for a dir atlas created
-/// (a worktree or lead scratch dir), so a dispatched agent starts immediately
-/// instead of blocking on the trust gate. This writes exactly what clicking
+/// Pre-accept claude's one-time folder-trust onboarding for a dir Atlas created,
+/// so a dispatched agent starts immediately instead of blocking on the trust
+/// gate. This writes exactly what clicking
 /// "Yes, I trust this folder" writes — `~/.claude.json` →
 /// `projects.<path>.hasTrustDialogAccepted` — and nothing about per-action
 /// permissions. Keyed by both the raw and canonical path (macOS /tmp ->
@@ -109,8 +108,8 @@ mod tests {
 
     #[test]
     fn encodes_slashes_and_dots() {
-        let p = Path::new("/private/tmp/atlas/.claude-worktrees/x");
-        assert_eq!(encode_cwd(p), "-private-tmp-atlas--claude-worktrees-x");
+        let p = Path::new("/private/tmp/atlas/runs/x");
+        assert_eq!(encode_cwd(p), "-private-tmp-atlas-runs-x");
     }
 
     #[test]
@@ -129,7 +128,7 @@ mod tests {
             r#"{"numStartups":3,"projects":{"/existing":{"hasTrustDialogAccepted":true}}}"#,
         )
         .unwrap();
-        let target = base.join("worktrees/x");
+        let target = base.join("runs/x");
         std::fs::create_dir_all(&target).unwrap();
 
         ensure_trusted_in(&cfg, &target);

@@ -72,7 +72,7 @@ export function ChatComposer({
   onTakeOver?: () => Promise<boolean>;
   /** Open the vendor's own app on this session (codex deep link). */
   onOpenApp?: () => void;
-  /** Host-injected action icons (diff, inspect …) for the toolbar row. */
+  /** Host-injected action icons for the toolbar row. */
   extraActions?: React.ReactNode;
   /** Input placeholder — defaults to the lead's; workers pass their own. */
   placeholder?: string;
@@ -95,7 +95,7 @@ export function ChatComposer({
   }, [text]);
 
   // Palette: leading "/" with no space yet → filter the CLI's command list,
-  // plus host-injected local items (e.g. /add-repo, /new-repo, /clone-repo).
+  // plus any host-injected local items.
   // Prefix matches outrank substring matches so built-ins like /clear surface
   // as soon as you type them, not buried under plugin skills. Locals lead.
   const slashQuery = text.startsWith("/") && !text.includes(" ") ? text.slice(1) : null;

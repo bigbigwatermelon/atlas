@@ -145,7 +145,7 @@ pub fn human_resolved_card(answer: &str, lang: &str) -> Value {
 /// 让人在话题里一眼区分「自己说的」vs「agent 说的」（飞书话题里不显示
 /// 发送方的角色徽章——bot 名字默认折叠成应用名）。空 body 不上桥，由
 /// 调用方保证（emit 处已 trim+空判）。
-pub fn issue_reply_text(lang: &str, body: &str) -> String {
+pub fn task_reply_text(lang: &str, body: &str) -> String {
     // 上限留余量：飞书文本消息体上限 30KB UTF-8，CJK 取 9000 字符 ≈ 27KB。
     // 截断的逻辑与卡片侧 clamp 同源；终态打 …(truncated) 给阅读者一个信号。
     let trimmed = body.trim();
@@ -313,11 +313,11 @@ mod tests {
     }
 
     #[test]
-    fn issue_reply_text_prefixes_and_clamps() {
-        assert_eq!(issue_reply_text("zh", "推进了一下"), "Lead：推进了一下");
-        assert_eq!(issue_reply_text("en", "  pushed it  "), "Lead: pushed it");
+    fn task_reply_text_prefixes_and_clamps() {
+        assert_eq!(task_reply_text("zh", "推进了一下"), "Lead：推进了一下");
+        assert_eq!(task_reply_text("en", "  pushed it  "), "Lead: pushed it");
         // 9000 字符以上必须截断（CJK 安全）
-        let s = issue_reply_text("zh", &"汉".repeat(10_000));
+        let s = task_reply_text("zh", &"汉".repeat(10_000));
         assert!(s.starts_with("Lead："));
         assert!(s.ends_with("…(truncated)"));
         assert!(

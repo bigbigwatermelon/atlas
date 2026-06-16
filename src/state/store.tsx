@@ -18,12 +18,6 @@ import type {
   LeadMessage,
   NeedItem,
   PermissionAsk,
-  Proposal,
-  RepoChecks,
-  RepoEdge,
-  RepoProfile,
-  RepoRef,
-  ResolvedProposal,
   ThreadOverview,
   SessionInfo,
   SessionStatus,
@@ -31,19 +25,17 @@ import type {
   Thread,
   ToolStatus,
   Workspace,
-  Worktree,
-  WriteTrigger,
 } from "../lib/types";
 
-export type HomeTab = "board" | "repos" | "settings";
+export type HomeTab = "board" | "settings";
 export type ThreadTab = "lead" | "board";
 
 export interface OpenSession {
   info: SessionInfo;
   status: SessionStatus;
-  /** identity of the (direction, repo) slot this session occupies */
+  /** identity of the run slot this session occupies. Generic runs use slot 0. */
   directionId: number;
-  repoId: number;
+  slotId: number;
   /** the thread this session belongs to (the worker's parent). */
   threadId: number;
   nativeId: string | null;
@@ -52,10 +44,8 @@ export interface OpenSession {
 interface Store {
   workspaces: Workspace[];
   activeWorkspaceId: number | null;
-  repos: RepoRef[];
   threads: Thread[];
   directionsByThread: Record<number, Direction[]>;
-  worktreesByDirection: Record<number, Worktree[]>;
 
   activeThreadId: number | null;
   sessions: Record<number, OpenSession>;
@@ -113,10 +103,7 @@ interface Store {
   idleCapMins: number;
   wallCapMins: number;
   setGuardrails: (idleMins: number, wallMins: number) => void;
-  /** Whether the board canvas is showing the proposal's scope-confirm. */
-  reviewingProposal: boolean;
-  setReviewingProposal: (v: boolean) => void;
-  /** Active issue-level tab: console first, board second. */
+  /** Active task-level tab: console first, board second. */
   threadTab: ThreadTab;
   setThreadTab: (tab: ThreadTab) => void;
   /** Mark skills as changed; idle sessions/leads lazily refresh their engines. */
@@ -126,12 +113,6 @@ interface Store {
   needs: NeedItem[];
   /** Pending tool permission requests (the Ask Bridge). */
   asks: PermissionAsk[];
-  /** Lead-proposed write declarations awaiting human approve/deny. */
-  writeTriggers: WriteTrigger[];
-  approveWriteTrigger: (item: WriteTrigger, tool?: string) => Promise<void>;
-  denyWriteTrigger: (item: WriteTrigger) => Promise<void>;
-  /** Pending needs count per workspace id (for the workspace switcher). */
-  needsByWorkspace: Record<number, number>;
   /** Whether the Needs-you view occupies the main region. */
   showNeeds: boolean;
   openNeeds: () => void;
@@ -143,23 +124,9 @@ interface Store {
     answer: "allow" | "deny" | "always" | "full",
   ) => Promise<void>;
 
-  /** The curator's repo map: profiles + dependency edges. */
-  repoProfiles: RepoProfile[];
-  repoEdges: RepoEdge[];
-  /** Which workspace-home tab is active (Board · Repos). */
+  /** Which home tab is active. */
   homeTab: HomeTab;
   setHomeTab: (t: HomeTab) => void;
-  /** Jump to the workspace home's Repos tab. */
-  openRepoMap: () => void;
-  refreshRepoMap: () => Promise<void>;
-  reprofileRepo: (repoId: number) => Promise<void>;
-  editRepoProfile: (repoId: number, summary: string, role: string) => Promise<void>;
-
-  /** The active thread's plan proposal (Task → scope), if any. */
-  proposal: ResolvedProposal | null;
-  refreshProposal: (threadId: number) => Promise<void>;
-  saveProposal: (proposal: Proposal) => Promise<void>;
-  confirmProposal: () => Promise<void>;
 
   /** Workspace board: per-thread roll-ups for the portfolio view. */
   overview: ThreadOverview[];
@@ -173,53 +140,24 @@ interface Store {
   /** Leave the active thread for the workspace portfolio board. */
   backToWorkspace: () => void;
 
-  createWorkspace: (name: string) => Promise<void>;
-  renameWorkspace: (workspaceId: number, name: string) => Promise<void>;
   renameThread: (threadId: number, title: string) => Promise<void>;
   renameDirection: (directionId: number, name: string) => Promise<void>;
-  addRepo: (name: string, path: string) => Promise<void>;
-  cloneRepo: (url: string, dest: string, name: string) => Promise<void>;
-  createRepo: (name: string, dest: string) => Promise<void>;
   createThread: (title: string, kind: string) => Promise<Thread>;
-  createDirection: (
-    threadId: number,
-    name: string,
-    tool: string,
-    repoId: number,
-    reason: string,
-  ) => Promise<void>;
   createRun: (
     threadId: number,
     name: string,
     tool: string,
-    reason?: string,
   ) => Promise<void>;
   deleteThread: (threadId: number) => Promise<void>;
 
-  viewing: { directionId: number; repoId: number; diff?: boolean } | null;
-  viewDirection: (directionId: number, repoId: number, opts?: { diff?: boolean }) => void;
-  driveDirection: (directionId: number, repoId: number, focus: boolean) => Promise<void>;
+  viewing: { directionId: number } | null;
+  viewDirection: (directionId: number) => void;
   driveRun: (directionId: number, focus: boolean) => Promise<void>;
   reviveDirection: (directionId: number) => Promise<void>;
   closeObserve: () => void;
   /** Set a task's lifecycle status (human override). */
   setTaskStatus: (directionId: number, status: string) => Promise<void>;
-  /** Quality loop: executable-check results + in-flight set, per direction. */
-  checksByDirection: Record<number, RepoChecks[]>;
-  checkingDirections: Record<number, boolean>;
-  verifyDirection: (directionId: number) => Promise<void>;
-  /** Review-agent rung: on-demand pre-PR self-review verdict + in-flight set. */
-  /** Run the global review skill inside the direction's own session. */
-  requestSkillReview: (directionId: number) => Promise<void>;
-  /** Deliver a message to a (direction, repo)'s worker, waking it if needed. */
-  sendToDirection: (directionId: number, repoId: number, text: string) => Promise<void>;
-  /** The configured review skill ("" = auto-detect superpowers'). */
-  reviewSkill: string;
-  setReviewSkill: (s: string) => void;
-  /** Auto-run the review skill when a task flows into the review column. */
-  autoReview: boolean;
-  setAutoReview: (on: boolean) => void;
-  /** OS notifications for new Needs-you items / review-ready sub-tasks. */
+  /** OS notifications for new Needs-you items. */
   notifyEnabled: boolean;
   setNotifyEnabled: (on: boolean) => void;
   /** Prevent system idle sleep while any session is running. */
@@ -244,42 +182,27 @@ export const useStore = () => {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<number | null>(null);
-  const [repos, setRepos] = useState<RepoRef[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [directionsByThread, setDirections] = useState<Record<number, Direction[]>>({});
-  const [worktreesByDirection, setWorktrees] = useState<Record<number, Worktree[]>>({});
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
   const [sessions, setSessions] = useState<Record<number, OpenSession>>({});
-  const [checksByDirection, setChecksByDirection] = useState<Record<number, RepoChecks[]>>({});
-  const [checkingDirections, setCheckingDirections] = useState<Record<number, boolean>>({});
-  // Idle tracking for the auto-verify loop: last PTY-output time per session,
-  // and which directions we've already auto-checked this idle episode.
-  const autoCheckedRef = useRef<Set<number>>(new Set());
   // Directions with an auto-(re)dispatch in flight, so the poll-driven effect
-  // never spawns a duplicate worker before the first spawn lands in `sessions`.
+  // never opens a duplicate run before the first one lands in `sessions`.
   const dispatchingRef = useRef<Set<number>>(new Set());
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [viewing, setViewing] = useState<{
     directionId: number;
-    repoId: number;
-    diff?: boolean;
   } | null>(null);
   const [messages, setMessages] = useState<BusMsg[]>([]);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [asks, setAsks] = useState<PermissionAsk[]>([]);
-  const [writeTriggers, setWriteTriggers] = useState<WriteTrigger[]>([]);
-  const [needsByWorkspace, setNeedsByWorkspace] = useState<Record<number, number>>({});
   const [showNeeds, setShowNeeds] = useState(false);
-  const [repoProfiles, setRepoProfiles] = useState<RepoProfile[]>([]);
-  const [repoEdges, setRepoEdges] = useState<RepoEdge[]>([]);
   const [homeTab, setHomeTab] = useState<HomeTab>("board");
-  const [proposal, setProposal] = useState<ResolvedProposal | null>(null);
   const [overview, setOverview] = useState<ThreadOverview[]>([]);
-  // Thread-bus drawer + proposal-review state.
+  // Thread-bus drawer state.
   const [showBus, setShowBus] = useState(false);
-  const [reviewingProposal, setReviewingProposal] = useState(false);
   const [threadTab, setThreadTab] = useState<ThreadTab>("lead");
   const [navCollapsed, setNavCollapsed] = useState(() => window.innerWidth < 820);
 
@@ -319,25 +242,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setConfiguredTool(tl);
     void api.setDefaultTool(tl);
   }, []);
-  // The global review skill: "" = auto-detect from the agent's own slash list.
-  const [reviewSkill, setReviewSkillState] = useState(
-    () => localStorage.getItem("atlas-review-skill") ?? "",
-  );
-  const setReviewSkill = useCallback((s: string) => {
-    localStorage.setItem("atlas-review-skill", s);
-    setReviewSkillState(s);
-  }, []);
-  // Auto-review: entering the review column runs the review skill (with a
-  // self-repair directive) in the sub-task's own session. Default ON.
-  const [autoReview, setAutoReviewState] = useState(
-    () => localStorage.getItem("atlas-auto-review") !== "0",
-  );
-  const setAutoReview = useCallback((on: boolean) => {
-    localStorage.setItem("atlas-auto-review", on ? "1" : "0");
-    setAutoReviewState(on);
-  }, []);
-  // System notifications: new Needs-you items / review-ready sub-tasks raise an
-  // OS notification while the window is unfocused. Default ON.
+  // System notifications: new Needs-you items raise an OS notification while
+  // the window is unfocused. Default ON.
   const [notifyEnabled, setNotifyEnabledState] = useState(
     () => localStorage.getItem("atlas-notify") !== "0",
   );
@@ -447,33 +353,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const selectWorkspace = useCallback(async (id: number) => {
     setActiveWorkspaceId(id);
-    const [r, t] = await Promise.all([api.listRepos(id), api.listThreads(id)]);
-    setRepos(r);
+    const t = await api.listThreads(id);
     setThreads(t);
     setDirections({});
-    setWorktrees({});
     setActiveThreadId(null);
     setActiveSessionId(null);
     setViewing(null);
     setShowNeeds(false);
     setHomeTab("board");
-    setRepoProfiles([]);
-    setRepoEdges([]);
-    setProposal(null);
     setOverview([]);
   }, []);
 
   const loadThreadChildren = useCallback(async (threadId: number) => {
     const dirs = await api.listDirections(threadId);
     setDirections((m) => ({ ...m, [threadId]: dirs }));
-    const entries = await Promise.all(
-      dirs.map(async (d) => [d.id, await api.listWorktrees(d.id)] as const),
-    );
-    setWorktrees((m) => {
-      const next = { ...m };
-      for (const [id, wts] of entries) next[id] = wts;
-      return next;
-    });
   }, []);
 
   const selectThread = useCallback(
@@ -485,12 +378,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setHomeTab("board");
       setThreadTab("lead");
       setShowBus(false);
-      setReviewingProposal(false);
-      try {
-        setProposal(await api.getProposal(threadId));
-      } catch {
-        setProposal(null);
-      }
       await loadThreadChildren(threadId);
     },
     [loadThreadChildren],
@@ -519,33 +406,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setThreadTab("lead");
   }, []);
 
-  const createWorkspace = useCallback(
-    async (name: string) => {
-      const ws = await api.createWorkspace(name);
-      await refreshWorkspaces();
-      await selectWorkspace(ws.id);
-    },
-    [refreshWorkspaces, selectWorkspace],
-  );
-
-  const renameWorkspace = useCallback(async (workspaceId: number, name: string) => {
-    const ws = await api.renameWorkspace(workspaceId, name);
-    setWorkspaces((cur) => cur.map((w) => (w.id === ws.id ? ws : w)));
-  }, []);
-
   const renameThread = useCallback(
     async (threadId: number, title: string) => {
       const t = await api.renameThread(threadId, title);
       setThreads((cur) => cur.map((x) => (x.id === t.id ? t : x)));
-      // needs/asks/write-triggers carry a snapshot of thread_title; patch in place
+      // needs/asks carry a snapshot of thread_title; patch in place
       setNeeds((cur) =>
         cur.map((n) => (n.thread_id === t.id ? { ...n, thread_title: t.title } : n)),
       );
       setAsks((cur) =>
         cur.map((a) => (a.thread === t.id ? { ...a, thread_title: t.title } : a)),
-      );
-      setWriteTriggers((cur) =>
-        cur.map((w) => (w.thread_id === t.id ? { ...w, thread_title: t.title } : w)),
       );
       void refreshOverview();
     },
@@ -560,8 +430,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
     // needs.direction_name and asks.dir_name carry the direction's display name;
     // patch them in place so cards/notifications reflect the rename without
-    // waiting for the next refreshNeeds poll. (WriteTrigger.name is a planned
-    // direction not yet created, so it is unrelated to this rename.)
+    // waiting for the next refreshNeeds poll.
     setNeeds((cur) =>
       cur.map((n) => (n.direction_id === d.id ? { ...n, direction_name: d.name } : n)),
     );
@@ -571,45 +440,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ),
     );
   }, []);
-
-  const refreshAfterRepo = useCallback(async (ws: number) => {
-    setRepos(await api.listRepos(ws));
-    // a freshly added repo is eagerly profiled server-side; pull the new map
-    try {
-      const g = await api.repoGraph(ws);
-      setRepoProfiles(g.nodes);
-      setRepoEdges(g.edges);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const addRepo = useCallback(
-    async (name: string, path: string) => {
-      if (activeWorkspaceId == null) return;
-      await api.addRepoRef(activeWorkspaceId, name, path);
-      await refreshAfterRepo(activeWorkspaceId);
-    },
-    [activeWorkspaceId, refreshAfterRepo],
-  );
-
-  const cloneRepo = useCallback(
-    async (url: string, dest: string, name: string) => {
-      if (activeWorkspaceId == null) return;
-      await api.cloneRepo(activeWorkspaceId, url, dest, name);
-      await refreshAfterRepo(activeWorkspaceId);
-    },
-    [activeWorkspaceId, refreshAfterRepo],
-  );
-
-  const createRepo = useCallback(
-    async (name: string, dest: string) => {
-      if (activeWorkspaceId == null) return;
-      await api.createRepo(activeWorkspaceId, name, dest);
-      await refreshAfterRepo(activeWorkspaceId);
-    },
-    [activeWorkspaceId, refreshAfterRepo],
-  );
 
   const createThread = useCallback(
     async (title: string, kind: string) => {
@@ -637,114 +467,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [activeWorkspaceId],
   );
 
-  // ALL workers run on the chat engine — one product-native conversation UI
-  // per vendor dialect (claude stream-json, codex exec --json, opencode run
-  // --format json). Escape hatches per tool: codex app deep link, terminal
-  // takeover command for all three.
-
-  // Spawn (or focus) a worker for a (direction, repo) slot. focus=true opens it
-  // full-screen (a click); focus=false dispatches it in the background.
-  const spawnWorker = useCallback(
-    async (directionId: number, repoId: number, focus: boolean) => {
-      const existing = Object.values(sessionsRef.current).find(
-        (s) => s.directionId === directionId && s.repoId === repoId,
-      );
-      if (existing) {
-        if (focus) {
-          setActiveSessionId(existing.info.session_id);
-          setShowNeeds(false);
-          setHomeTab("board");
-        }
-        return;
-      }
-      const info = await api.chatOpenWorker(directionId, repoId, currentLang());
-      autoCheckedRef.current.delete(directionId);
-      setSessions((m) => ({
-        ...m,
-        [info.session_id]: {
-          info,
-          status: "running",
-          directionId,
-          repoId,
-          threadId: activeThreadId ?? -1,
-          nativeId: info.native_id,
-        },
-      }));
-      if (focus) {
-        setActiveSessionId(info.session_id);
-        setShowNeeds(false);
-        setHomeTab("board");
-      }
-    },
-    [activeThreadId],
-  );
-
-  const viewDirection = useCallback(
-    (directionId: number, repoId: number, opts?: { diff?: boolean }) => {
-      setViewing({ directionId, repoId, diff: opts?.diff });
-      setActiveSessionId(null);
-      setShowNeeds(false);
-      setHomeTab("board");
-    },
-    [],
-  );
+  // Runs use the chat engine — one product-native conversation UI per vendor
+  // dialect (claude stream-json, codex exec --json, opencode run --format json).
+  // Escape hatches per tool: native app link, terminal takeover command, and
+  // reveal in Finder.
+  const viewDirection = useCallback((directionId: number) => {
+    setViewing({ directionId });
+    setActiveSessionId(null);
+    setShowNeeds(false);
+    setHomeTab("board");
+  }, []);
 
   const closeObserve = useCallback(() => setViewing(null), []);
 
   // Explicit "continue/attach": attach to a live session if one exists, else ask
   // the backend to resume the same native conversation (or fresh-dispatch only
   // when no native id was ever captured). Never re-seeds a live/finished task.
-  const driveDirection = useCallback(
-    async (directionId: number, repoId: number, focus: boolean) => {
-      const existing = Object.values(sessionsRef.current).find(
-        (s) =>
-          s.directionId === directionId &&
-          s.repoId === repoId &&
-          s.status !== "exited",
-      );
-      if (existing) {
-        if (focus) {
-          setActiveSessionId(existing.info.session_id);
-          setShowNeeds(false);
-          setHomeTab("board");
-        }
-        return;
-      }
-      const info = await api.chatOpenWorker(directionId, repoId, currentLang());
-      autoCheckedRef.current.delete(directionId);
-      setSessions((m) => {
-        const pruned = Object.fromEntries(
-          Object.entries(m).filter(
-            ([, s]) => !(s.directionId === directionId && s.repoId === repoId && s.status === "exited"),
-          ),
-        );
-        return {
-          ...pruned,
-          [info.session_id]: {
-            info,
-            status: "running",
-            directionId,
-            repoId,
-            threadId: activeThreadId ?? -1,
-            nativeId: info.native_id,
-          },
-        };
-      });
-      if (focus) {
-        setActiveSessionId(info.session_id);
-        setShowNeeds(false);
-        setHomeTab("board");
-      }
-    },
-    [activeThreadId],
-  );
-
   const driveRun = useCallback(
     async (directionId: number, focus: boolean) => {
       const existing = Object.values(sessionsRef.current).find(
         (s) =>
           s.directionId === directionId &&
-          s.repoId === 0 &&
+          s.slotId === 0 &&
           s.status !== "exited",
       );
       if (existing) {
@@ -756,11 +500,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return;
       }
       const info = await api.chatOpenRun(directionId, currentLang());
-      autoCheckedRef.current.delete(directionId);
       setSessions((m) => {
         const pruned = Object.fromEntries(
           Object.entries(m).filter(
-            ([, s]) => !(s.directionId === directionId && s.repoId === 0 && s.status === "exited"),
+            ([, s]) => !(s.directionId === directionId && s.slotId === 0 && s.status === "exited"),
           ),
         );
         return {
@@ -769,7 +512,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             info,
             status: "running",
             directionId,
-            repoId: 0,
+            slotId: 0,
             threadId: activeThreadId ?? -1,
             nativeId: info.native_id,
           },
@@ -784,68 +527,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [activeThreadId],
   );
 
-  // Automation-first (§4 principle 7): once a task is materialized, dispatch its
-  // worker(s) right away — every write worktree gets an agent, no human click.
-  const dispatchDirection = useCallback(
-    async (directionId: number) => {
-      let wts;
-      try {
-        wts = await api.listWorktrees(directionId);
-      } catch {
-        return;
-      }
-      for (const w of wts) {
-        await spawnWorker(directionId, w.repo_id, false);
-      }
-    },
-    [spawnWorker],
-  );
-
-  // Restart continuity (§4 principle 7): bring a working task's worker back by
-  // RESUME (not a fresh re-run) once per repo. Reuses driveDirection's
-  // resume-or-fresh + dedupe-by-live logic.
+  // Restart continuity: bring a working run back by RESUME (not a fresh re-run).
   const reviveDirection = useCallback(
     async (directionId: number) => {
-      let wts;
-      try {
-        wts = await api.listWorktrees(directionId);
-      } catch {
-        return;
-      }
-      if (wts.length === 0) {
-        const direction = Object.values(directionsByThread)
-          .flat()
-          .find((d) => d.id === directionId);
-        if (direction?.repo_id === 0) {
-          await driveRun(directionId, false);
-        }
-        return;
-      }
-      for (const w of wts) {
-        await driveDirection(directionId, w.repo_id, false);
-      }
+      await driveRun(directionId, false);
     },
-    [directionsByThread, driveDirection, driveRun],
-  );
-
-  const createDirection = useCallback(
-    async (
-      threadId: number,
-      name: string,
-      tool: string,
-      repoId: number,
-      reason: string,
-    ) => {
-      const dir = await api.createDirection(threadId, name, tool, repoId, reason);
-      await loadThreadChildren(threadId);
-      void dispatchDirection(dir.id);
-    },
-    [loadThreadChildren, dispatchDirection],
+    [driveRun],
   );
 
   const createRun = useCallback(
-    async (threadId: number, name: string, tool: string, reason?: string) => {
-      const run = await api.createRun(threadId, name, tool, reason);
+    async (threadId: number, name: string, tool: string) => {
+      const run = await api.createRun(threadId, name, tool);
       await loadThreadChildren(threadId);
       await driveRun(run.id, true);
     },
@@ -1037,99 +729,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const verifyDirection = useCallback(async (directionId: number) => {
-    setCheckingDirections((m) => ({ ...m, [directionId]: true }));
-    try {
-      const res = await api.verifyDirection(directionId);
-      setChecksByDirection((m) => ({ ...m, [directionId]: res }));
-    } catch {
-      /* leave prior results */
-    } finally {
-      setCheckingDirections((m) => ({ ...m, [directionId]: false }));
-    }
-  }, []);
-
-  // Review = the global review skill running INSIDE the worker's own
-  // conversation (no built-in review engine; the repo's PR harness stays the
-  // authority). Auto-detect prefers superpowers' requesting-code-review when
-  // the agent reports it; the setting overrides.
-  const resolveReviewSkill = useCallback(() => {
-    const configured = reviewSkill.trim().replace(/^\//, "");
-    if (configured) return configured;
-    const all = [...Object.values(leadSlash), ...Object.values(workerSlash)].flat();
-    return (
-      all.find((c) => /(^|:)requesting-code-review$/.test(c.name))?.name ??
-      "superpowers:requesting-code-review"
-    );
-  }, [reviewSkill, leadSlash, workerSlash]);
-
-  // Deliver a composed message to a (direction, repo)'s worker — waking it
-  // first when nothing is live (the engine resumes). The delivery half of diff
-  // annotations and skill reviews.
-  const sendToDirection = useCallback(
-    async (directionId: number, repoId: number, text: string) => {
-      let sess = Object.values(sessionsRef.current).find(
-        (s) => s.directionId === directionId && s.repoId === repoId && s.status !== "exited",
-      );
-      if (!sess) {
-        if (repoId === 0) {
-          await driveRun(directionId, false);
-        } else {
-          await driveDirection(directionId, repoId, false);
-        }
-        sess = Object.values(sessionsRef.current).find(
-          (s) => s.directionId === directionId && s.repoId === repoId && s.status !== "exited",
-        );
-      }
-      if (!sess) return;
-      await api.chatSend(sess.info.session_id, text);
-    },
-    [driveDirection, driveRun],
-  );
-
-  const requestSkillReview = useCallback(
-    async (directionId: number) => {
-      const writes = await api.listWorktrees(directionId).catch(() => []);
-      const first = writes[0];
-      if (!first) return;
-      let sess = Object.values(sessionsRef.current).find(
-        (s) => s.directionId === directionId && s.status !== "exited",
-      );
-      if (!sess) {
-        await driveDirection(directionId, first.repo_id, false);
-        sess = Object.values(sessionsRef.current).find(
-          (s) => s.directionId === directionId && s.status !== "exited",
-        );
-      }
-      if (!sess) return;
-      // Review-then-repair: the skill reviews, the same agent fixes what it
-      // found and re-verifies — the human only sees the post-fix state.
-      const directive =
-        currentLang() === "zh"
-          ? "review 结束后，直接修复发现的问题并重新跑检查自验，然后简要汇报。"
-          : "After the review, fix the findings directly, re-run the checks to verify, then report briefly.";
-      const cmd = `/${resolveReviewSkill()} ${directive}`;
-      await api.chatSend(sess.info.session_id, cmd);
-    },
-    [driveDirection, resolveReviewSkill],
-  );
-
-  // Automation-first: a task flowing into "review" triggers the review skill
-  // by itself (once per entry; the setting turns this off).
-  const autoReviewedRef = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    const all = Object.values(directionsByThread).flat();
-    for (const d of all) {
-      if (d.status !== "review") {
-        autoReviewedRef.current.delete(d.id);
-        continue;
-      }
-      if (!autoReview || autoReviewedRef.current.has(d.id)) continue;
-      autoReviewedRef.current.add(d.id);
-      void requestSkillReview(d.id);
-    }
-  }, [directionsByThread, autoReview, requestSkillReview]);
-
   const focusSession = useCallback((id: number) => setActiveSessionId(id), []);
 
   const postHuman = useCallback(
@@ -1141,7 +740,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const refreshNeeds = useCallback(async () => {
-    // Permission Asks are global (not workspace-scoped); always refresh them.
+    // Permission Asks are global; always refresh them.
     try {
       setAsks(await api.pendingAsks());
     } catch {
@@ -1149,20 +748,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     if (activeWorkspaceId == null) {
       setNeeds([]);
-      setWriteTriggers([]);
       return;
     }
     try {
       setNeeds(await api.needsYou(activeWorkspaceId));
-      setWriteTriggers(await api.writeTriggers(activeWorkspaceId));
     } catch {
       /* bus may not be ready */
-    }
-    // per-workspace counts so the switcher can flag OTHER workspaces.
-    try {
-      setNeedsByWorkspace(Object.fromEntries(await api.workspaceNeedsCounts()));
-    } catch {
-      /* ignore */
     }
   }, [activeWorkspaceId]);
 
@@ -1173,72 +764,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setShowNeeds(true);
   }, []);
 
-  const refreshRepoMap = useCallback(async () => {
-    if (activeWorkspaceId == null) {
-      setRepoProfiles([]);
-      setRepoEdges([]);
-      return;
-    }
-    try {
-      const g = await api.repoGraph(activeWorkspaceId);
-      setRepoProfiles(g.nodes);
-      setRepoEdges(g.edges);
-    } catch {
-      /* workspace may be empty */
-    }
-  }, [activeWorkspaceId]);
-
-  const openRepoMap = useCallback(() => {
-    setActiveThreadId(null);
-    setActiveSessionId(null);
-    setShowNeeds(false);
-    setHomeTab("repos");
-    void refreshRepoMap();
-  }, [refreshRepoMap]);
-
-  const reprofileRepo = useCallback(
-    async (repoId: number) => {
-      await api.reprofileRepo(repoId);
-      await refreshRepoMap();
-    },
-    [refreshRepoMap],
-  );
-
-  const editRepoProfile = useCallback(
-    async (repoId: number, summary: string, role: string) => {
-      await api.updateRepoProfile(repoId, summary, role);
-      await refreshRepoMap();
-    },
-    [refreshRepoMap],
-  );
-
-  const refreshProposal = useCallback(async (threadId: number) => {
-    try {
-      setProposal(await api.getProposal(threadId));
-    } catch {
-      setProposal(null);
-    }
-  }, []);
-
-  const saveProposal = useCallback(
-    async (next: Proposal) => {
-      if (activeThreadId == null) return;
-      await api.saveProposal(activeThreadId, next);
-      await refreshProposal(activeThreadId);
-    },
-    [activeThreadId, refreshProposal],
-  );
-
-  const confirmProposal = useCallback(async () => {
-    if (activeThreadId == null) return;
-    const ids = await api.confirmProposal(activeThreadId);
-    setProposal(null);
-    setReviewingProposal(false);
-    await loadThreadChildren(activeThreadId);
-    // Automation-first: dispatch every new task's worker immediately.
-    for (const id of ids) void dispatchDirection(id);
-  }, [activeThreadId, loadThreadChildren, dispatchDirection]);
-
   const answerAsk = useCallback(
     async (item: NeedItem, text: string) => {
       if (!text.trim()) return;
@@ -1246,35 +771,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setNeeds((cur) => cur.filter((n) => n.ask_id !== item.ask_id));
       await api.answerAsk(item.thread_id, item.ask_id, text.trim());
       await refreshNeeds();
-    },
-    [refreshNeeds],
-  );
-
-  const approveWriteTrigger = useCallback(
-    async (item: WriteTrigger, tool?: string) => {
-      setWriteTriggers((cur) =>
-        cur.filter((w) => !(w.thread_id === item.thread_id && w.index === item.index)),
-      );
-      try {
-        const dirId = await api.approveWriteTrigger(item.thread_id, item.index, tool ?? defaultTool);
-        void dispatchDirection(dirId);
-      } finally {
-        await refreshNeeds();
-      }
-    },
-    [dispatchDirection, refreshNeeds, defaultTool],
-  );
-
-  const denyWriteTrigger = useCallback(
-    async (item: WriteTrigger) => {
-      setWriteTriggers((cur) =>
-        cur.filter((w) => !(w.thread_id === item.thread_id && w.index === item.index)),
-      );
-      try {
-        await api.denyWriteTrigger(item.thread_id, item.index);
-      } finally {
-        await refreshNeeds();
-      }
     },
     [refreshNeeds],
   );
@@ -1348,61 +844,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [activeWorkspaceId, refreshNeeds]);
 
-  // While an issue is open, keep its proposal fresh (the lead re-proposes over
-  // the chat engine; the timeline card is the anchor, this state feeds the
-  // scope-confirm canvas). Cheap local read, so a simple poll is fine.
-  useEffect(() => {
-    if (activeThreadId == null) return;
-    const thread = activeThreadId;
-    let alive = true;
-    const tick = async () => {
-      try {
-        const p = await api.getProposal(thread);
-        if (alive && p) setProposal(p);
-      } catch {
-        /* planner not ready */
-      }
-    };
-    void tick();
-    const h = setInterval(tick, 2500);
-    return () => {
-      alive = false;
-      clearInterval(h);
-    };
-  }, [activeThreadId]);
-
-  // Auto-verify (ARCHITECTURE §4.13): a worker turning busy→idle means its
-  // queue drained and the turn finished — run that direction's checks once per
-  // idle episode so "done" means "checks ran", not self-report. Going busy
-  // again re-arms the latch (so the NEXT turn end verifies again); a fresh
-  // dispatch clears it too (spawnWorker/driveDirection). Only implementation
-  // phases verify: a planning turn produces a plan, not code worth checking.
-  const prevTurnRef = useRef<Record<number, string>>({});
-  useEffect(() => {
-    for (const [sidStr, turn] of Object.entries(workerTurn)) {
-      const sid = Number(sidStr);
-      const prev = prevTurnRef.current[sid];
-      if (prev === turn.state) continue;
-      prevTurnRef.current[sid] = turn.state;
-      const sess = sessionsRef.current[sid];
-      if (!sess) continue;
-      if (turn.state === "busy") {
-        autoCheckedRef.current.delete(sess.directionId);
-      } else if (
-        prev === "busy" &&
-        turn.state === "idle" &&
-        !autoCheckedRef.current.has(sess.directionId)
-      ) {
-        const phase = (directionsByThread[sess.threadId] ?? []).find(
-          (d) => d.id === sess.directionId,
-        )?.status;
-        if (phase !== "working" && phase !== "review") continue;
-        autoCheckedRef.current.add(sess.directionId);
-        void verifyDirection(sess.directionId);
-      }
-    }
-  }, [workerTurn, verifyDirection, directionsByThread]);
-
   // Idle skill-refresh: when skills changed (dirty timestamp) and a session goes
   // busy→idle, flag its engine once so the next send picks up new skills.
   const prevWorkerTurnRef = useRef<Record<number, string>>({});
@@ -1465,10 +906,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [activeThreadId]);
 
-  // Automation-first across restarts (§4 principle 7): a task that's "working"
+  // Automation-first across restarts: a task that's "working"
   // but has no live session — e.g. after an app restart, when in-memory engines
-  // are gone — gets its worker (re)dispatched so it runs without a manual click.
-  // Spawning reuses the existing worktree, so the agent continues the task.
+  // are gone — gets its run reopened so it continues without a manual click.
   useEffect(() => {
     if (activeThreadId == null) return;
     const dirs = directionsByThread[activeThreadId] ?? [];
@@ -1486,10 +926,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value: Store = {
     workspaces,
     activeWorkspaceId,
-    repos,
     threads,
     directionsByThread,
-    worktreesByDirection,
     activeThreadId,
     sessions,
     activeSessionId,
@@ -1510,8 +948,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setShowBus,
     navCollapsed,
     setNavCollapsed,
-    reviewingProposal,
-    setReviewingProposal,
     threadTab,
     setThreadTab,
     markSkillsDirty,
@@ -1531,28 +967,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setGuardrails,
     needs,
     asks,
-    writeTriggers,
-    approveWriteTrigger,
-    denyWriteTrigger,
-    needsByWorkspace,
     showNeeds,
     openNeeds,
     refreshNeeds,
     answerAsk,
     goToAsk,
     answerPermission,
-    repoProfiles,
-    repoEdges,
     homeTab,
     setHomeTab,
-    openRepoMap,
-    refreshRepoMap,
-    reprofileRepo,
-    editRepoProfile,
-    proposal,
-    refreshProposal,
-    saveProposal,
-    confirmProposal,
     overview,
     refreshOverview,
     selectWorkspace,
@@ -1561,33 +983,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     loadThreadChildren,
     backToBoard,
     backToWorkspace,
-    createWorkspace,
-    renameWorkspace,
     renameThread,
     renameDirection,
-    addRepo,
-    cloneRepo,
-    createRepo,
     createThread,
-    createDirection,
     createRun,
     deleteThread,
     viewing,
     viewDirection,
-    driveDirection,
     driveRun,
     reviveDirection,
     closeObserve,
     setTaskStatus,
-    checksByDirection,
-    checkingDirections,
-    verifyDirection,
-    requestSkillReview,
-    sendToDirection,
-    reviewSkill,
-    setReviewSkill,
-    autoReview,
-    setAutoReview,
     notifyEnabled,
     setNotifyEnabled,
     keepAwake,

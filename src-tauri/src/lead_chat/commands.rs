@@ -1,5 +1,5 @@
 //! Tauri commands for the chat engine. The lead's engine is keyed by
-//! `-thread_id`; chat-mode workers (phase 2) key by `session_id`.
+//! `-thread_id`; chat-mode runs key by `session_id`.
 
 use super::engine::{self, EngineRef, LeadChatState};
 use crate::store::{repo, Db};
@@ -9,14 +9,12 @@ fn lead_key(thread_id: i32) -> i64 {
     -(thread_id as i64)
 }
 
-/// What a (re)dispatched worker session looks like to the frontend.
+/// What a (re)opened run session looks like to the frontend.
 #[derive(serde::Serialize, Clone)]
 pub struct SessionInfo {
     pub session_id: i32,
-    pub repo: String,
-    pub worktree: String,
+    pub run_dir: String,
     pub cwd: String,
-    pub branch: String,
     pub tool: String,
     pub resumed: bool,
     pub native_id: Option<String>,
@@ -25,10 +23,9 @@ pub struct SessionInfo {
 const BASE_PROMPT: &str = "You are the coordinator for this task in Atlas, a local Agent App. \
 Start by calling get_task to read what the human is asking. Discuss the goal, constraints, \
 and next step with the human. You may answer directly, ask a concise clarifying question, \
-or suggest a named run for a focused agent session. Do not assume the workspace contains code \
-repositories. Do not bring up repository-specific planning artifacts, diffs, or code-review checks \
-unless the human explicitly asks for coding work. When a decision belongs to the human, ask it \
-directly in chat. Keep the conversation practical and grounded in the current task.";
+or suggest a named run for a focused agent session. Treat Atlas as a general task and agent \
+conversation base. When a decision belongs to the human, ask it directly in chat. Keep the \
+conversation practical and grounded in the current task.";
 
 /// The conversational lead prompt. The lead coordinates the current task with
 /// the human and does not assume the workspace is a code repository.
@@ -47,65 +44,65 @@ pub fn lang_directive(lang: &str) -> &'static str {
     }
 }
 
-/// System prompt for the IM Concierge engine (M3-3). Concierge is scoped to
-/// the current IM conversation — NOT a per-issue lead.
+/// System prompt for the IM Concierge engine. Concierge is scoped to the
+/// current IM conversation, not to one task lead.
 /// It never plans or writes; it only reads Atlas state via the `atlas_global` MCP
 /// and answers / triggers actions on the human's behalf. Bilingual: language
 /// follows the caller's lang (defaults to zh — IM bridge fixes it that way).
 pub fn concierge_prompt(lang: &str) -> String {
     let body = if lang == "zh" {
         "你是 Atlas 桌面端的助理（Concierge），用户从某个飞书会话找你。Atlas 桌面端正在运行，\
-真实状态都在 atlas_global MCP 工具里——回答任何关于工作区、issue、待办、agent 提问的问题前，\
-必须先用工具核实（list_workspaces / list_issues / pending_needs_you / issue_status），不要凭印象作答。\n\
-如果用户消息里带有 feishu_chat_id，那就是当前飞书会话的 chat_id；只有用户语义明确要求为某个已有 issue 创建、打开或继续飞书 topic 时，才可把这个 chat_id 传给 ensure_issue_topic。\n\
+真实状态都在 atlas_global MCP 工具里——回答任何关于任务列表、任务、待办、agent 提问的问题前，\
+必须先用工具核实（list_workspaces / list_tasks / pending_needs_you / task_status），不要凭印象作答。\n\
+如果用户消息里带有 feishu_chat_id，那就是当前飞书会话的 chat_id；只有用户语义明确要求为某个已有任务创建、打开或继续飞书 topic 时，才可把这个 chat_id 传给 ensure_task_topic。\n\
 \n\
 工具一览：\n\
-- list_workspaces / list_issues / issue_status / pending_needs_you —— 只读，先用它们摸清状态。\n\
+- list_workspaces / list_tasks / task_status / pending_needs_you —— 只读，先用它们摸清状态。\n\
 - answer_permission(ask_id, verdict) —— 用户明确告诉你判决时才代答；不确定就先用 pending_needs_you 列出再问用户。\n\
 - answer_question(thread_id, ask_id, text) —— 转达用户对 agent 提问的回答。\n\
-- message_lead(thread_id, text) —— 把用户的话喂给某个 issue 的 lead。\n\
-- ensure_issue_topic(thread_id, chat_id) —— 当用户语义明确要为某个已有 issue 创建/打开/继续飞书 topic 时调用；普通聊天不要调用。\n\
-- create_issue(workspace_id, title, kind) —— 新建 issue；kind 默认 feature。\n\
+- message_lead(thread_id, text) —— 把用户的话喂给某个任务的 lead。\n\
+- ensure_task_topic(thread_id, chat_id) —— 当用户语义明确要为某个已有任务创建/打开/继续飞书 topic 时调用；普通聊天不要调用。\n\
+- create_task(workspace_id, title, kind) —— 新建任务；kind 默认 task。\n\
 \n\
 不要做的事：\n\
-- 不要替用户决定需要桌面确认的事（scope 拍板、批准 write trigger、合并保护分支）——把状态报清楚，请用户去桌面处理。\n\
-- 不要臆造 issue/工作区/ask 的细节；找不到就说没找到，不要编。\n\
+- 不要替用户决定需要桌面确认或高风险的事——把状态报清楚，请用户去桌面处理。\n\
+- 不要臆造任务列表、任务、ask 的细节；找不到就说没找到，不要编。\n\
 - 不要在不可逆动作之前自行批准权限请求（answer_permission allow/full）——除非用户在这条消息里明确同意。\n\
 \n\
-回复风格：简短中文，用 markdown 列表/编号；引用 issue 时带 thread_id；引用 ask 时带 ask_id。"
+回复风格：简短中文，用 markdown 列表/编号；引用任务时带 thread_id；引用 ask 时带 ask_id。"
     } else {
         "You are Atlas's desktop Concierge, reached by the user through one Feishu conversation. Atlas is \
 running on the user's desktop and authoritative state lives behind the `atlas_global` MCP \
-tools — ALWAYS verify with the tools before answering anything about workspaces, issues, \
-pending asks, or agent questions (list_workspaces / list_issues / pending_needs_you / \
-issue_status). Never answer from your imagination.\n\
-If the user's message includes feishu_chat_id, that is the current Feishu chat_id; only pass it to ensure_issue_topic when the user semantically asks to create, open, or continue a Feishu topic for an existing issue.\n\
+tools — ALWAYS verify with the tools before answering anything about task lists, tasks, \
+pending asks, or agent questions (list_workspaces / list_tasks / pending_needs_you / \
+task_status). Never answer from your imagination.\n\
+If the user's message includes feishu_chat_id, that is the current Feishu chat_id; only pass it to ensure_task_topic when the user semantically asks to create, open, or continue a Feishu topic for an existing task.\n\
 \n\
 Tools:\n\
-- list_workspaces / list_issues / issue_status / pending_needs_you — read-only; lead with these.\n\
+- list_workspaces / list_tasks / task_status / pending_needs_you — read-only; lead with these.\n\
 - answer_permission(ask_id, verdict) — only when the user explicitly tells you the verdict; otherwise list pending asks and ask.\n\
 - answer_question(thread_id, ask_id, text) — relay the user's answer to an agent's open question.\n\
-- message_lead(thread_id, text) — deliver the user's message into a specific issue's lead.\n\
-- ensure_issue_topic(thread_id, chat_id) — call only when the user semantically asks to create/open/continue a Feishu topic for an existing issue; do not call for ordinary chat.\n\
-- create_issue(workspace_id, title, kind) — file a new issue (kind defaults to feature).\n\
+- message_lead(thread_id, text) — deliver the user's message into a specific task's lead.\n\
+- ensure_task_topic(thread_id, chat_id) — call only when the user semantically asks to create/open/continue a Feishu topic for an existing task; do not call for ordinary chat.\n\
+- create_task(workspace_id, title, kind) — create a new task (kind defaults to task).\n\
 \n\
 Do not:\n\
-- Decide things that require the desktop (scope approval, write-trigger approve/deny, merge-protected branches) — report the state and ask the user to go to the desktop.\n\
-- Invent workspace / issue / ask details; if you can't find it, say so.\n\
+- Decide things that require the desktop or carry high risk — report the state and ask the user to go to the desktop.\n\
+- Invent task-list / task / ask details; if you can't find it, say so.\n\
 - Pre-approve irreversible permission asks (answer_permission allow/full) unless the user explicitly consents in this message.\n\
 \n\
-Style: short, markdown bullets / numbered lists; mention thread_id when citing an issue, ask_id when citing an ask."
+Style: short, markdown bullets / numbered lists; mention thread_id when citing a task, ask_id when citing an ask."
     };
     format!("{}{}", body, lang_directive(lang))
 }
 
 /// Get-or-create the lead's engine for a thread: scratch cwd, planner MCP +
 /// ask bridge injections, conversational lead prompt as the system prompt.
-/// Mirrors the retired PTY `plan_with_lead` wiring (spec §2).
+/// Mirrors the retired PTY `plan_with_lead` wiring.
 /// Public so the IM bridge can drive the same lead engine when a飞书 thread
-/// message lands on a bound issue (spec §4 / M2-3).
+/// message lands on a bound task thread.
 ///
-/// Concierge branch (`t.kind == "concierge"`, M3-1/-3): swap planner MCP →
+/// Concierge branch (`t.kind == "concierge"`): swap planner MCP →
 /// `atlas_global` MCP and the lead prompt → `concierge_prompt(lang)`. Everything
 /// else (cwd, ask hook, skills) stays identical so this engine survives
 /// app restarts and obeys per-task permissions the same way.
@@ -122,9 +119,7 @@ pub async fn lead_engine(
     let t = repo::get_thread(db, thread_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("thread not found"))?;
-    let cwd = crate::paths::atlas_home()?
-        .join("leads")
-        .join(thread_id.to_string());
+    let cwd = crate::paths::lead_home(thread_id)?;
     std::fs::create_dir_all(&cwd)?;
     // git-init so claude's session store (keyed by cwd) behaves like any other
     // cwd; harmless if it already exists.
@@ -146,13 +141,10 @@ pub async fn lead_engine(
     let system_prompt = if is_concierge {
         concierge_prompt(lang)
     } else {
-        let repo_state =
-            crate::lead_chat::repo_state::render_repo_state(db, Some(t.workspace_id)).await?;
         format!(
-            "{}{}\n\n{}",
+            "{}{}",
             lead_prompt(),
             lang_directive(lang),
-            repo_state
         )
     };
     let inner = engine::EngineInner {
@@ -357,35 +349,15 @@ pub async fn list_lead_messages(
         .map_err(|e| e.to_string())
 }
 
-// ───────────────────── chat-mode workers ─────────────────────
+// ───────────────────── chat-mode runs ─────────────────────
 //
-// Every worker (claude/codex/opencode) runs on the engine: an Atlas-owned chat
+// Every run (claude/codex/opencode) runs on the engine: an Atlas-owned chat
 // timeline in the SessionView, with per-tool wire dialects (engine::per_turn).
 // Each session remains takeover-able in the user's own terminal via its
 // native id.
 
-/// Spawn (or resume) a chat-mode worker for a (direction, repo) slot: worktree
-/// cwd, thread-bus MCP + ask bridge, the assembled brief as the first user
-/// message of an Atlas-owned conversation.
-#[tauri::command]
-pub async fn chat_open_worker(
-    app: AppHandle,
-    db: State<'_, Db>,
-    direction_id: i32,
-    repo_id: i32,
-    lang: Option<String>,
-) -> Result<SessionInfo, String> {
-    chat_open_worker_impl(
-        &app,
-        &db,
-        direction_id,
-        repo_id,
-        lang.as_deref().unwrap_or("en"),
-    )
-    .await
-    .map_err(|e| e.to_string())
-}
-
+/// Spawn (or resume) a chat-mode run with thread-bus MCP + ask bridge and the
+/// assembled brief as the first user message of an Atlas-owned conversation.
 #[tauri::command]
 pub async fn chat_open_run(
     app: AppHandle,
@@ -393,22 +365,20 @@ pub async fn chat_open_run(
     direction_id: i32,
     lang: Option<String>,
 ) -> Result<SessionInfo, String> {
-    chat_open_worker_impl(
+    chat_open_run_impl(
         &app,
         &db,
         direction_id,
-        0,
         lang.as_deref().unwrap_or("en"),
     )
     .await
     .map_err(|e| e.to_string())
 }
 
-async fn chat_open_worker_impl(
+async fn chat_open_run_impl(
     app: &AppHandle,
     db: &Db,
     direction_id: i32,
-    repo_id: i32,
     lang: &str,
 ) -> anyhow::Result<SessionInfo> {
     use sea_orm::EntityTrait;
@@ -423,26 +393,16 @@ async fn chat_open_worker_impl(
         .one(&db.0)
         .await?
         .ok_or_else(|| anyhow::anyhow!("workspace not found"))?;
-    let (cwd, branch) = if repo_id == 0 {
-        (
-            crate::paths::run_home(&workspace.slug, &thread.slug, &dir.slug)?,
-            String::new(),
-        )
-    } else {
-        let wt = repo::worktree_for(db, direction_id, repo_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("no materialized worktree for that direction+repo"))?;
-        (std::path::PathBuf::from(&wt.path), wt.branch)
-    };
+    let cwd = crate::paths::run_home(&workspace.slug, &thread.slug, &dir.slug)?;
     let cwd_str = cwd.to_string_lossy().to_string();
 
-    // Resume an earlier conversation when this slot already captured one.
-    let prior = repo::latest_session_for(db, direction_id, repo_id).await?;
+    // Resume an earlier conversation when this run already captured one.
+    let prior = repo::latest_session_for(db, direction_id).await?;
     let native = prior.as_ref().and_then(|s| s.native_session_id.clone());
     let resumed = native.is_some();
     let sess = match prior {
         Some(s) if s.native_session_id.is_some() => s,
-        _ => repo::create_session(db, direction_id, repo_id, &dir.tool, &cwd_str).await?,
+        _ => repo::create_session(db, direction_id, &dir.tool, &cwd_str).await?,
     };
 
     let base = app.state::<crate::BusBase>().0.clone();
@@ -520,10 +480,8 @@ async fn chat_open_worker_impl(
 
     Ok(SessionInfo {
         session_id: sess.id,
-        repo: cwd_str.clone(),
-        worktree: cwd_str.clone(),
+        run_dir: cwd_str.clone(),
         cwd: cwd_str,
-        branch,
         tool: dir.tool,
         resumed,
         native_id: native,
@@ -670,48 +628,5 @@ pub async fn flag_lead_skill_refresh(
         crate::skills::inject_for(&db, th.workspace_id, &cwd).await;
     }
     eng.lock().await.pending_skill_refresh = true;
-    Ok(())
-}
-
-/// Frontend callback after a repo onboarding action card finishes (add /
-/// new / clone). Wraps the payload in `<atlas:repo_action>…</atlas:repo_action>`
-/// and delivers it as an invisible user turn so the agent can react without
-/// the result polluting the visible timeline. Respects the turn machine:
-/// mid-turn clicks get queued and flush at the next boundary instead of
-/// shoving JSON between in-flight protocol lines. Does NOT ensure_running —
-/// a click into a dead lead is a no-op (we don't want a card click to
-/// resurrect a stopped engine behind the user's back).
-#[tauri::command]
-pub async fn post_lead_tool_result(
-    app: AppHandle,
-    thread_id: i32,
-    payload: serde_json::Value,
-) -> Result<(), String> {
-    let json = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
-    let text = format!("<atlas:repo_action>{json}</atlas:repo_action>");
-    let key = lead_key(thread_id);
-    match app.state::<LeadChatState>().get(key) {
-        Some(eng) => {
-            // TODO: frontend currently can't distinguish delivered vs queued vs
-            // no-engine. Acceptable now — action cards are visual + ephemeral
-            // — revisit if "card click did nothing" debugging gets noisy.
-            let mut inner = eng.lock().await;
-            let out = engine::Outgoing {
-                text,
-                images: vec![],
-                tracked: false,
-            };
-            if inner.turn.try_begin_send() {
-                inner.turn_id += 1;
-                inner.clock.begin_turn();
-                engine::write_user(&mut inner, &out).await;
-            } else {
-                inner.turn.queue.push_back(out);
-            }
-        }
-        None => {
-            eprintln!("[atlas] post_lead_tool_result: no lead engine for thread {thread_id}");
-        }
-    }
     Ok(())
 }

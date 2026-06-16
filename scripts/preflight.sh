@@ -63,5 +63,6 @@ else
 fi
 
 run scripts/verify-atlas-identity.sh
+run node scripts/verify-agent-base-defaults.mjs
 run pnpm build
 run cargo "${rust_args[@]}"

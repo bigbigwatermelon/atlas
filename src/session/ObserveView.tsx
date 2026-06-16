@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { GitCompare, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import { useStore } from "../state/store";
 import { api } from "../lib/api";
 import type { ObserveRef, SessionStatus } from "../lib/types";
@@ -9,17 +9,14 @@ import { ChatTimeline } from "./ChatTimeline";
 import { ChatComposer } from "./ChatComposer";
 import { PermissionBar } from "./PermissionBar";
 import { appLink, resumeCommand } from "../lib/resume";
-import { DiffPanel } from "./DiffPanel";
 import { StatusChip } from "../components/ui/StatusChip";
 import { Button } from "../components/ui/Button";
-import { Tooltip } from "../components/ui/Tooltip";
 import { Inspect } from "../components/Inspect";
 import { ToolIcon, toolFullName } from "../components/ToolIcon";
 
 export function ObserveView() {
   const {
     viewing,
-    driveDirection,
     driveRun,
     sessions,
     needs,
@@ -32,28 +29,24 @@ export function ObserveView() {
     discoverWorkerSlash,
     workerActivity,
     loadLeadChat,
-    sendToDirection,
   } = useStore();
   const { t } = useTranslation();
   const [ref, setRef] = useState<ObserveRef | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [driveError, setDriveError] = useState<string | null>(null);
-  const [showDiff, setShowDiff] = useState(false);
   const [driving, setDriving] = useState(false);
 
   const directionId = viewing?.directionId ?? null;
-  const repoId = viewing?.repoId ?? null;
 
   useEffect(() => {
-    setShowDiff(viewing?.diff ?? false);
-    if (directionId == null || repoId == null) {
+    if (directionId == null) {
       setRef(null);
       return;
     }
     let alive = true;
     const load = () =>
       api
-        .sessionFor(directionId, repoId)
+        .sessionFor(directionId)
         .then((r) => {
           if (alive) {
             setRef(r);
@@ -69,7 +62,7 @@ export function ObserveView() {
       alive = false;
       clearInterval(h);
     };
-  }, [directionId, repoId]);
+  }, [directionId]);
 
   // Chat-mode sessions render the atlas-owned timeline; keep it hydrated.
   useEffect(() => {
@@ -77,10 +70,9 @@ export function ObserveView() {
   }, [activeThreadId, loadLeadChat]);
 
   if (viewing == null) return null;
-  if (viewing.repoId === 0) return null;
 
   const liveSession = Object.values(sessions).find(
-    (s) => s.directionId === directionId && s.repoId === repoId && s.status !== "exited",
+    (s) => s.directionId === directionId && s.slotId === 0 && s.status !== "exited",
   );
   const openAsks = needs.filter((n) => n.direction_id === directionId);
 
@@ -108,18 +100,13 @@ export function ObserveView() {
   const uiStatus: SessionStatus =
     (liveSession?.status as SessionStatus) ??
     (ref?.status === "running" ? "running" : "idle");
-  const canShowDiff = !!ref && repoId !== 0 && ref.branch.trim() !== "";
 
   const onDrive = async () => {
-    if (directionId == null || repoId == null) return;
+    if (directionId == null) return;
     setDriving(true);
     setDriveError(null);
     try {
-      if (repoId === 0) {
-        await driveRun(directionId, true);
-      } else {
-        await driveDirection(directionId, repoId, true);
-      }
+      await driveRun(directionId, true);
     } catch (e) {
       setDriveError(String(e));
     } finally {
@@ -131,24 +118,14 @@ export function ObserveView() {
     <div className="flex min-h-0 min-w-0 flex-1">
       <section className="flex min-w-0 flex-1 flex-col bg-bg">
         {/* Chat takeover needs no PTY-era bar (status chip / Attach): the
-            conversation is the console; diff + inspect ride the composer row. */}
+            conversation is the console; inspect rides the composer row. */}
         {!chatMode && (
-        <header className="flex items-center justify-end gap-2 border-b border-border bg-surface px-3 py-2">
+          <header className="flex items-center justify-end gap-2 border-b border-border bg-surface px-3 py-2">
             {ref && (
               <span className="mr-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sm)] bg-bg px-2 py-0.5 text-[11px] font-medium text-ink-muted">
                 <ToolIcon tool={ref.tool} size={12} />
                 {toolFullName(ref.tool)}
               </span>
-            )}
-            {canShowDiff && (
-              <button
-                onClick={() => setShowDiff(true)}
-                title={t("diff.tab")}
-                aria-label={t("diff.tab")}
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-md)] border border-border text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-              >
-                <GitCompare size={13} />
-              </button>
             )}
             <StatusChip status={uiStatus} />
             <Button size="sm" variant="primary" disabled={driving} onClick={() => void onDrive()}>
@@ -157,14 +134,13 @@ export function ObserveView() {
             </Button>
             {ref && (
               <Inspect
-                path={ref.worktree}
-                branch={ref.branch}
+                path={ref.run_dir}
                 nativeId={ref.native_id}
                 tool={ref.tool}
                 className="h-7 w-7 shrink-0"
               />
             )}
-        </header>
+          </header>
         )}
 
         {driveError && (
@@ -188,7 +164,6 @@ export function ObserveView() {
               messages={chatMsgs}
               busy={(workerTurn[chatSessionId]?.state ?? "stopped") === "busy"}
               activity={workerActivity[chatSessionId]}
-              onReviewProposal={() => {}}
             />
             <ChatComposer
               slashCommands={workerSlash[chatSessionId] ?? []}
@@ -206,7 +181,7 @@ export function ObserveView() {
                 if (!ref?.native_id) return false;
                 await api.chatStop(chatSessionId);
                 await navigator.clipboard.writeText(
-                  resumeCommand(ref.tool, ref.worktree, ref.native_id),
+                  resumeCommand(ref.tool, ref.run_dir, ref.native_id),
                 );
                 return true;
               }}
@@ -218,20 +193,8 @@ export function ObserveView() {
               extraActions={
                 ref && (
                   <>
-                    {canShowDiff && (
-                      <Tooltip label={t("diff.tab")}>
-                        <button
-                          onClick={() => setShowDiff(true)}
-                          aria-label={t("diff.tab")}
-                          className="grid h-7 w-7 place-items-center rounded text-ink-faint transition-colors hover:bg-brand-ghost hover:text-ink"
-                        >
-                          <GitCompare size={13} />
-                        </button>
-                      </Tooltip>
-                    )}
                     <Inspect
-                      path={ref.worktree}
-                      branch={ref.branch}
+                      path={ref.run_dir}
                       nativeId={ref.native_id}
                       tool={ref.tool}
                       size={13}
@@ -243,7 +206,7 @@ export function ObserveView() {
             />
           </>
         ) : ref ? (
-          <Transcript cwd={ref.worktree} tool={ref.tool} running={!!liveSession} />
+          <Transcript cwd={ref.run_dir} tool={ref.tool} running={!!liveSession} />
         ) : (
           <div className="grid flex-1 place-items-center text-[13px] text-ink-faint">
             {loadError ?? t("observe.empty")}
@@ -251,18 +214,6 @@ export function ObserveView() {
         )}
       </section>
 
-      {ref && canShowDiff && (
-        <DiffPanel
-          cwd={ref.worktree}
-          open={showDiff}
-          onClose={() => setShowDiff(false)}
-          onAsk={
-            directionId != null && repoId != null
-              ? (text) => void sendToDirection(directionId, repoId, text)
-              : undefined
-          }
-        />
-      )}
     </div>
   );
 }
