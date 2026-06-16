@@ -34,9 +34,9 @@ source-controlled wrapper/runtime files.
 | `pnpm computer-use:prepare-sidecar` | 0 | `Verified open-computer-use 0.1.53`; `Prepared open-computer-use 0.1.53` |
 | `node --check scripts/prepare-open-computer-use-sidecar.mjs` | 0 | no syntax errors |
 | `pnpm computer-use:verify-sidecar` | 0 | `Verified open-computer-use 0.1.53` |
-| `pnpm build` | 0 | `tsc && vite build`; `2573 modules transformed`; Vite chunk-size warning only |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | 0 | lib tests `270 passed; 0 failed`; integration tests passed; warning only: `repo_map_json` unused |
-| `pnpm preflight` | 0 | `git diff --check fork/main...HEAD`, Atlas identity check, `pnpm build`, and Rust tests all passed |
+| `pnpm build` | 0 | `tsc && vite build`; `2562 modules transformed`; Vite chunk-size warning only |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | 0 | lib tests `228 passed; 0 failed`; integration tests passed |
+| `pnpm preflight` | 0 | refreshed after merging `fork/main`; `git diff --check fork/main...HEAD`, Atlas identity check, agent-base default-path check, `pnpm build`, and Rust tests all passed |
 | `pnpm tauri build --debug --bundles app` | 1 | Built `target/debug/atlas-app`; produced `Atlas.app` and `Atlas.app.tar.gz`; failed only because `TAURI_SIGNING_PRIVATE_KEY` is not set |
 | packaged wrapper `--version` | 0 | `0.1.53` |
 | packaged wrapper/runtime sha256 | 0 | same digests as metadata: wrapper `ee8a68...bab6b`, runtime `07be48...695b2` |
@@ -69,7 +69,7 @@ build, not the user's real Atlas home.
 Environment:
 
 ```text
-ATLAS_HOME=/private/tmp/atlas-smoke.AsNffU
+ATLAS_HOME=/private/tmp/atlas-smoke.<run-id>
 CODEX_HOME=<unset>
 ```
 
@@ -103,11 +103,11 @@ Agent session smoke:
 codex exec --ignore-user-config ... \
   -c mcp_servers.open_computer_use.command=".../Resources/sidecars/open-computer-use" \
   -c mcp_servers.open_computer_use.args=["mcp"] \
-  --json --cd /private/tmp/atlas-smoke.AsNffU/leads/1 ...
+  --json --cd /private/tmp/atlas-smoke.<run-id>/leads/1 ...
 ```
 
 4. UI showed an `mcp_tool_call`.
-5. Final UI response said `list_apps` was called and summarized running apps, including Codex, Google Chrome, 微信, Steam, System Settings, Terminal, Tencent Lemon, Calendar, Notes, Finder, and Atlas.
+5. Final UI response said `list_apps` was called and summarized visible desktop apps.
 
 The Atlas app and the bundle-scoped Open Computer Use app-agent process were
 stopped after the smoke.
@@ -117,38 +117,38 @@ stopped after the smoke.
 Before final bundle smoke:
 
 ```text
-1781570153 Jun 16 08:35:53 2026 /Users/chenxingyao/.codex/config.toml
-1778765058 May 14 21:24:18 2026 /Users/chenxingyao/.claude.json
-1778765058 May 14 21:24:18 2026 /Users/chenxingyao/.config/opencode/opencode.json
+<mtime> ~/.codex/config.toml
+<mtime> ~/.claude.json
+<mtime> ~/.config/opencode/opencode.json
 ```
 
 Before safe grep:
 
 ```text
-176:[projects."/private/tmp/atlas-smoke.ATGsFD/leads/1"]
-179:[projects."/private/tmp/atlas-smoke.hsISyH/leads/1"]
+[projects."/private/tmp/atlas-smoke.<previous-run>/leads/1"]
+[projects."/private/tmp/atlas-smoke.<previous-run>/leads/1"]
 ```
 
 After final bundle smoke:
 
 ```text
-1781570153 Jun 16 08:35:53 2026 /Users/chenxingyao/.codex/config.toml
-1778765058 May 14 21:24:18 2026 /Users/chenxingyao/.claude.json
-1778765058 May 14 21:24:18 2026 /Users/chenxingyao/.config/opencode/opencode.json
+<same mtime> ~/.codex/config.toml
+<same mtime> ~/.claude.json
+<same mtime> ~/.config/opencode/opencode.json
 ```
 
 After safe grep:
 
 ```text
-176:[projects."/private/tmp/atlas-smoke.ATGsFD/leads/1"]
-179:[projects."/private/tmp/atlas-smoke.hsISyH/leads/1"]
+[projects."/private/tmp/atlas-smoke.<previous-run>/leads/1"]
+[projects."/private/tmp/atlas-smoke.<previous-run>/leads/1"]
 ```
 
 Conclusion:
 
 - `~/.codex/config.toml` mtime did not change during the latest smoke.
 - Safe grep content did not change during the latest smoke.
-- No `/private/tmp/atlas-smoke.AsNffU` entry was added.
+- No `/private/tmp/atlas-smoke.<run-id>` entry was added.
 - No persistent `open_computer_use`, `open-computer-use`, `computer_use`,
   `sidecars`, or `mcp_servers.open*` entry exists in the safe grep output.
 
@@ -161,8 +161,8 @@ this smoke and were not edited per the global-config safety rule.
   updater signing public key is configured but `TAURI_SIGNING_PRIVATE_KEY` is not
   set. The debug app bundle and sidecar resources were still produced and
   verified.
-- The user's `~/.codex/config.toml` still contains two old smoke project entries
-  from earlier failed verification runs. This task did not edit or revert the
+- `~/.codex/config.toml` still contained two old smoke project entries from
+  earlier failed verification runs. This task did not edit or revert the
   user-global config.
 - The machine reports macOS Accessibility and Screen Recording permissions as
   missing for Computer Use doctor. The smoke intentionally did not modify those
