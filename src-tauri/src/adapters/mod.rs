@@ -148,11 +148,7 @@ impl AgentAdapter for CodexExecAdapter {
 
     fn build_argv(&self, ctx: &AdapterContext) -> anyhow::Result<(String, Vec<String>)> {
         // Mirrors engine::spawn_turn's codex branch (message rides the argv).
-        let mut a: Vec<String> = vec!["exec".into()];
-        if let Some(trust) = crate::codex::trusted_project_config_arg(ctx.cwd) {
-            a.push("-c".into());
-            a.push(trust);
-        }
+        let mut a: Vec<String> = vec!["exec".into(), "--ignore-user-config".into()];
         a.extend(ctx.extra_args.iter().cloned());
         a.push("--json".into());
         a.push("--cd".into());
@@ -334,9 +330,9 @@ mod tests {
     }
 
     #[test]
-    fn codex_exec_argv_trusts_project_inline() {
+    fn codex_exec_argv_ignores_user_config() {
         let cwd =
-            std::env::temp_dir().join(format!("atlas-codex-inline-trust-{}", std::process::id()));
+            std::env::temp_dir().join(format!("atlas-codex-ignore-config-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cwd);
         std::fs::create_dir_all(&cwd).unwrap();
         std::process::Command::new("git")
@@ -348,12 +344,9 @@ mod tests {
         let (_prog, a) = CodexExecAdapter
             .build_argv(&ctx(&cwd, None, "do it", &[]))
             .unwrap();
-        let i = a
-            .iter()
-            .position(|x| x == "-c")
-            .expect("codex trust override should be inline");
-        assert!(a[i + 1].starts_with("projects."));
-        assert!(a[i + 1].ends_with(".trust_level=\"trusted\""));
+        assert_eq!(a[0], "exec");
+        assert_eq!(a[1], "--ignore-user-config");
+        assert!(!a.iter().any(|arg| arg.starts_with("projects.")));
         assert!(!cwd.join(".codex").join("config.toml").exists());
 
         let _ = std::fs::remove_dir_all(&cwd);

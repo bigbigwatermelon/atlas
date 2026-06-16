@@ -13,7 +13,6 @@ mod brief;
 pub mod bus;
 mod check;
 mod claude;
-mod codex;
 mod codex_app_server;
 pub mod commands;
 mod commands_backup;
