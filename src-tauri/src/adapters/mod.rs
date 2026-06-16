@@ -148,7 +148,7 @@ impl AgentAdapter for CodexExecAdapter {
 
     fn build_argv(&self, ctx: &AdapterContext) -> anyhow::Result<(String, Vec<String>)> {
         // Mirrors engine::spawn_turn's codex branch (message rides the argv).
-        let mut a: Vec<String> = vec!["exec".into(), "--ignore-user-config".into()];
+        let mut a: Vec<String> = vec!["exec".into()];
         a.extend(ctx.extra_args.iter().cloned());
         a.push("--json".into());
         a.push("--cd".into());
@@ -330,9 +330,9 @@ mod tests {
     }
 
     #[test]
-    fn codex_exec_argv_ignores_user_config() {
+    fn codex_exec_argv_preserves_user_config_by_default() {
         let cwd =
-            std::env::temp_dir().join(format!("atlas-codex-ignore-config-{}", std::process::id()));
+            std::env::temp_dir().join(format!("atlas-codex-user-config-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cwd);
         std::fs::create_dir_all(&cwd).unwrap();
         crate::git::command()
@@ -345,7 +345,7 @@ mod tests {
             .build_argv(&ctx(&cwd, None, "do it", &[]))
             .unwrap();
         assert_eq!(a[0], "exec");
-        assert_eq!(a[1], "--ignore-user-config");
+        assert!(!a.contains(&"--ignore-user-config".to_string()));
         assert!(!a.iter().any(|arg| arg.starts_with("projects.")));
         assert!(!cwd.join(".codex").join("config.toml").exists());
 

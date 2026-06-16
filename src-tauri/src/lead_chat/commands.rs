@@ -9,6 +9,14 @@ fn lead_key(thread_id: i32) -> i64 {
     -(thread_id as i64)
 }
 
+fn empty_injection() -> crate::bus::inject::Injection {
+    crate::bus::inject::Injection { args: vec![] }
+}
+
+fn should_inject_computer_use(resumed: bool) -> bool {
+    !resumed
+}
+
 /// What a (re)opened run session looks like to the frontend.
 #[derive(serde::Serialize, Clone)]
 pub struct SessionInfo {
@@ -136,7 +144,12 @@ pub async fn lead_engine(
     };
     let ask = crate::bus::inject::inject_ask_hook(&base, thread_id, "lead", &t.lead_tool, &cwd);
     crate::skills::inject_for(db, t.workspace_id, &cwd).await;
-    let computer = crate::computer_use::inject::maybe_inject(app, db, &t.lead_tool, &cwd).await;
+    let native_id = repo::lead_native_id(db, thread_id).await.ok().flatten();
+    let computer = if should_inject_computer_use(native_id.is_some()) {
+        crate::computer_use::inject::maybe_inject(app, db, &t.lead_tool, &cwd).await
+    } else {
+        empty_injection()
+    };
     let mut extra = ask.args;
     extra.extend(inj.args);
     extra.extend(computer.args);
@@ -156,7 +169,7 @@ pub async fn lead_engine(
         cwd,
         extra_args: extra,
         system_prompt,
-        native_id: repo::lead_native_id(db, thread_id).await.ok().flatten(),
+        native_id,
         slash_commands: vec![],
         turn: Default::default(),
         turn_id: repo::next_turn_id(db, thread_id).await.unwrap_or(1) - 1,
@@ -423,7 +436,11 @@ async fn chat_open_run_impl(
         &cwd,
     );
     crate::skills::inject_for(db, thread.workspace_id, &cwd).await;
-    let computer = crate::computer_use::inject::maybe_inject(app, db, &dir.tool, &cwd).await;
+    let computer = if should_inject_computer_use(resumed) {
+        crate::computer_use::inject::maybe_inject(app, db, &dir.tool, &cwd).await
+    } else {
+        empty_injection()
+    };
     let mut extra = ask.args;
     extra.extend(inj.args);
     extra.extend(computer.args);
@@ -526,7 +543,11 @@ async fn worker_engine(app: &AppHandle, db: &Db, session_id: i32) -> anyhow::Res
     if let Ok(Some(th)) = repo::get_thread(db, dir.thread_id).await {
         crate::skills::inject_for(db, th.workspace_id, &cwd).await;
     }
-    let computer = crate::computer_use::inject::maybe_inject(app, db, &sess.tool, &cwd).await;
+    let computer = if should_inject_computer_use(sess.native_session_id.is_some()) {
+        crate::computer_use::inject::maybe_inject(app, db, &sess.tool, &cwd).await
+    } else {
+        empty_injection()
+    };
     let mut extra = ask.args;
     extra.extend(inj.args);
     extra.extend(computer.args);
@@ -635,4 +656,15 @@ pub async fn flag_lead_skill_refresh(
     }
     eng.lock().await.pending_skill_refresh = true;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn computer_use_injection_is_new_session_only() {
+        assert!(should_inject_computer_use(false));
+        assert!(!should_inject_computer_use(true));
+    }
 }
