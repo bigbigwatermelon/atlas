@@ -7,6 +7,8 @@ const SERVER: &str = "open_computer_use";
 const STEM: &str = "computer-use";
 const CLAUDE_CONFIG: &str = ".atlas-computer-use.mcp.json";
 const OPENCODE_SCHEMA: &str = "https://opencode.ai/config.json";
+const OPENCODE_OWNER_ENV: &str = "ATLAS_COMPUTER_USE_OWNER";
+const OPENCODE_OWNER_VALUE: &str = "atlas";
 
 pub fn build_stdio_injection(tool: &str, cwd: &Path, helper: &Path) -> Injection {
     match tool {
@@ -43,14 +45,24 @@ pub fn inject_for_enabled(
     enabled: bool,
 ) -> Injection {
     if !enabled {
-        cleanup_managed_config(tool, cwd);
+        let info = crate::computer_use::helper::resolve_helper_path(Some(app));
+        cleanup_managed_config(tool, cwd, info.path.as_deref().map(Path::new));
         return empty_injection();
     }
     if !cfg!(target_os = "macos") {
         return empty_injection();
     }
     let info = crate::computer_use::helper::resolve_helper_path(Some(app));
+    inject_for_helper_info(tool, cwd, info)
+}
+
+fn inject_for_helper_info(
+    tool: &str,
+    cwd: &Path,
+    info: crate::computer_use::helper::HelperInfo,
+) -> Injection {
     if info.state != crate::computer_use::helper::HelperState::Found {
+        cleanup_managed_config(tool, cwd, info.path.as_deref().map(Path::new));
         return empty_injection();
     }
     match info.path {
@@ -121,14 +133,29 @@ fn merge_opencode_config(cwd: &Path, helper: &Path) {
         *mcp = serde_json::json!({});
     }
     if let Some(mcp_obj) = mcp.as_object_mut() {
-        mcp_obj.insert(
-            SERVER.to_string(),
-            serde_json::json!({
-                "type": "local",
-                "command": [helper.to_string_lossy(), "mcp"],
-                "enabled": true,
-            }),
-        );
+        if mcp_obj
+            .get(SERVER)
+            .is_some_and(|server| !is_atlas_opencode_server(server, Some(helper)))
+        {
+            return;
+        }
+        let mut server = serde_json::json!({
+            "type": "local",
+            "command": [helper.to_string_lossy(), "mcp"],
+            "enabled": true,
+        });
+        if let Some(server_obj) = server.as_object_mut() {
+            let mut environment = serde_json::Map::new();
+            environment.insert(
+                OPENCODE_OWNER_ENV.to_string(),
+                serde_json::json!(OPENCODE_OWNER_VALUE),
+            );
+            server_obj.insert(
+                "environment".to_string(),
+                serde_json::Value::Object(environment),
+            );
+        }
+        mcp_obj.insert(SERVER.to_string(), server);
     }
 
     if let Ok(bytes) = serde_json::to_vec_pretty(&root) {
@@ -137,13 +164,13 @@ fn merge_opencode_config(cwd: &Path, helper: &Path) {
     crate::git::git_exclude(cwd, "opencode.json");
 }
 
-fn cleanup_managed_config(tool: &str, cwd: &Path) {
+fn cleanup_managed_config(tool: &str, cwd: &Path, configured_helper: Option<&Path>) {
     if tool == "opencode" {
-        remove_opencode_server(cwd);
+        remove_opencode_server(cwd, configured_helper);
     }
 }
 
-fn remove_opencode_server(cwd: &Path) {
+fn remove_opencode_server(cwd: &Path, configured_helper: Option<&Path>) {
     let path = cwd.join("opencode.json");
     let mut root: serde_json::Value = match std::fs::read_to_string(&path) {
         Ok(raw) => match serde_json::from_str(&raw) {
@@ -160,7 +187,7 @@ fn remove_opencode_server(cwd: &Path) {
     };
     let should_remove = mcp
         .get(SERVER)
-        .map(is_atlas_opencode_server)
+        .map(|server| is_atlas_opencode_server(server, configured_helper))
         .unwrap_or(false);
     if !should_remove {
         return;
@@ -171,27 +198,58 @@ fn remove_opencode_server(cwd: &Path) {
     }
 }
 
-fn is_atlas_opencode_server(value: &serde_json::Value) -> bool {
+fn is_atlas_opencode_server(value: &serde_json::Value, configured_helper: Option<&Path>) -> bool {
     let Some(obj) = value.as_object() else {
         return false;
     };
     if obj.get("type").and_then(|v| v.as_str()) != Some("local") {
         return false;
     }
-    if obj.get("enabled").and_then(|v| v.as_bool()) != Some(true) {
-        return false;
-    }
     let Some(command) = obj.get("command").and_then(|v| v.as_array()) else {
         return false;
     };
     let helper = command.first().and_then(|v| v.as_str()).unwrap_or("");
-    if !is_atlas_bundled_helper_command(helper) {
+    if !command_is_mcp(command) {
         return false;
     }
-    command
-        .get(1)
+    if has_atlas_opencode_marker(obj) {
+        return true;
+    }
+    if obj.get("enabled").and_then(|v| v.as_bool()) != Some(true) {
+        return false;
+    }
+    if !is_legacy_atlas_opencode_shape(obj) {
+        return false;
+    }
+    configured_helper.is_some_and(|path| helper_matches_path(helper, path))
+        || is_atlas_bundled_helper_command(helper)
+}
+
+fn command_is_mcp(command: &[serde_json::Value]) -> bool {
+    command.len() == 2
+        && command
+            .get(1)
+            .and_then(|v| v.as_str())
+            .is_some_and(|arg| arg == "mcp")
+}
+
+fn has_atlas_opencode_marker(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
+    obj.get("environment")
+        .and_then(|v| v.as_object())
+        .and_then(|env| env.get(OPENCODE_OWNER_ENV))
         .and_then(|v| v.as_str())
-        .is_some_and(|arg| arg == "mcp")
+        == Some(OPENCODE_OWNER_VALUE)
+}
+
+fn is_legacy_atlas_opencode_shape(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
+    obj.len() == 3
+        && obj.contains_key("type")
+        && obj.contains_key("command")
+        && obj.contains_key("enabled")
+}
+
+fn helper_matches_path(command: &str, helper: &Path) -> bool {
+    Path::new(command) == helper
 }
 
 fn is_atlas_bundled_helper_command(command: &str) -> bool {
@@ -217,6 +275,7 @@ fn toml_quote(value: &str) -> String {
 mod tests {
     use std::path::Path;
 
+    use crate::computer_use::helper::{HelperInfo, HelperState};
     use serde_json::Value;
 
     use super::*;
@@ -322,6 +381,10 @@ mod tests {
             serde_json::json!([helper.to_string_lossy(), "mcp"])
         );
         assert_eq!(server["enabled"], true);
+        assert_eq!(
+            server["environment"][OPENCODE_OWNER_ENV],
+            OPENCODE_OWNER_VALUE
+        );
     }
 
     #[test]
@@ -339,6 +402,77 @@ mod tests {
             std::fs::read_to_string(config_path).unwrap(),
             invalid_config
         );
+    }
+
+    #[test]
+    fn opencode_injection_preserves_user_managed_same_name_server() {
+        let tmp = tempfile::tempdir().unwrap();
+        let helper = tmp.path().join("open-computer-use");
+        std::fs::write(
+            tmp.path().join("opencode.json"),
+            serde_json::json!({
+                "mcp": {
+                    "open_computer_use": {
+                        "type": "remote",
+                        "url": "http://127.0.0.1:7/mcp",
+                        "enabled": true
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let injection = build_stdio_injection("opencode", tmp.path(), &helper);
+
+        assert!(injection.args.is_empty());
+        let raw = std::fs::read_to_string(tmp.path().join("opencode.json")).unwrap();
+        let config: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            config["mcp"]["open_computer_use"]["url"],
+            "http://127.0.0.1:7/mcp"
+        );
+        assert!(config["mcp"]["open_computer_use"]
+            .get("environment")
+            .is_none());
+    }
+
+    #[test]
+    fn opencode_missing_helper_cleans_stale_managed_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let helper = tmp.path().join("open-computer-use");
+        std::fs::write(
+            tmp.path().join("opencode.json"),
+            serde_json::json!({
+                "mcp": {
+                    "open_computer_use": {
+                        "type": "local",
+                        "command": [helper.to_string_lossy(), "mcp"],
+                        "enabled": true,
+                        "environment": {
+                            "ATLAS_COMPUTER_USE_OWNER": OPENCODE_OWNER_VALUE
+                        }
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let injection = inject_for_helper_info(
+            "opencode",
+            tmp.path(),
+            HelperInfo {
+                state: HelperState::Missing,
+                path: Some(helper.to_string_lossy().into_owned()),
+                error: Some("helper not found".to_string()),
+            },
+        );
+
+        assert!(injection.args.is_empty());
+        let raw = std::fs::read_to_string(tmp.path().join("opencode.json")).unwrap();
+        let config: Value = serde_json::from_str(&raw).unwrap();
+        assert!(config["mcp"].get("open_computer_use").is_none());
     }
 
     #[test]
@@ -367,7 +501,7 @@ mod tests {
         )
         .unwrap();
 
-        cleanup_managed_config("opencode", tmp.path());
+        cleanup_managed_config("opencode", tmp.path(), None);
 
         let raw = std::fs::read_to_string(tmp.path().join("opencode.json")).unwrap();
         let config: Value = serde_json::from_str(&raw).unwrap();
@@ -375,6 +509,32 @@ mod tests {
         assert_eq!(config["theme"], "system");
         assert!(config["mcp"].get("open_computer_use").is_none());
         assert_eq!(config["mcp"]["existing"]["url"], "http://127.0.0.1:9/mcp");
+    }
+
+    #[test]
+    fn opencode_cleanup_removes_configured_custom_helper() {
+        let tmp = tempfile::tempdir().unwrap();
+        let helper = tmp.path().join("bin").join("open-computer-use");
+        std::fs::write(
+            tmp.path().join("opencode.json"),
+            serde_json::json!({
+                "mcp": {
+                    "open_computer_use": {
+                        "type": "local",
+                        "command": [helper.to_string_lossy(), "mcp"],
+                        "enabled": true
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        cleanup_managed_config("opencode", tmp.path(), Some(&helper));
+
+        let raw = std::fs::read_to_string(tmp.path().join("opencode.json")).unwrap();
+        let config: Value = serde_json::from_str(&raw).unwrap();
+        assert!(config["mcp"].get("open_computer_use").is_none());
     }
 
     #[test]
@@ -395,7 +555,7 @@ mod tests {
         )
         .unwrap();
 
-        cleanup_managed_config("opencode", tmp.path());
+        cleanup_managed_config("opencode", tmp.path(), None);
 
         let raw = std::fs::read_to_string(tmp.path().join("opencode.json")).unwrap();
         let config: Value = serde_json::from_str(&raw).unwrap();
@@ -423,7 +583,7 @@ mod tests {
         )
         .unwrap();
 
-        cleanup_managed_config("opencode", tmp.path());
+        cleanup_managed_config("opencode", tmp.path(), None);
 
         let raw = std::fs::read_to_string(tmp.path().join("opencode.json")).unwrap();
         let config: Value = serde_json::from_str(&raw).unwrap();
